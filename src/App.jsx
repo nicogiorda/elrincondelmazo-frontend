@@ -1,7 +1,7 @@
-import Home from './views/Home.jsx'
+import Catalog from './views/Catalog.jsx'
 
 function App() {
-  return <Home cartCount={2} />
+  return <Catalog cartCount={2} />
 }
 
 export default App

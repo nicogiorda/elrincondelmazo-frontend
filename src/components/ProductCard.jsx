@@ -6,7 +6,7 @@ const variantStyles = {
     button: 'bg-rojo',
   },
   catalog: {
-    content: 'min-h-[9.3125rem]',
+    content: 'min-h-0',
     title: 'text-[1.5625rem] leading-[1.5625rem]',
     price: 'text-[1.25rem]',
     button: 'bg-bordo',
