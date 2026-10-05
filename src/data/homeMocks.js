@@ -7,8 +7,7 @@ import spiderManImage from '../assets/spider-man-holo.png'
 import marvelUniverseImage from '../assets/marvel-universe.png'
 import nbaRookiesImage from '../assets/nba-rookies.png'
 
-// Mocks visuales de Home. Los campos y enums no representan DTO confirmados.
-// color, wrapTitle e imageBackground son datos de presentación del prototipo.
+// Mocks visuales de colecciones; color y wrapTitle son datos de presentación.
 export const homeCollections = [
   { id: 1, name: 'NBA', imageUrl: nbaImage, color: 'crema' },
   { id: 2, name: 'My Little Pony', imageUrl: ponyImage, color: 'rosa', wrapTitle: true },
@@ -16,15 +15,15 @@ export const homeCollections = [
   { id: 4, name: 'Marvel', imageUrl: marvelImage, color: 'amarillo' },
 ]
 
-const nba = { id: 1, name: 'NBA', imageBackground: 'rojo' }
-const marvel = { id: 4, name: 'Marvel', imageBackground: 'amarillo' }
-const officialSeller = { id: 1, name: 'Rincón oficial' }
+// Configuración visual separada de ProductResponse, indexada por collectionId.
+export const homeProductBackgrounds = { 1: 'rojo', 4: 'amarillo' }
 
+// Productos mock con los campos y enums de ProductResponse.
 export const homeProducts = [
-  { id: 1, name: 'Wembanyama Rookie Autografiada', price: 125000, type: 'CARD', imageUrls: [wembanyamaImage], stock: 1, status: 'AVAILABLE', seller: officialSeller, collection: nba },
-  { id: 2, name: 'Spider-Man Holo 60 aniversario', price: 27800, type: 'CARD', imageUrls: [spiderManImage], stock: 3, status: 'AVAILABLE', seller: { id: 2, name: 'Lucía F.' }, collection: marvel },
-  { id: 3, name: 'Sobre Marvel Universe', price: 5400, type: 'PACK', imageUrls: [marvelUniverseImage], stock: 10, status: 'AVAILABLE', seller: officialSeller, collection: marvel },
-  { id: 4, name: 'Lootbox NBA Rookies', price: 32000, type: 'LOOTBOX', imageUrls: [nbaRookiesImage], stock: 5, status: 'AVAILABLE', seller: officialSeller, collection: nba },
+  { id: 1, name: 'Wembanyama Rookie Autografiada', price: 125000, type: 'CARTA', imageUrls: [wembanyamaImage], stock: 1, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 1, collectionName: 'NBA' },
+  { id: 2, name: 'Spider-Man Holo 60 aniversario', price: 27800, type: 'CARTA', imageUrls: [spiderManImage], stock: 3, status: 'ACTIVO', sellerId: 2, sellerName: 'Lucía F.', collectionId: 4, collectionName: 'Marvel' },
+  { id: 3, name: 'Sobre Marvel Universe', price: 5400, type: 'SOBRE', imageUrls: [marvelUniverseImage], stock: 10, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 4, collectionName: 'Marvel' },
+  { id: 4, name: 'Lootbox NBA Rookies', price: 32000, type: 'LOOTBOX', imageUrls: [nbaRookiesImage], stock: 5, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 1, collectionName: 'NBA' },
 ]
 
 export const homePromotions = [

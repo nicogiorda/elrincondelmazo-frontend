@@ -28,16 +28,16 @@ const imageBackgrounds = {
 
 // Proporciones de las imágenes de sobres y lootboxes en Home según Figma.
 const homeImageSizes = {
-  PACK: 'max-h-[16.125rem] max-w-[16.125rem]',
+  SOBRE: 'max-h-[16.125rem] max-w-[16.125rem]',
   LOOTBOX: 'max-h-[15.1875rem] max-w-[14.4375rem]',
 }
 
-function ProductCard({ product, variant = 'home', onOpenProduct, onAddToCart }) {
+function ProductCard({ product, variant = 'home', imageBackground = 'crema', onOpenProduct, onAddToCart }) {
   const styles = variantStyles[variant]
-  // Estos valores de status son provisionales hasta confirmar el contrato del backend.
-  const isSoldOut = product.stock === 0 || ['OUT_OF_STOCK', 'SOLD_OUT', 'AGOTADO'].includes(product.status?.toUpperCase())
+  const isSoldOut = product.stock === 0 || product.status === 'AGOTADO'
+  const canAddToCart = product.status === 'ACTIVO' && !isSoldOut
   const imageUrl = product.imageUrls?.[0]
-  const imageBackground = imageBackgrounds[product.collection?.imageBackground] ?? 'bg-crema'
+  const imageBackgroundClass = imageBackgrounds[imageBackground] ?? 'bg-crema'
 
   return (
     <article className={`relative flex w-full flex-col rounded-[1.375rem] border-3 border-bordo bg-papel leading-[normal] text-bordo shadow-product ${isSoldOut ? 'opacity-60' : ''}`}>
@@ -46,7 +46,7 @@ function ProductCard({ product, variant = 'home', onOpenProduct, onAddToCart }) 
           type="button"
           aria-label={`Ver ${product.name}`}
           onClick={() => onOpenProduct?.(product)}
-          className={`flex aspect-square w-full items-center justify-center overflow-hidden rounded-[0.875rem] border-3 border-bordo ${imageBackground}`}
+          className={`flex aspect-square w-full items-center justify-center overflow-hidden rounded-[0.875rem] border-3 border-bordo ${imageBackgroundClass}`}
         >
           {imageUrl && <img src={imageUrl} alt={product.name} className={`h-full w-full object-contain ${variant === 'home' ? homeImageSizes[product.type] ?? '' : ''}`} />}
         </button>
@@ -55,8 +55,8 @@ function ProductCard({ product, variant = 'home', onOpenProduct, onAddToCart }) 
       <div className={`flex flex-1 flex-col gap-1 px-4 pt-3.5 pb-4 ${styles.content}`}>
         {variant !== 'related' && (
           <p className="text-[0.75rem] font-bold tracking-[0.0375rem] uppercase opacity-75">
-            {product.collection?.name}
-            {variant === 'catalog' && product.seller?.name && ` · ${product.seller.name}`}
+            {product.collectionName}
+            {variant === 'catalog' && product.sellerName && ` · ${product.sellerName}`}
           </p>
         )}
         <h2 className={`font-display font-extrabold uppercase ${styles.title}`}>
@@ -70,7 +70,7 @@ function ProductCard({ product, variant = 'home', onOpenProduct, onAddToCart }) 
           </p>
           <button
             type="button"
-            disabled={isSoldOut}
+            disabled={!canAddToCart}
             onClick={() => onAddToCart?.(product)}
             className={`rounded-full px-3.5 py-2 text-[0.8125rem] font-extrabold whitespace-nowrap text-crema disabled:cursor-not-allowed ${styles.button}`}
           >

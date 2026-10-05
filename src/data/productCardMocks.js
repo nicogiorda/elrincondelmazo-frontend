@@ -1,33 +1,34 @@
 import wembanyamaImage from '../assets/wembanyama-rookie.png'
 import spiderManImage from '../assets/spider-man-holo.png'
 
-// Datos de ejemplo para la comparación visual; no son respuestas del backend.
-// imageBackground es un dato visual provisional, no un campo confirmado del contrato.
-const nba = { id: 1, name: 'NBA', imageBackground: 'rojo' }
-const marvel = { id: 2, name: 'Marvel', imageBackground: 'amarillo' }
+// Productos mock con los campos y enums de ProductResponse.
 
 const wembanyama = {
   id: 1,
   name: 'Wembanyama Rookie Autografiada',
   price: 125000,
-  type: 'CARD',
+  type: 'CARTA',
   imageUrls: [wembanyamaImage],
   stock: 1,
-  status: 'AVAILABLE',
-  seller: { id: 1, name: 'Rincón oficial' },
-  collection: nba,
+  status: 'ACTIVO',
+  sellerId: 1,
+  sellerName: 'Rincón oficial',
+  collectionId: 1,
+  collectionName: 'NBA',
 }
 
 const spiderMan = {
   id: 2,
   name: 'Spider-Man Holo 60 aniversario',
   price: 27800,
-  type: 'CARD',
+  type: 'CARTA',
   imageUrls: [spiderManImage],
   stock: 3,
-  status: 'AVAILABLE',
-  seller: { id: 2, name: 'Lucía F.' },
-  collection: marvel,
+  status: 'ACTIVO',
+  sellerId: 2,
+  sellerName: 'Lucía F.',
+  collectionId: 4,
+  collectionName: 'Marvel',
 }
 
 const avengers = {
@@ -37,14 +38,18 @@ const avengers = {
   type: 'LOOTBOX',
   imageUrls: [], // Figma no incluye una fotografía de este producto.
   stock: 0,
-  status: 'OUT_OF_STOCK',
-  seller: { id: 1, name: 'Rincón oficial' },
-  collection: marvel,
+  status: 'AGOTADO',
+  sellerId: 1,
+  sellerName: 'Rincón oficial',
+  collectionId: 4,
+  collectionName: 'Marvel',
 }
 
+// label, variant e imageBackground pertenecen a la vista de comparación,
+// no al objeto product ni al contrato del backend.
 export const productCardExamples = [
-  { label: 'Home', variant: 'home', product: wembanyama },
-  { label: 'Catálogo', variant: 'catalog', product: spiderMan },
-  { label: 'Catálogo · agotada', variant: 'catalog', product: avengers },
-  { label: 'Relacionados', variant: 'related', product: wembanyama },
+  { label: 'Home', variant: 'home', imageBackground: 'rojo', product: wembanyama },
+  { label: 'Catálogo', variant: 'catalog', imageBackground: 'amarillo', product: spiderMan },
+  { label: 'Catálogo · agotada', variant: 'catalog', imageBackground: 'amarillo', product: avengers },
+  { label: 'Relacionados', variant: 'related', imageBackground: 'rojo', product: wembanyama },
 ]
