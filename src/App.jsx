@@ -1,9 +1,7 @@
+import Home from './views/Home.jsx'
+
 function App() {
-  return (
-    <>
-      <h1>El Rincón del Mazo</h1>
-    </>
-  )
+  return <Home cartCount={2} />
 }
 
 export default App

@@ -1,7 +1,25 @@
-* {
-  box-sizing: border-box;
+@import "tailwindcss";
+
+@theme {
+  --color-crema: #f3e3ca;
+  --color-bordo: #66060e;
+  --color-rojo: #d10d19;
+  --color-amarillo: #ffb400;
+  --color-rosa: #ee4870;
+  --color-papel: #fbf3e6;
+
+  --shadow-product: 0.375rem 0.375rem 0 var(--color-bordo);
+  --text-shadow-product: 0.375rem 0.375rem 0 var(--color-bordo);
+
+  --font-sans: "Rethink Sans", sans-serif;
+  --font-display: "Big Shoulders Display", sans-serif;
 }
 
-body {
-  margin: 0;
+@layer base {
+  body {
+    margin: 0;
+    background-color: var(--color-crema);
+    color: var(--color-bordo);
+    font-family: var(--font-sans);
+  }
 }
