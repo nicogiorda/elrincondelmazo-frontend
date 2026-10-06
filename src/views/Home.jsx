@@ -6,10 +6,10 @@ import PromotionCard from '../components/PromotionCard.jsx'
 import hero from '../assets/home-hero.png'
 import { homeCollections, homeProducts, homePromotions, homeProductBackgrounds } from '../data/homeMocks.js'
 
-function Home({ cartCount = 0, onSelectCollection, onViewCollections, onViewCatalog, onOpenProduct, onAddToCart, onStartSelling }) {
+function Home({ cartCount = 0, onNavigate, onSelectCollection, onViewCollections, onViewCatalog, onOpenProduct, onAddToCart, onStartSelling }) {
   return (
     <>
-      <Header cartCount={cartCount} />
+      <Header cartCount={cartCount} onNavigate={onNavigate} />
       <main>
         <section aria-label="Cartas Topps NBA" className="px-6 py-10.5">
           <img src={hero} alt="Cartas coleccionables Topps NBA" className="mx-auto aspect-[1358/579] w-full max-w-[84.875rem] rounded-[0.5625rem] object-cover" />
@@ -58,7 +58,7 @@ function Home({ cartCount = 0, onSelectCollection, onViewCollections, onViewCata
           </section>
         </div>
       </main>
-      <Footer variant="home" />
+      <Footer variant="home" onNavigate={onNavigate} />
     </>
   )
 }

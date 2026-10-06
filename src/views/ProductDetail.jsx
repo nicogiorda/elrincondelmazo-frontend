@@ -5,16 +5,16 @@ import ProductCard from '../components/ProductCard.jsx'
 import ProductGallery from '../components/ProductGallery.jsx'
 import QuantitySelector from '../components/QuantitySelector.jsx'
 import ReviewCard from '../components/ReviewCard.jsx'
-import { detailProduct, detailGallery, detailReviews, detailRelatedProducts, detailProductBackgrounds, detailPaymentLabel, detailTransferPromotion, detailPromotionText } from '../data/productDetailMocks.js'
+import { detailProduct, detailGallery, detailReviews, detailRelatedProducts, detailProductBackgrounds, detailPaymentLabel, detailTransferPromotion } from '../data/productDetailMocks.js'
 
 const typeLabels = { CARTA: 'Carta', SOBRE: 'Sobre', LOOTBOX: 'Lootbox' }
 
-function ProductDetail({ product = detailProduct, reviews = detailReviews, relatedProducts = detailRelatedProducts, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+function ProductDetail({ product = detailProduct, reviews = detailReviews, relatedProducts = detailRelatedProducts, cartCount = 0, onNavigate, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
 
   const canBuy = product.status === 'ACTIVO' && product.stock > 0
-  const isLastUnit = product.stock === 1
+  const isLastUnit = canBuy && product.stock === 1
   const averageRating = reviews.length ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length : 0
   const ratingLabel = averageRating.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
   const images = detailGallery.map((image, index) => ({ ...image, url: product.imageUrls[index] }))
@@ -31,14 +31,11 @@ function ProductDetail({ product = detailProduct, reviews = detailReviews, relat
 
   return (
     <>
-      <div aria-label="Promociones activas" className="flex h-[2.5625rem] w-full items-center overflow-hidden border-b-3 border-bordo bg-amarillo text-bordo">
-        <p className="shrink-0 -translate-x-[73.326875rem] text-[0.875rem] leading-[normal] font-extrabold tracking-[0.0175rem] whitespace-pre">{detailPromotionText.repeat(8)}</p>
-      </div>
-      <Header cartCount={cartCount} />
+      <Header cartCount={cartCount} onNavigate={onNavigate} />
       <main className="mx-auto flex w-full max-w-[85rem] flex-col gap-12 px-6 pt-9 pb-18 text-bordo lg:px-10">
         <nav aria-label="Ruta del producto" className="flex flex-wrap gap-2 text-[0.875rem] leading-[normal] font-semibold">
-          <button type="button" className="underline">Inicio</button><span>/</span>
-          <button type="button" className="underline">Catálogo</button><span>/</span>
+          <button type="button" onClick={() => onNavigate?.('home')} className="underline">Inicio</button><span>/</span>
+          <button type="button" onClick={() => onNavigate?.('catalog')} className="underline">Catálogo</button><span>/</span>
           <span>{product.collectionName}</span><span>/</span><span className="opacity-70">{product.name}</span>
         </nav>
 
@@ -100,7 +97,7 @@ function ProductDetail({ product = detailProduct, reviews = detailReviews, relat
           </div>
         </section>
       </main>
-      <Footer />
+      <Footer onNavigate={onNavigate} />
     </>
   )
 }

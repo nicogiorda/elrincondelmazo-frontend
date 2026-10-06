@@ -25,13 +25,12 @@ export const detailGallery = [
 export const detailProductBackgrounds = { 1: 'rojo', 4: 'amarillo' }
 export const detailPaymentLabel = 'Crédito, débito, Mercado Pago o transferencia'
 export const detailTransferPromotion = { discount: '10%', text: 'Pagando con transferencia tenés 10% off sobre el total.' }
-export const detailPromotionText = '10% off pagando con transferencia  ✦  Llevando 3 sobres o más: 15% off  ✦  Compras desde $ 50.000: 5% off  ✦  '
 
-// Reseñas mock para esta vista; todavía no se confirmó el DTO de reviews.
+// Reseñas mock con la estructura de ReviewResponse.
 export const detailReviews = [
-  { id: 1, rating: 5, comment: 'Llegó tal cual las fotos, bien protegida. El vendedor respondió rápido.', reviewerName: 'Tomás B.', createdAt: '2026-09-12T12:00:00' },
-  { id: 2, rating: 4, comment: 'Muy buen estado. Una esquina tenía una marca mínima que no se veía en la foto.', reviewerName: 'Carla P.', createdAt: '2026-09-03T12:00:00' },
-  { id: 3, rating: 5, comment: 'Segunda compra en la tienda. Precio justo para lo que cuesta conseguirla.', reviewerName: 'Nicolás A.', createdAt: '2026-08-28T12:00:00' },
+  { id: 1, productId: 1, userId: 5, rating: 5, comment: 'Llegó tal cual las fotos, bien protegida. El vendedor respondió rápido.', userName: 'Tomás B.', createdAt: '2026-09-12T12:00:00' },
+  { id: 2, productId: 1, userId: 6, rating: 4, comment: 'Muy buen estado. Una esquina tenía una marca mínima que no se veía en la foto.', userName: 'Carla P.', createdAt: '2026-09-03T12:00:00' },
+  { id: 3, productId: 1, userId: 7, rating: 5, comment: 'Segunda compra en la tienda. Precio justo para lo que cuesta conseguirla.', userName: 'Nicolás A.', createdAt: '2026-08-28T12:00:00' },
 ]
 
 export const detailRelatedProducts = [

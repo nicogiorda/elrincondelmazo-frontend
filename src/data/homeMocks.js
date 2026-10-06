@@ -20,10 +20,10 @@ export const homeProductBackgrounds = { 1: 'rojo', 4: 'amarillo' }
 
 // Productos mock con los campos y enums de ProductResponse.
 export const homeProducts = [
-  { id: 1, name: 'Wembanyama Rookie Autografiada', price: 125000, type: 'CARTA', imageUrls: [wembanyamaImage], stock: 1, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 1, collectionName: 'NBA' },
-  { id: 2, name: 'Spider-Man Holo 60 aniversario', price: 27800, type: 'CARTA', imageUrls: [spiderManImage], stock: 3, status: 'ACTIVO', sellerId: 2, sellerName: 'Lucía F.', collectionId: 4, collectionName: 'Marvel' },
-  { id: 3, name: 'Sobre Marvel Universe', price: 5400, type: 'SOBRE', imageUrls: [marvelUniverseImage], stock: 10, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 4, collectionName: 'Marvel' },
-  { id: 4, name: 'Lootbox NBA Rookies', price: 32000, type: 'LOOTBOX', imageUrls: [nbaRookiesImage], stock: 5, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 1, collectionName: 'NBA' },
+  { id: 13, name: 'Wembanyama Rookie Autografiada', price: 125000, type: 'CARTA', imageUrls: [wembanyamaImage], stock: 1, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 1, collectionName: 'NBA' },
+  { id: 4, name: 'Spider-Man Holo 60 aniversario', price: 27800, type: 'CARTA', imageUrls: [spiderManImage], stock: 3, status: 'ACTIVO', sellerId: 2, sellerName: 'Lucía F.', collectionId: 4, collectionName: 'Marvel' },
+  { id: 5, name: 'Sobre Marvel Universe', price: 5400, type: 'SOBRE', imageUrls: [marvelUniverseImage], stock: 10, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 4, collectionName: 'Marvel' },
+  { id: 3, name: 'Lootbox NBA Rookies', price: 32000, type: 'LOOTBOX', imageUrls: [nbaRookiesImage], stock: 5, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 1, collectionName: 'NBA' },
 ]
 
 export const homePromotions = [

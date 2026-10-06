@@ -4,7 +4,10 @@ const storeLinks = ['Cartas', 'Sobres', 'Lootboxes', 'Catálogo completo']
 const accountLinks = ['Ingresar', 'Crear cuenta', 'Mis pedidos', 'Publicar un producto']
 const paymentMethods = ['Crédito', 'Débito', 'Mercado Pago', 'Transferencia']
 
-function Footer({ variant = 'default' }) {
+function Footer({ variant = 'default', isLoggedIn = false, onNavigate }) {
+  const visibleAccountLinks = isLoggedIn ? ['Mi perfil', 'Mis pedidos', 'Carrito', 'Publicar un producto'] : accountLinks
+  const destinations = { Cartas: 'catalog', Sobres: 'catalog', Lootboxes: 'catalog', 'Catálogo completo': 'catalog', Ingresar: 'profile', 'Crear cuenta': 'profile', 'Mi perfil': 'profile', 'Mis pedidos': 'orders', Carrito: 'cart', 'Publicar un producto': 'publish' }
+  const types = { Cartas: 'CARTA', Sobres: 'SOBRE', Lootboxes: 'LOOTBOX' }
   return (
     <footer className={`bg-bordo px-6 pt-14 pb-7 text-[0.9375rem] leading-[normal] text-crema lg:px-10 ${variant === 'home' ? 'min-h-[25.5625rem]' : ''}`}>
       <div className="mx-auto grid max-w-[80rem] grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr]">
@@ -20,14 +23,14 @@ function Footer({ variant = 'default' }) {
         <nav aria-label="Tienda" className="flex flex-col items-start gap-2.5">
           <h2 className="text-[0.8125rem] font-extrabold tracking-[0.065rem] text-amarillo uppercase">Tienda</h2>
           {storeLinks.map((label) => (
-            <button key={label} type="button" className="text-left">{label}</button>
+            <button key={label} type="button" onClick={() => onNavigate?.(destinations[label], { type: types[label] })} className="text-left">{label}</button>
           ))}
         </nav>
 
         <nav aria-label="Cuenta" className="flex flex-col items-start gap-2.5">
           <h2 className="text-[0.8125rem] font-extrabold tracking-[0.065rem] text-amarillo uppercase">Cuenta</h2>
-          {accountLinks.map((label) => (
-            <button key={label} type="button" className="text-left">{label}</button>
+          {visibleAccountLinks.map((label) => (
+            <button key={label} type="button" onClick={() => onNavigate?.(destinations[label], { type: types[label] })} className="text-left">{label}</button>
           ))}
         </nav>
 
