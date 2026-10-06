@@ -1,7 +1,7 @@
-import Catalog from './views/Catalog.jsx'
+import ProductDetail from './views/ProductDetail.jsx'
 
 function App() {
-  return <Catalog cartCount={2} />
+  return <ProductDetail cartCount={2} />
 }
 
 export default App
