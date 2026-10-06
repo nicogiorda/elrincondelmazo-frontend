@@ -1,3 +1,4 @@
+import { paymentMethodLabel } from '../data/paymentMethods.js'
 import { useState } from 'react'
 import AccountLayout from '../components/AccountLayout.jsx'
 import ProgressSteps from '../components/ProgressSteps.jsx'
@@ -6,14 +7,14 @@ import PurchaseSummary from '../components/PurchaseSummary.jsx'
 import { formatPrice } from '../data/purchaseMocks.js'
 
 const filters = ['Todos', 'En curso', 'Entregados', 'Cancelados']
-const statusLabels = { PENDIENTE: 'Pendiente', PAGADO: 'Pagado', ENVIADO: 'Enviado', ENTREGADO: 'Entregado', CANCELADO: 'Cancelado' }
-const statusStyles = { PENDIENTE: 'bg-crema', PAGADO: 'bg-amarillo', ENVIADO: 'bg-rosa', ENTREGADO: 'bg-bordo text-crema', CANCELADO: 'bg-papel' }
-const progress = { PENDIENTE: 1, PAGADO: 2, ENVIADO: 3, ENTREGADO: 4 }
+const statusLabels = { PENDIENTE: 'Pendiente', PAGO: 'Pagado', ENVIADO: 'Enviado', ENTREGADO: 'Entregado', CANCELADO: 'Cancelado' }
+const statusStyles = { PENDIENTE: 'bg-crema', PAGO: 'bg-amarillo', ENVIADO: 'bg-rosa', ENTREGADO: 'bg-bordo text-crema', CANCELADO: 'bg-papel' }
+const progress = { PENDIENTE: 1, PAGO: 2, ENVIADO: 3, ENTREGADO: 4 }
 
 function Orders({ user, orders, cartCount, onNavigate, onReview }) {
   const [filter, setFilter] = useState('Todos')
   const [openOrderId, setOpenOrderId] = useState(1032)
-  const visibleOrders = orders.filter((order) => filter === 'Todos' || (filter === 'En curso' && ['PENDIENTE', 'PAGADO', 'ENVIADO'].includes(order.status)) || (filter === 'Entregados' && order.status === 'ENTREGADO') || (filter === 'Cancelados' && order.status === 'CANCELADO'))
+  const visibleOrders = orders.filter((order) => filter === 'Todos' || (filter === 'En curso' && ['PENDIENTE', 'PAGO', 'ENVIADO'].includes(order.status)) || (filter === 'Entregados' && order.status === 'ENTREGADO') || (filter === 'Cancelados' && order.status === 'CANCELADO'))
   return (
     <AccountLayout user={user} activeView="orders" cartCount={cartCount} onNavigate={onNavigate}>
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -29,7 +30,7 @@ function Orders({ user, orders, cartCount, onNavigate, onReview }) {
           <button type="button" aria-expanded={isOpen} aria-controls={`order-${order.id}`} onClick={() => setOpenOrderId(isOpen ? null : order.id)} className="flex w-full flex-wrap items-center gap-4.5 px-5.5 py-4.5 text-left">
             <strong className="font-display text-[2.25rem] leading-9 font-black">#{order.id}</strong>
             <span className="min-w-0 flex-1">
-              <span className="block text-[0.9375rem] font-bold">{order.date} · {order.paymentMethod}</span>
+              <span className="block text-[0.9375rem] font-bold">{order.date} · {paymentMethodLabel(order.paymentMethod)}</span>
               <span className="mt-0.5 block text-[0.8125rem] opacity-80">{order.items.map((item) => `${item.quantity} × ${item.product.name}`).join(', ')}</span>
             </span>
             <span className={`rounded-full border-[1.6px] border-bordo px-3.5 py-1.5 text-[0.75rem] font-extrabold uppercase ${statusStyles[order.status]}`}>{statusLabels[order.status]}</span>
@@ -39,7 +40,7 @@ function Orders({ user, orders, cartCount, onNavigate, onReview }) {
           {isOpen && <div id={`order-${order.id}`} className="grid min-w-0 items-start gap-7 border-t-[2.4px] border-bordo p-6 xl:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-4.5">{progress[order.status] && <ProgressSteps step={progress[order.status]} variant="order" />}<PurchaseItems items={order.items} variant="order" />
             </div>
-            <PurchaseSummary summary={summary} variant="order">{order.status === 'ENTREGADO' && <button type="button" onClick={() => onReview?.(order.items[0].product)} className="rounded-full border-[2.4px] border-bordo bg-rosa px-5 py-3 text-[0.875rem] font-extrabold shadow-[0.1875rem_0.1875rem_0_var(--color-bordo)]">Dejar reseña</button>}</PurchaseSummary>
+            <PurchaseSummary summary={summary} variant="order">{order.status === 'ENTREGADO' && <button type="button" disabled={!onReview || !order.items.length} onClick={() => onReview?.(order.items[0].product)} className="rounded-full border-[2.4px] border-bordo bg-rosa px-5 py-3 text-[0.875rem] font-extrabold shadow-[0.1875rem_0.1875rem_0_var(--color-bordo)] disabled:cursor-not-allowed disabled:opacity-50">Dejar reseña</button>}</PurchaseSummary>
           </div>}
         </article>
         )
