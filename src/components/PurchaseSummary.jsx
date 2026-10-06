@@ -1,3 +1,4 @@
+import { paymentMethodLabel } from '../data/paymentMethods.js'
 import { formatPrice } from '../data/purchaseMocks.js'
 
 function PurchaseSummary({ summary, variant = 'checkout', paymentMethod, children }) {
@@ -8,7 +9,7 @@ function PurchaseSummary({ summary, variant = 'checkout', paymentMethod, childre
       {!compact && <h2 className="font-display text-[2.25rem] leading-[2.25rem] font-black uppercase">Resumen</h2>}
       <div className={`flex justify-between gap-3 font-semibold ${variant === 'order' ? 'text-[0.9375rem]' : 'text-base'}`}><span>Subtotal</span><span className="shrink-0">{formatPrice(summary.subtotal)}</span></div>
       {summary.discounts.map((discount) => <div key={discount.label} className={`flex justify-between gap-3 ${compact || variant === 'cart' ? 'text-rojo' : ''} ${variant === 'confirmation' ? 'text-base font-bold' : compact || variant === 'cart' ? 'text-[0.875rem] font-bold' : 'text-[0.9375rem] font-extrabold'}`}><span>{discount.label}</span><span className="shrink-0">− {formatPrice(discount.amount)}</span></div>)}
-      <div className={`flex flex-wrap items-baseline justify-between gap-2 border-bordo ${variant === 'confirmation' ? 'pt-3' : compact ? 'border-t-3 pt-2.5' : 'border-t-3 pt-3.5'}`}><span className="font-extrabold">Total{variant === 'confirmation' && ` · ${paymentMethod}`}</span><strong className={variant === 'order' ? 'text-[1.5rem]' : 'text-[1.875rem]'}>{formatPrice(summary.total)}</strong></div>
+      <div className={`flex flex-wrap items-baseline justify-between gap-2 border-bordo ${variant === 'confirmation' ? 'pt-3' : compact ? 'border-t-3 pt-2.5' : 'border-t-3 pt-3.5'}`}><span className="font-extrabold">Total{variant === 'confirmation' && ` · ${paymentMethodLabel(paymentMethod)}`}</span><strong className={variant === 'order' ? 'text-[1.5rem]' : 'text-[1.875rem]'}>{formatPrice(summary.total)}</strong></div>
       {variant === 'checkout' && <span className="self-start rounded-full border-[1.6px] border-bordo bg-crema px-3 py-1.25 text-[0.8125rem] font-extrabold">Ahorrás {formatPrice(summary.savings)}</span>}
       {children}
     </section>

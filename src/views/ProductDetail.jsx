@@ -1,3 +1,4 @@
+import { getRelatedProducts } from '../data/productMocks.js'
 import { useState } from 'react'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
@@ -5,14 +6,15 @@ import ProductCard from '../components/ProductCard.jsx'
 import ProductGallery from '../components/ProductGallery.jsx'
 import QuantitySelector from '../components/QuantitySelector.jsx'
 import ReviewCard from '../components/ReviewCard.jsx'
-import { detailProduct, detailGallery, detailReviews, detailRelatedProducts, detailProductBackgrounds, detailPaymentLabel, detailTransferPromotion } from '../data/productDetailMocks.js'
+import { detailProduct, detailGallery, detailReviews, detailProductBackgrounds, detailPaymentLabel, detailTransferPromotion } from '../data/productDetailMocks.js'
 
 const typeLabels = { CARTA: 'Carta', SOBRE: 'Sobre', LOOTBOX: 'Lootbox' }
 
-function ProductDetail({ product = detailProduct, reviews = detailReviews, relatedProducts = detailRelatedProducts, cartCount = 0, onNavigate, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+function ProductDetail({ product = detailProduct, reviews = detailReviews.filter((review) => review.productId === product.id), cartCount = 0, onNavigate, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
 
+  const relatedProducts = getRelatedProducts(product)
   const canBuy = product.status === 'ACTIVO' && product.stock > 0
   const isLastUnit = canBuy && product.stock === 1
   const averageRating = reviews.length ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length : 0

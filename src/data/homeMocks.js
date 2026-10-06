@@ -1,11 +1,8 @@
+import { getMockProduct } from './productMocks.js'
 import nbaImage from '../assets/collection-nba.png'
 import ponyImage from '../assets/collection-my-little-pony.png'
 import carsImage from '../assets/collection-cars.png'
 import marvelImage from '../assets/collection-marvel.png'
-import wembanyamaImage from '../assets/wembanyama-rookie.png'
-import spiderManImage from '../assets/spider-man-holo.png'
-import marvelUniverseImage from '../assets/marvel-universe.png'
-import nbaRookiesImage from '../assets/nba-rookies.png'
 
 // Mocks visuales de colecciones; color y wrapTitle son datos de presentación.
 export const homeCollections = [
@@ -19,12 +16,7 @@ export const homeCollections = [
 export const homeProductBackgrounds = { 1: 'rojo', 4: 'amarillo' }
 
 // Productos mock con los campos y enums de ProductResponse.
-export const homeProducts = [
-  { id: 13, name: 'Wembanyama Rookie Autografiada', price: 125000, type: 'CARTA', imageUrls: [wembanyamaImage], stock: 1, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 1, collectionName: 'NBA' },
-  { id: 4, name: 'Spider-Man Holo 60 aniversario', price: 27800, type: 'CARTA', imageUrls: [spiderManImage], stock: 3, status: 'ACTIVO', sellerId: 2, sellerName: 'Lucía F.', collectionId: 4, collectionName: 'Marvel' },
-  { id: 5, name: 'Sobre Marvel Universe', price: 5400, type: 'SOBRE', imageUrls: [marvelUniverseImage], stock: 10, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 4, collectionName: 'Marvel' },
-  { id: 3, name: 'Lootbox NBA Rookies', price: 32000, type: 'LOOTBOX', imageUrls: [nbaRookiesImage], stock: 5, status: 'ACTIVO', sellerId: 1, sellerName: 'Rincón oficial', collectionId: 1, collectionName: 'NBA' },
-]
+export const homeProducts = [13, 4, 5, 3].map(getMockProduct)
 
 export const homePromotions = [
   { id: 1, discount: '10%', title: 'Pagando con transferencia', description: 'Se aplica sobre el total del pedido.' },

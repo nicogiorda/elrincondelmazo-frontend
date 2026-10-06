@@ -9,6 +9,7 @@ import Profile from './views/Profile.jsx'
 import Cart from './views/Cart.jsx'
 import Checkout from './views/Checkout.jsx'
 import OrderConfirmation from './views/OrderConfirmation.jsx'
+import { productMocks } from './data/productMocks.js'
 import { accountUser, publicationProducts } from './data/accountMocks.js'
 import { cartItems, orderMocks, confirmationMock } from './data/purchaseMocks.js'
 
@@ -21,7 +22,7 @@ function App() {
   const [confirmedOrder, setConfirmedOrder] = useState(null)
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
 
-  function navigate(name, params = {}) { setView({ name, params }); window.scrollTo(0, 0) }
+  function navigate(name, params = {}) { setView({ name, params }) }
   function openProduct(product) { navigate('detail', { product }) }
   function addToCart(product, quantity = 1) {
     if (product.status !== 'ACTIVO' || product.stock < 1) return
@@ -33,7 +34,7 @@ function App() {
   }
   function changeQuantity(id, quantity) { setItems((current) => current.map((item) => item.id === id && quantity >= 1 && quantity <= item.product.stock ? { ...item, quantity } : item)) }
   function publishProduct(product) {
-    const saved = { ...product, id: product.id ?? Math.max(0, ...publications.map((item) => item.id)) + 1 }
+    const saved = { ...product, id: product.id ?? Math.max(0, ...productMocks.map((item) => item.id), ...publications.map((item) => item.id)) + 1 }
     setPublications((current) => product.id ? current.map((item) => item.id === product.id ? saved : item) : [...current, saved])
     navigate('publications')
   }
@@ -53,7 +54,7 @@ function App() {
   if (view.name === 'checkout') return <Checkout {...shared} items={items} onConfirm={(order) => confirmOrder({ ...order, total: order.summary.total, discounts: order.summary.discounts })} />
   if (view.name === 'confirmation' && confirmedOrder) return <OrderConfirmation order={confirmedOrder} onNavigate={navigate} />
   if (view.name === 'catalog') return <Catalog key={JSON.stringify(view.params)} {...shared} initialType={view.params.type} initialCollection={view.params.collectionId} onOpenProduct={openProduct} onAddToCart={addToCart} />
-  if (view.name === 'detail') return <ProductDetail key={view.params.product.id + view.params.product.name} {...shared} product={view.params.product} reviews={view.params.product.name === 'LeBron James Prizm Silver 2023' ? undefined : []} onOpenProduct={openProduct} onAddToCart={addToCart} onBuyNow={(product, quantity) => { addToCart(product, quantity); navigate('cart') }} onViewCollection={(collectionId) => navigate('catalog', { collectionId })} />
+  if (view.name === 'detail') return <ProductDetail key={view.params.product.id} {...shared} product={view.params.product} onOpenProduct={openProduct} onAddToCart={addToCart} onBuyNow={(product, quantity) => { addToCart(product, quantity); navigate('cart') }} onViewCollection={(collectionId) => navigate('catalog', { collectionId })} />
   return <Home {...shared} onOpenProduct={openProduct} onAddToCart={addToCart} onSelectCollection={(collection) => navigate('catalog', { collectionId: collection.id })} onViewCollections={() => navigate('home')} onViewCatalog={() => navigate('catalog')} onStartSelling={() => navigate('publish')} />
 }
 export default App

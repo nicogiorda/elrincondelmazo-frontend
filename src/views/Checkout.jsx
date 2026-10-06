@@ -1,16 +1,17 @@
+import { paymentMethods, paymentMethodLabel } from '../data/paymentMethods.js'
 import { useState } from 'react'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import ProgressSteps from '../components/ProgressSteps.jsx'
 import PurchaseItems from '../components/PurchaseItems.jsx'
 import PurchaseSummary from '../components/PurchaseSummary.jsx'
-import { calculateMockSummary, paymentMethods, formatPrice } from '../data/purchaseMocks.js'
+import { calculateMockSummary, formatPrice } from '../data/purchaseMocks.js'
 
 const headings = ['Revisá tu pedido', '¿Cómo querés pagar?', 'Confirmá tu pedido']
 
 function Checkout({ items, cartCount, onNavigate, onConfirm }) {
   const [step, setStep] = useState(1)
-  const [paymentMethod, setPaymentMethod] = useState('Transferencia')
+  const [paymentMethod, setPaymentMethod] = useState('TRANSFERENCIA')
   const summary = calculateMockSummary(items, step > 1 ? paymentMethod : '')
   return (
     <>
@@ -29,11 +30,11 @@ function Checkout({ items, cartCount, onNavigate, onConfirm }) {
               <h2 className="font-display text-[3rem] leading-[2.85rem] font-black uppercase">{headings[step - 1]}</h2>
             </div>
             {step === 1 && <PurchaseItems items={items} />}
-            {step === 2 && <div role="group" aria-label="Medio de pago" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{paymentMethods.map((method) => <button key={method} type="button" aria-pressed={paymentMethod === method} onClick={() => setPaymentMethod(method)} className={`relative flex min-w-0 items-center gap-4 rounded-[1.375rem] border-[2.4px] border-bordo p-5.5 text-left text-[1.1875rem] font-extrabold ${paymentMethod === method ? 'bg-amarillo shadow-[0.3125rem_0.3125rem_0_var(--color-bordo)]' : 'bg-crema'}`}>
-                <span aria-hidden="true" className={`size-[1.925rem] shrink-0 rounded-full border-[2.4px] border-bordo ${paymentMethod === method ? 'bg-bordo' : ''}`} />
-                <span>{method}</span>{method === 'Transferencia' && <span className="absolute -top-3 right-0 rotate-6 rounded-full border-[2.4px] border-bordo bg-amarillo px-3 py-1 font-display text-[1.125rem] font-black uppercase">10% off</span>}</button>)}</div>}
+            {step === 2 && <div role="group" aria-label="Medio de pago" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{paymentMethods.map((method) => <button key={method.value} type="button" aria-pressed={paymentMethod === method.value} onClick={() => setPaymentMethod(method.value)} className={`relative flex min-w-0 items-center gap-4 rounded-[1.375rem] border-[2.4px] border-bordo p-5.5 text-left text-[1.1875rem] font-extrabold ${paymentMethod === method.value ? 'bg-amarillo shadow-[0.3125rem_0.3125rem_0_var(--color-bordo)]' : 'bg-crema'}`}>
+                <span aria-hidden="true" className={`size-[1.925rem] shrink-0 rounded-full border-[2.4px] border-bordo ${paymentMethod === method.value ? 'bg-bordo' : ''}`} />
+                <span>{method.label}</span>{method.value === 'TRANSFERENCIA' && <span className="absolute -top-3 right-0 rotate-6 rounded-full border-[2.4px] border-bordo bg-amarillo px-3 py-1 font-display text-[1.125rem] font-black uppercase">10% off</span>}</button>)}</div>}
             {step === 3 && <>
-              <div className="grid gap-4 sm:grid-cols-2">{[{ label: 'Productos', value: `${cartCount} productos`, step: 1 }, { label: 'Medio de pago', value: paymentMethod, step: 2 }].map((item) => <div key={item.label} className="flex flex-col items-start gap-1.5 rounded-[1.25rem] border-[2.4px] border-bordo bg-papel px-5 py-4.5">
+              <div className="grid gap-4 sm:grid-cols-2">{[{ label: 'Productos', value: `${cartCount} productos`, step: 1 }, { label: 'Medio de pago', value: paymentMethodLabel(paymentMethod), step: 2 }].map((item) => <div key={item.label} className="flex flex-col items-start gap-1.5 rounded-[1.25rem] border-[2.4px] border-bordo bg-papel px-5 py-4.5">
                   <span className="text-[0.75rem] font-extrabold tracking-[0.06rem] uppercase opacity-75">{item.label}</span>
                   <strong className="text-[1.25rem]">{item.value}</strong>
                   <button type="button" onClick={() => setStep(item.step)} className="text-[0.875rem] font-bold underline">Cambiar</button>
