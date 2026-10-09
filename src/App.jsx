@@ -25,7 +25,7 @@ function App() {
   function navigate(name, params = {}) { setView({ name, params }) }
   function openProduct(product) { navigate('detail', { product }) }
   function addToCart(product, quantity = 1) {
-    if (product.status !== 'ACTIVO' || product.stock < 1) return
+    if (product.status !== 'ACTIVO' || product.stock < 1 || product.sellerId === user.id) return
     setItems((current) => {
       const existing = current.find((item) => item.product.id === product.id)
       if (existing) return current.map((item) => item.id === existing.id ? { ...item, quantity: Math.min(item.quantity + quantity, product.stock) } : item)
