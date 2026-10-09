@@ -20,7 +20,7 @@ function Home({ cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart })
           <section aria-labelledby="collections-heading" className="flex flex-col gap-5.5">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <h1 id="collections-heading" className="font-display text-[4rem] leading-[3.6rem] font-black uppercase">Colecciones</h1>
-              <Link to="/" className="rounded-full bg-rojo px-5 py-2.5 text-[0.875rem] leading-[normal] font-extrabold tracking-[0.035rem] text-crema uppercase">Ver todo</Link>
+              <Link to="/catalogo" state={{ resetFilters: true }} className="rounded-full bg-rojo px-5 py-2.5 text-[0.875rem] leading-[normal] font-extrabold tracking-[0.035rem] text-crema uppercase">Ver todo</Link>
             </div>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
               {homeCollections.map((collection) => (
@@ -32,7 +32,7 @@ function Home({ cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart })
           <section aria-labelledby="products-heading" className="flex flex-col gap-5.5">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <h2 id="products-heading" className="font-display text-[4rem] leading-[3.6rem] font-black uppercase">Recién publicados</h2>
-              <Link to="/catalogo" className="rounded-full bg-rojo px-5 py-2.5 text-[0.875rem] leading-[normal] font-extrabold tracking-[0.035rem] text-crema uppercase">Ver catálogo</Link>
+              <Link to="/catalogo" state={{ resetFilters: true }} className="rounded-full bg-rojo px-5 py-2.5 text-[0.875rem] leading-[normal] font-extrabold tracking-[0.035rem] text-crema uppercase">Ver catálogo</Link>
             </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
               {homeProducts.map((product) => (

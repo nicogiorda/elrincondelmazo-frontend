@@ -14,6 +14,8 @@ import { productMocks } from './data/productMocks.js'
 import { accountUser, publicationProducts } from './data/accountMocks.js'
 import { cartItems, orderMocks, confirmationMock } from './data/purchaseMocks.js'
 
+const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
+
 function App() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -22,6 +24,22 @@ function App() {
   const [publications, setPublications] = useState(publicationProducts)
   const [items, setItems] = useState(cartItems)
   const [confirmedOrder, setConfirmedOrder] = useState(null)
+  const [catalogFilters, setCatalogFilters] = useState(emptyCatalogFilters)
+  const [appliedCatalogNavigations, setAppliedCatalogNavigations] = useState([])
+
+  const catalogSelection = location.state
+  const hasCatalogSelection = location.pathname === '/catalogo'
+    && (catalogSelection?.type !== undefined || catalogSelection?.collectionId !== undefined || catalogSelection?.resetFilters === true)
+
+  // Aplicar cada selección explícita una sola vez, incluso al volver con el navegador.
+  if (hasCatalogSelection && !appliedCatalogNavigations.includes(location.key)) {
+    setAppliedCatalogNavigations([...appliedCatalogNavigations, location.key])
+    setCatalogFilters({
+      ...emptyCatalogFilters,
+      type: catalogSelection.type ?? '',
+      collection: String(catalogSelection.collectionId ?? ''),
+    })
+  }
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
 
   function openProduct(product) { navigate('/producto', { state: { product } }) }
@@ -51,7 +69,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={home} />
-      <Route path="/catalogo" element={<Catalog key={JSON.stringify(location.state ?? {})} {...shared} onOpenProduct={openProduct} onAddToCart={addToCart} />} />
+      <Route path="/catalogo" element={<Catalog {...shared} filters={catalogFilters} onFiltersChange={setCatalogFilters} onClearFilters={() => setCatalogFilters(emptyCatalogFilters)} onOpenProduct={openProduct} onAddToCart={addToCart} />} />
       <Route path="/producto" element={<ProductDetail key={location.state?.product?.id ?? 'preview'} {...shared} onOpenProduct={openProduct} onAddToCart={addToCart} onBuyNow={(product, quantity) => { addToCart(product, quantity); navigate('/carrito') }} onViewCollection={(collectionId) => navigate('/catalogo', { state: { collectionId } })} />} />
       <Route path="/mis-publicaciones" element={<Publications {...account} products={publications} onEdit={(product) => navigate('/publicar', { state: { product } })} onDelete={(product) => setPublications((current) => current.filter((item) => item.id !== product.id))} onToggleStatus={(product) => setPublications((current) => current.map((item) => item.id === product.id ? { ...item, status: item.status === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO' } : item))} />} />
       <Route path="/publicar" element={<PublishProduct key={location.state?.product?.id ?? 'new'} {...account} onPublish={publishProduct} />} />
@@ -60,6 +78,7 @@ function App() {
       <Route path="/carrito" element={<Cart {...shared} items={items} onQuantityChange={changeQuantity} onRemove={(id) => setItems((current) => current.filter((item) => item.id !== id))} onCheckout={() => navigate('/checkout')} />} />
       <Route path="/checkout" element={<Checkout {...shared} items={items} onConfirm={(order) => confirmOrder({ ...order, total: order.summary.total, discounts: order.summary.discounts })} />} />
       <Route path="/pedido-confirmado" element={confirmedOrder ? <OrderConfirmation order={confirmedOrder} /> : <Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

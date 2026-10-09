@@ -24,7 +24,7 @@ function Footer({ variant = 'default', isLoggedIn = false }) {
         <nav aria-label="Tienda" className="flex flex-col items-start gap-2.5">
           <h2 className="text-[0.8125rem] font-extrabold tracking-[0.065rem] text-amarillo uppercase">Tienda</h2>
           {storeLinks.map((label) => (
-            <Link key={label} to={destinations[label]} state={types[label] ? { type: types[label] } : undefined} className="text-left">{label}</Link>
+            <Link key={label} to={destinations[label]} state={types[label] ? { type: types[label] } : label === 'Catálogo completo' ? { resetFilters: true } : undefined} className="text-left">{label}</Link>
           ))}
         </nav>
 

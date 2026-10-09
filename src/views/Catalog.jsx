@@ -1,5 +1,3 @@
-import { useLocation } from 'react-router-dom'
-import { useState } from 'react'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import ProductCard from '../components/ProductCard.jsx'
@@ -9,14 +7,8 @@ import { catalogProducts, catalogTypes, catalogCollections, catalogProductBackgr
 
 const pageSize = 9
 
-function Catalog({ cartCount = 0, onOpenProduct, onAddToCart }) {
-  const location = useLocation()
-  const [search, setSearch] = useState('')
-  const [type, setType] = useState(location.state?.type ?? '')
-  const [collection, setCollection] = useState(String(location.state?.collectionId ?? ''))
-  const [minPrice, setMinPrice] = useState('')
-  const [maxPrice, setMaxPrice] = useState('')
-  const [page, setPage] = useState(0)
+function Catalog({ cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+  const { search, type, collection, minPrice, maxPrice, page } = filters
 
   const filteredProducts = catalogProducts.filter((product) => (
     product.name.toLocaleLowerCase('es-AR').includes(search.trim().toLocaleLowerCase('es-AR'))
@@ -28,18 +20,12 @@ function Catalog({ cartCount = 0, onOpenProduct, onAddToCart }) {
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize))
   const visibleProducts = filteredProducts.slice(page * pageSize, (page + 1) * pageSize)
 
-  function changeFilter(setFilter, value) {
-    setFilter(value)
-    setPage(0)
+  function changeFilter(field, value) {
+    onFiltersChange({ ...filters, [field]: value, page: 0 })
   }
 
-  function clearFilters() {
-    setSearch('')
-    setType('')
-    setCollection('')
-    setMinPrice('')
-    setMaxPrice('')
-    setPage(0)
+  function changePage(page) {
+    onFiltersChange({ ...filters, page })
   }
 
   return (
@@ -51,21 +37,21 @@ function Catalog({ cartCount = 0, onOpenProduct, onAddToCart }) {
             <h1 id="catalog-heading" className="font-display text-[4rem] leading-[3.4rem] font-black sm:text-[6rem] sm:leading-[5.1rem] uppercase">Catálogo</h1>
             <p className="font-bold">{filteredProducts.length} {filteredProducts.length === 1 ? 'producto' : 'productos'}</p>
           </div>
-          <form role="search" onSubmit={(event) => { event.preventDefault(); setPage(0) }} className="flex w-full max-w-[30.875rem] items-center gap-2.5 rounded-full border-3 border-bordo bg-crema py-1.5 pr-1.5 pl-5.5 text-bordo">
-            <input type="search" aria-label="Buscar productos" placeholder="Buscar por nombre de carta, sobre o jugador" value={search} onChange={(event) => changeFilter(setSearch, event.target.value)} className="min-w-0 flex-1 bg-transparent py-2.5 leading-[normal] font-semibold placeholder:text-bordo/50" />
+          <form role="search" onSubmit={(event) => { event.preventDefault(); changePage(0) }} className="flex w-full max-w-[30.875rem] items-center gap-2.5 rounded-full border-3 border-bordo bg-crema py-1.5 pr-1.5 pl-5.5 text-bordo">
+            <input type="search" aria-label="Buscar productos" placeholder="Buscar por nombre de carta, sobre o jugador" value={search} onChange={(event) => changeFilter('search', event.target.value)} className="min-w-0 flex-1 bg-transparent py-2.5 leading-[normal] font-semibold placeholder:text-bordo/50" />
             <button type="submit" className="shrink-0 rounded-full bg-bordo px-5 py-3 text-[0.875rem] leading-[normal] font-extrabold text-crema">Buscar</button>
           </form>
         </section>
 
         <div className="grid min-w-0 gap-8 lg:grid-cols-[16.875rem_minmax(0,1fr)]">
-          <CatalogFilters type={type} collection={collection} minPrice={minPrice} maxPrice={maxPrice} types={catalogTypes} collections={catalogCollections} onTypeChange={(value) => changeFilter(setType, value)} onCollectionChange={(value) => changeFilter(setCollection, value)} onMinPriceChange={(value) => changeFilter(setMinPrice, value)} onMaxPriceChange={(value) => changeFilter(setMaxPrice, value)} onClear={clearFilters} />
+          <CatalogFilters type={type} collection={collection} minPrice={minPrice} maxPrice={maxPrice} types={catalogTypes} collections={catalogCollections} onTypeChange={(value) => changeFilter('type', value)} onCollectionChange={(value) => changeFilter('collection', value)} onMinPriceChange={(value) => changeFilter('minPrice', value)} onMaxPriceChange={(value) => changeFilter('maxPrice', value)} onClear={onClearFilters} />
           <div className="flex min-w-0 flex-col gap-8">
             <div aria-label="Productos del catálogo" className="grid min-w-0 grid-cols-1 gap-6.5 sm:grid-cols-2 xl:grid-cols-3">
               {visibleProducts.map((product) => (
                 <ProductCard key={product.id} product={product} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
               ))}
             </div>
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination page={page} totalPages={totalPages} onPageChange={changePage} />
           </div>
         </div>
       </main>
