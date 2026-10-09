@@ -2,7 +2,7 @@ import { getMockProduct } from './productMocks.js'
 
 // Carrito, pedidos y descuentos locales para recorrer Figma; sin integración ni DTO asumido.
 export const cartItems = [
-  { id: 1, product: getMockProduct(13), quantity: 1 },
+  { id: 1, product: getMockProduct(3), quantity: 1 },
   { id: 2, product: getMockProduct(5), quantity: 3 },
   { id: 3, product: getMockProduct(7), quantity: 1 },
 ]

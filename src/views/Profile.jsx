@@ -2,11 +2,11 @@ import { useState } from 'react'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
 
-function Profile({ user, cartCount, onNavigate, onSave, onDeactivate }) {
+function Profile({ user, cartCount, onSave, onDeactivate }) {
   const [form, setForm] = useState({ firstName: user.firstName, lastName: user.lastName, email: user.email })
   function changeField(field, value) { setForm({ ...form, [field]: value }) }
   return (
-    <AccountLayout user={user} activeView="profile" cartCount={cartCount} onNavigate={onNavigate}>
+    <AccountLayout user={user} activeView="profile" cartCount={cartCount}>
       <h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">Mi perfil</h1>
       <form onSubmit={(event) => { event.preventDefault(); onSave?.({ ...user, ...form }) }} className="flex flex-col items-start gap-5.5 rounded-[1.75rem] border-[2.4px] border-bordo bg-papel p-8 shadow-[0.5rem_0.5rem_0_var(--color-bordo)]">
         <div className="flex w-full flex-wrap items-center justify-between gap-3">

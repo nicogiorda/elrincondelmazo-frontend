@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { paymentMethods, paymentMethodLabel } from '../data/paymentMethods.js'
 import { useState } from 'react'
 import Header from '../components/Header.jsx'
@@ -9,13 +10,13 @@ import { calculateMockSummary, formatPrice } from '../data/purchaseMocks.js'
 
 const headings = ['Revisá tu pedido', '¿Cómo querés pagar?', 'Confirmá tu pedido']
 
-function Checkout({ items, cartCount, onNavigate, onConfirm }) {
+function Checkout({ items, cartCount, onConfirm }) {
   const [step, setStep] = useState(1)
   const [paymentMethod, setPaymentMethod] = useState('TRANSFERENCIA')
   const summary = calculateMockSummary(items, step > 1 ? paymentMethod : '')
   return (
     <>
-      <Header cartCount={cartCount} isLoggedIn onNavigate={onNavigate} />
+      <Header cartCount={cartCount} isLoggedIn />
       <main className="mx-auto flex w-full max-w-[85rem] flex-col gap-8 px-6 pt-9 pb-18 leading-[normal] lg:px-10">
         <div className="flex flex-wrap items-center justify-between gap-6">
           <h1 className="font-display text-[4.5rem] leading-[3.825rem] font-black uppercase">Finalizar compra</h1>
@@ -42,14 +43,14 @@ function Checkout({ items, cartCount, onNavigate, onConfirm }) {
               <p className="text-[0.9375rem] leading-[1.359375rem]">Al confirmar se crea el pedido en estado Pendiente y se descuenta el stock de cada producto.</p>
             </>}
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <button type="button" onClick={() => step === 1 ? onNavigate?.('cart') : setStep(step - 1)} className="text-[0.9375rem] font-bold underline">{step === 1 ? '← Editar carrito' : '← Volver'}</button>
+              {step === 1 ? <Link to="/carrito" className="text-[0.9375rem] font-bold underline">← Editar carrito</Link> : <button type="button" onClick={() => setStep(step - 1)} className="text-[0.9375rem] font-bold underline">← Volver</button>}
               <button type="button" disabled={!items.length} onClick={() => step < 3 ? setStep(step + 1) : onConfirm?.({ items, paymentMethod, summary })} className={`rounded-full px-7.5 py-4 text-[1.0625rem] font-extrabold disabled:opacity-50 ${step === 3 ? 'border-[2.4px] border-bordo bg-rosa shadow-[0.25rem_0.25rem_0_var(--color-bordo)]' : 'bg-bordo text-crema'}`}>{step === 1 ? 'Continuar al pago' : step === 2 ? 'Revisar y confirmar' : `Confirmar pedido · ${formatPrice(summary.total)}`}</button>
             </div>
           </section>
           <PurchaseSummary summary={summary} />
         </div>
       </main>
-      <Footer isLoggedIn onNavigate={onNavigate} />
+      <Footer isLoggedIn />
     </>
   )
 }

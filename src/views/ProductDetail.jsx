@@ -1,3 +1,4 @@
+import { Link, useLocation } from 'react-router-dom'
 import { getRelatedProducts } from '../data/productMocks.js'
 import { useState } from 'react'
 import Header from '../components/Header.jsx'
@@ -10,7 +11,10 @@ import { detailProduct, detailGallery, detailReviews, detailProductBackgrounds, 
 
 const typeLabels = { CARTA: 'Carta', SOBRE: 'Sobre', LOOTBOX: 'Lootbox' }
 
-function ProductDetail({ product = detailProduct, reviews = detailReviews.filter((review) => review.productId === product.id), cartCount = 0, onNavigate, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+function ProductDetail({ reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+  const location = useLocation()
+  const product = location.state?.product ?? detailProduct
+  const reviews = providedReviews ?? detailReviews.filter((review) => review.productId === product.id)
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
 
@@ -33,11 +37,11 @@ function ProductDetail({ product = detailProduct, reviews = detailReviews.filter
 
   return (
     <>
-      <Header cartCount={cartCount} onNavigate={onNavigate} />
+      <Header cartCount={cartCount} />
       <main className="mx-auto flex w-full max-w-[85rem] flex-col gap-12 px-6 pt-9 pb-18 text-bordo lg:px-10">
         <nav aria-label="Ruta del producto" className="flex flex-wrap gap-2 text-[0.875rem] leading-[normal] font-semibold">
-          <button type="button" onClick={() => onNavigate?.('home')} className="underline">Inicio</button><span>/</span>
-          <button type="button" onClick={() => onNavigate?.('catalog')} className="underline">Catálogo</button><span>/</span>
+          <Link to="/" className="underline">Inicio</Link><span>/</span>
+          <Link to="/catalogo" className="underline">Catálogo</Link><span>/</span>
           <span>{product.collectionName}</span><span>/</span><span className="opacity-70">{product.name}</span>
         </nav>
 
@@ -99,7 +103,7 @@ function ProductDetail({ product = detailProduct, reviews = detailReviews.filter
           </div>
         </section>
       </main>
-      <Footer onNavigate={onNavigate} />
+      <Footer />
     </>
   )
 }

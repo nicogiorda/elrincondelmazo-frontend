@@ -1,10 +1,13 @@
+import { Link, useLocation } from 'react-router-dom'
 import { useState } from 'react'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
 import ProductPreview from '../components/ProductPreview.jsx'
 import { publicationCollections, productTypeLabels } from '../data/accountMocks.js'
 
-function PublishProduct({ user, product, cartCount, onNavigate, onPublish }) {
+function PublishProduct({ user, cartCount, onPublish }) {
+  const location = useLocation()
+  const product = location.state?.product
   const [form, setForm] = useState(() => ({ name: product?.name || '', description: product?.description || '', type: product?.type || 'CARTA', collectionId: product?.collectionId || 1, price: product?.price ?? '', stock: product?.stock ?? 1, imageUrls: product?.imageUrls || [] }))
   const collection = publicationCollections.find((item) => item.id === form.collectionId)
   const preview = { ...form, id: product?.id, price: Number(form.price), stock: Number(form.stock), collectionName: collection.name, sellerId: user.id, sellerName: `${user.firstName} ${user.lastName[0]}.`, status: Number(form.stock) > 0 ? 'ACTIVO' : 'AGOTADO' }
@@ -14,9 +17,9 @@ function PublishProduct({ user, product, cartCount, onNavigate, onPublish }) {
     Promise.all(photos.map((file) => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file) }))).then((imageUrls) => changeField('imageUrls', imageUrls)).catch(() => { event.target.value = '' })
   }
   return (
-    <AccountLayout user={user} activeView="publications" cartCount={cartCount} onNavigate={onNavigate}>
+    <AccountLayout user={user} activeView="publications" cartCount={cartCount}>
       <div className="flex flex-col items-start gap-2.5">
-        <button type="button" onClick={() => onNavigate?.('publications')} className="text-[0.9375rem] font-bold underline">← Mis publicaciones</button>
+        <Link to="/mis-publicaciones" className="text-[0.9375rem] font-bold underline">← Mis publicaciones</Link>
         <h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">{product ? 'Editar producto' : 'Publicar producto'}</h1>
       </div>
       <div className="grid min-w-0 items-start gap-7 xl:grid-cols-[minmax(0,1fr)_11.65rem]">
@@ -47,7 +50,7 @@ function PublishProduct({ user, product, cartCount, onNavigate, onPublish }) {
             </div>
           </div>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => onNavigate?.('publications')} className="rounded-full border-[2.4px] border-bordo px-6 py-3.5 text-base font-extrabold">Cancelar</button>
+            <Link to="/mis-publicaciones" className="rounded-full border-[2.4px] border-bordo px-6 py-3.5 text-base font-extrabold">Cancelar</Link>
             <button type="submit" className="rounded-full bg-bordo px-7 py-3.5 text-base font-extrabold text-crema">{product ? 'Guardar cambios' : 'Publicar'}</button>
           </div>
         </form>

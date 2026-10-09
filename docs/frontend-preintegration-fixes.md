@@ -116,7 +116,7 @@ No se implementó un mapper parcial que esconda estos faltantes. Los nombres `st
 
 **Frontend:** Profile espera `onDeactivate(user)`; App no lo proporciona. El control queda deshabilitado.
 
-**Backend:** `DELETE /users/me` ya existe. No se necesita inventar un endpoint ni enviar el objeto UserResponse como request.
+**Backend:** en `backend/main`, `DELETE /users/me` devuelve `ResponseEntity<Void>` con estado `204 No Content`, sin cuerpo de respuesta. No se necesita inventar un endpoint ni enviar el objeto UserResponse como request.
 
 **Decisión de integración:** conectar el handler y manejar confirmación, errores y actualización de la sesión/vistas después de una respuesta real. El texto actual sobre desactivación/publicaciones deberá validarse contra la semántica efectiva de la operación. No se simula eliminación ni se usan alert/confirm.
 
