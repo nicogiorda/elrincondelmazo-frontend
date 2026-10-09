@@ -1,12 +1,13 @@
+import { Link } from 'react-router-dom'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import PurchaseItems from '../components/PurchaseItems.jsx'
 import PurchaseSummary from '../components/PurchaseSummary.jsx'
 
-function OrderConfirmation({ order, onNavigate }) {
+function OrderConfirmation({ order }) {
   return (
     <>
-      <Header cartCount={0} isLoggedIn onNavigate={onNavigate} />
+      <Header cartCount={0} isLoggedIn />
       <main className="mx-auto w-full max-w-[66.25rem] px-6 pt-9 pb-18 leading-[normal] lg:px-10">
         <div className="flex min-w-0 flex-col gap-8">
           <section className="relative flex min-h-[25.0375rem] flex-col items-start gap-4.5 overflow-hidden rounded-[2.25rem] border-[2.4px] border-bordo bg-amarillo px-6 py-13 shadow-[0.625rem_0.625rem_0_var(--color-bordo)] sm:px-12">
@@ -23,12 +24,12 @@ function OrderConfirmation({ order, onNavigate }) {
             <PurchaseSummary summary={order.summary} variant="confirmation" paymentMethod={order.paymentMethod} />
           </section>
           <div className="flex flex-wrap justify-center gap-3.5">
-            <button type="button" onClick={() => onNavigate?.('orders')} className="rounded-full bg-bordo px-8 py-4.5 text-base font-extrabold text-crema">Ver mis pedidos</button>
-            <button type="button" onClick={() => onNavigate?.('catalog')} className="rounded-full border-[2.4px] border-bordo px-7 py-4 text-base font-extrabold shadow-[0.1875rem_0.1875rem_0_var(--color-bordo)]">Seguir comprando</button>
+            <Link to="/mis-pedidos" className="rounded-full bg-bordo px-8 py-4.5 text-base font-extrabold text-crema">Ver mis pedidos</Link>
+            <Link to="/catalogo" className="rounded-full border-[2.4px] border-bordo px-7 py-4 text-base font-extrabold shadow-[0.1875rem_0.1875rem_0_var(--color-bordo)]">Seguir comprando</Link>
           </div>
         </div>
       </main>
-      <Footer isLoggedIn onNavigate={onNavigate} />
+      <Footer isLoggedIn />
     </>
   )
 }

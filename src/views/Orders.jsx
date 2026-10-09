@@ -11,12 +11,12 @@ const statusLabels = { PENDIENTE: 'Pendiente', PAGO: 'Pagado', ENVIADO: 'Enviado
 const statusStyles = { PENDIENTE: 'bg-crema', PAGO: 'bg-amarillo', ENVIADO: 'bg-rosa', ENTREGADO: 'bg-bordo text-crema', CANCELADO: 'bg-papel' }
 const progress = { PENDIENTE: 1, PAGO: 2, ENVIADO: 3, ENTREGADO: 4 }
 
-function Orders({ user, orders, cartCount, onNavigate, onReview }) {
+function Orders({ user, orders, cartCount, onReview }) {
   const [filter, setFilter] = useState('Todos')
   const [openOrderId, setOpenOrderId] = useState(1032)
   const visibleOrders = orders.filter((order) => filter === 'Todos' || (filter === 'En curso' && ['PENDIENTE', 'PAGO', 'ENVIADO'].includes(order.status)) || (filter === 'Entregados' && order.status === 'ENTREGADO') || (filter === 'Cancelados' && order.status === 'CANCELADO'))
   return (
-    <AccountLayout user={user} activeView="orders" cartCount={cartCount} onNavigate={onNavigate}>
+    <AccountLayout user={user} activeView="orders" cartCount={cartCount}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">Mis pedidos</h1>
         <div className="flex flex-wrap gap-2" aria-label="Filtrar pedidos">{filters.map((label) => <button key={label} type="button" aria-pressed={filter === label} onClick={() => setFilter(label)} className={`rounded-full border-[1.6px] border-bordo px-3.5 py-1.75 text-[0.875rem] font-bold ${filter === label ? 'bg-bordo text-crema' : ''}`}>{label}</button>)}</div>

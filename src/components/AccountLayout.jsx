@@ -1,12 +1,13 @@
+import { Link } from 'react-router-dom'
 import Header from './Header.jsx'
 import Footer from './Footer.jsx'
 
-const links = [{ view: 'orders', label: 'Mis pedidos' }, { view: 'profile', label: 'Mi perfil' }, { view: 'publications', label: 'Mis publicaciones' }]
+const links = [{ view: 'orders', to: '/mis-pedidos', label: 'Mis pedidos' }, { view: 'profile', to: '/mi-perfil', label: 'Mi perfil' }, { view: 'publications', to: '/mis-publicaciones', label: 'Mis publicaciones' }]
 
-function AccountLayout({ user, activeView, cartCount, onNavigate, children }) {
+function AccountLayout({ user, activeView, cartCount, children }) {
   return (
     <>
-      <Header cartCount={cartCount} isLoggedIn onNavigate={onNavigate} />
+      <Header cartCount={cartCount} isLoggedIn />
       <main className="mx-auto w-full max-w-[85rem] px-6 pt-9 pb-18 leading-[normal] lg:px-10">
         <div className="grid min-w-0 items-start gap-7 lg:grid-cols-[15rem_minmax(0,1fr)]">
           <aside className="flex min-w-0 flex-col gap-4" aria-label="Mi cuenta">
@@ -16,13 +17,13 @@ function AccountLayout({ user, activeView, cartCount, onNavigate, children }) {
               <p className="max-w-full text-[0.875rem] font-semibold wrap-anywhere">{user.email}</p>
             </div>
             <nav className="flex flex-col gap-1 rounded-[1.625rem] border-[2.4px] border-bordo bg-papel p-2.5">
-              {links.map((link) => <button key={link.view} type="button" aria-current={activeView === link.view ? 'page' : undefined} onClick={() => onNavigate?.(link.view)} className={`rounded-2xl px-4 py-3 text-left text-base font-extrabold ${activeView === link.view ? 'bg-bordo text-crema' : ''}`}>{link.label}</button>)}
+              {links.map((link) => <Link key={link.view} to={link.to} aria-current={activeView === link.view ? 'page' : undefined} className={`rounded-2xl px-4 py-3 text-left text-base font-extrabold ${activeView === link.view ? 'bg-bordo text-crema' : ''}`}>{link.label}</Link>)}
             </nav>
           </aside>
           <div className="flex min-w-0 flex-col gap-6">{children}</div>
         </div>
       </main>
-      <Footer isLoggedIn onNavigate={onNavigate} />
+      <Footer isLoggedIn />
     </>
   )
 }

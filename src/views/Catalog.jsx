@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router-dom'
 import { useState } from 'react'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
@@ -8,10 +9,11 @@ import { catalogProducts, catalogTypes, catalogCollections, catalogProductBackgr
 
 const pageSize = 9
 
-function Catalog({ cartCount = 0, onNavigate, initialType = '', initialCollection = '', onOpenProduct, onAddToCart }) {
+function Catalog({ cartCount = 0, onOpenProduct, onAddToCart }) {
+  const location = useLocation()
   const [search, setSearch] = useState('')
-  const [type, setType] = useState(initialType)
-  const [collection, setCollection] = useState(String(initialCollection))
+  const [type, setType] = useState(location.state?.type ?? '')
+  const [collection, setCollection] = useState(String(location.state?.collectionId ?? ''))
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [page, setPage] = useState(0)
@@ -42,7 +44,7 @@ function Catalog({ cartCount = 0, onNavigate, initialType = '', initialCollectio
 
   return (
     <>
-      <Header cartCount={cartCount} onNavigate={onNavigate} />
+      <Header cartCount={cartCount} />
       <main className="mx-auto flex w-full max-w-[85rem] flex-col gap-8 px-6 pt-9 pb-18 text-bordo lg:px-10 2xl:min-h-[113.475rem]">
         <section aria-labelledby="catalog-heading" className="flex flex-wrap items-end justify-between gap-8 min-h-[11.8125rem] rounded-[2rem] border-3 border-bordo bg-rojo px-6 py-9 text-crema shadow-[0.5rem_0.5rem_0_var(--color-bordo)] lg:px-10">
           <div className="flex flex-col gap-2 leading-[normal]">
@@ -67,7 +69,7 @@ function Catalog({ cartCount = 0, onNavigate, initialType = '', initialCollectio
           </div>
         </div>
       </main>
-      <Footer onNavigate={onNavigate} />
+      <Footer />
     </>
   )
 }
