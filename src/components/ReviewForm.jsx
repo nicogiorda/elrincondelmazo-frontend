@@ -1,19 +1,14 @@
 import { useState } from 'react'
 
-function ReviewForm({ onPublish }) {
+function ReviewForm({ onPublish, onCancel }) {
   const [rating, setRating] = useState(0)
   const [comment, setComment] = useState('')
-  const canPublish = rating > 0 && comment.trim().length > 0 && Boolean(onPublish)
+  const canPublish = Number.isInteger(rating) && rating >= 1 && rating <= 5 && comment.length <= 1000 && comment.trim().length > 0 && Boolean(onPublish)
 
-  function resetForm() {
-    setRating(0)
-    setComment('')
-  }
   function submitReview(event) {
     event.preventDefault()
     if (!canPublish) return
     onPublish({ rating, comment: comment.trim() })
-    resetForm()
   }
 
   return (
@@ -30,7 +25,7 @@ function ReviewForm({ onPublish }) {
       <textarea aria-label="Comentario de la reseña" value={comment} onChange={(event) => setComment(event.target.value)} required maxLength={1000} placeholder="Contá cómo llegó, el estado y si coincide con las fotos" className="h-[7.2375rem] w-full resize-y rounded-[0.875rem] border-[2.4px] border-bordo bg-crema px-3.5 py-3 text-[0.9375rem] leading-[1.359375rem] font-medium placeholder:text-[#757575]" />
       <p className="text-[0.75rem] leading-[normal] font-bold">{comment.length} / 1000</p>
       <div className="flex flex-wrap gap-2.5 text-[0.875rem] leading-[normal] font-extrabold">
-        <button type="button" onClick={resetForm} className="rounded-full border-[2.4px] border-bordo px-4.5 py-2.75">Cancelar</button>
+        <button type="button" onClick={onCancel} className="rounded-full border-[2.4px] border-bordo px-4.5 py-2.75">Cancelar</button>
         <button type="submit" disabled={!canPublish} className="min-w-0 flex-1 rounded-full border-[2.4px] border-bordo bg-bordo px-4.5 py-2.75 text-crema disabled:cursor-not-allowed">Publicar reseña</button>
       </div>
     </form>

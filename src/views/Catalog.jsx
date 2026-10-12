@@ -7,7 +7,7 @@ import { catalogProducts, catalogTypes, catalogCollections, catalogProductBackgr
 
 const pageSize = 9
 
-function Catalog({ cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+function Catalog({ userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
   const { search, type, collection, minPrice, maxPrice, page } = filters
 
   const filteredProducts = catalogProducts.filter((product) => (
@@ -48,7 +48,7 @@ function Catalog({ cartCount = 0, filters, onFiltersChange, onClearFilters, onOp
           <div className="flex min-w-0 flex-col gap-8">
             <div aria-label="Productos del catálogo" className="grid min-w-0 grid-cols-1 gap-6.5 sm:grid-cols-2 xl:grid-cols-3">
               {visibleProducts.map((product) => (
-                <ProductCard key={product.id} product={product} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
+                <ProductCard key={product.id} product={product} userId={userId} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
               ))}
             </div>
             <Pagination page={page} totalPages={totalPages} onPageChange={changePage} />

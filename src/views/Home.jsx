@@ -7,7 +7,7 @@ import PromotionCard from '../components/PromotionCard.jsx'
 import hero from '../assets/home-hero.png'
 import { homeCollections, homeProducts, homePromotions, homeProductBackgrounds } from '../data/homeMocks.js'
 
-function Home({ cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
+function Home({ userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
   return (
     <>
       <Header cartCount={cartCount} />
@@ -36,7 +36,7 @@ function Home({ cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart })
             </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
               {homeProducts.map((product) => (
-                <ProductCard key={product.id} product={product} variant="home" imageBackground={homeProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
+                <ProductCard key={product.id} product={product} userId={userId} variant="home" imageBackground={homeProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
               ))}
             </div>
           </section>

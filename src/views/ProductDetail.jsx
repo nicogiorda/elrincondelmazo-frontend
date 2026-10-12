@@ -1,3 +1,4 @@
+import { canBuyProduct } from '../utils/productPurchase.js'
 import { Link, useLocation } from 'react-router-dom'
 import { getRelatedProducts } from '../data/productMocks.js'
 import { useState } from 'react'
@@ -12,15 +13,17 @@ import { detailProduct, detailGallery, detailReviews, detailProductBackgrounds, 
 
 const typeLabels = { CARTA: 'Carta', SOBRE: 'Sobre', LOOTBOX: 'Lootbox' }
 
-function ProductDetail({ user, canReview, onPublishReview, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+function ProductDetail({ userId, user, canReview, onPublishReview, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
   const location = useLocation()
   const product = location.state?.product ?? detailProduct
   const reviews = (providedReviews ?? detailReviews).filter((review) => review.productId === product.id)
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
+  const [showReviewForm, setShowReviewForm] = useState(true)
 
   const relatedProducts = getRelatedProducts(product)
-  const canBuy = product.status === 'ACTIVO' && product.stock > 0
+  const canBuy = canBuyProduct(product, userId)
+  const isOwnProduct = product.sellerId === userId
   const isLastUnit = canBuy && product.stock === 1
   const averageRating = reviews.length ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length : 0
   const ratingLabel = averageRating.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
@@ -51,6 +54,7 @@ function ProductDetail({ user, canReview, onPublishReview, reviews: providedRevi
           <div className="flex min-w-0 flex-col gap-5 py-3 leading-[normal] lg:pr-2">
             <div className="flex flex-wrap gap-2 text-[0.75rem] font-extrabold tracking-[0.045rem] uppercase">
               <span className="rounded-full border-2 border-bordo bg-rojo px-3 py-1.25 text-crema">{product.collectionName}</span>
+              {isOwnProduct && <span className="rounded-full border-2 border-bordo bg-crema px-3 py-1.25">Tu publicación</span>}
               {isLastUnit && <span className="rounded-full border-2 border-bordo bg-crema px-3 py-1.25">Última unidad</span>}
             </div>
             <h1 id="product-heading" className="font-display text-[3.5rem] leading-[3.01rem] font-black text-balance uppercase xl:text-[4.75rem] xl:leading-[4.085rem]">{product.name}</h1>
@@ -89,7 +93,15 @@ function ProductDetail({ user, canReview, onPublishReview, reviews: providedRevi
             {!user ? (
               <Link to="/ingresar" className="self-start rounded-[0.875rem] border-2 border-dashed border-bordo px-3.5 py-2.5 text-[0.875rem] leading-[1.18125rem] font-bold">Ingresá para reseñar productos que compraste.</Link>
             ) : canReview?.(product) && (
-              <ReviewForm onPublish={(review) => onPublishReview?.(product, review)} />
+              showReviewForm ? (
+                <ReviewForm onCancel={() => setShowReviewForm(false)} onPublish={(review) => {
+                  const published = onPublishReview?.(product, review) === true
+                  if (published) setShowReviewForm(false)
+                  return published
+                }} />
+              ) : (
+                <button type="button" onClick={() => setShowReviewForm(true)} className="self-start rounded-full border-[2.4px] border-bordo bg-rosa px-5 py-3 text-[0.875rem] font-extrabold shadow-[0.1875rem_0.1875rem_0_var(--color-bordo)]">Dejar reseña</button>
+              )
             )}
           </div>
           <div className="grid min-w-0 gap-4.5 md:grid-cols-3">
@@ -104,7 +116,7 @@ function ProductDetail({ user, canReview, onPublishReview, reviews: providedRevi
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {relatedProducts.map((relatedProduct) => (
-              <ProductCard key={relatedProduct.id} product={relatedProduct} variant="related" imageBackground={detailProductBackgrounds[relatedProduct.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={(item) => onAddToCart?.(item, 1)} />
+              <ProductCard key={relatedProduct.id} product={relatedProduct} userId={userId} variant="related" imageBackground={detailProductBackgrounds[relatedProduct.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={(item) => onAddToCart?.(item, 1)} />
             ))}
           </div>
         </section>
