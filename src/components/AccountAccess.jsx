@@ -47,7 +47,7 @@ function AccountAccess({ mode, cartCount, onSubmit }) {
           </section>
         </div>
       </main>
-      <Footer isLoggedIn />
+      <Footer />
     </>
   )
 }

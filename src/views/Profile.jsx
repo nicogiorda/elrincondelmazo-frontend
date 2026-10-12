@@ -2,13 +2,13 @@ import { useState } from 'react'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
 
-function Profile({ user, cartCount, onSave, onDeactivate }) {
+function Profile({ user, onLogout, cartCount, onSave, onDeactivate }) {
   const [form, setForm] = useState({ firstName: user.firstName, lastName: user.lastName, email: user.email })
   function changeField(field, value) { setForm({ ...form, [field]: value }) }
   return (
-    <AccountLayout user={user} activeView="profile" cartCount={cartCount}>
+    <AccountLayout user={user} activeView="profile" cartCount={cartCount} onLogout={onLogout}>
       <h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">Mi perfil</h1>
-      <form onSubmit={(event) => { event.preventDefault(); onSave?.({ ...user, ...form }) }} className="flex flex-col items-start gap-5.5 rounded-[1.75rem] border-[2.4px] border-bordo bg-papel p-8 shadow-[0.5rem_0.5rem_0_var(--color-bordo)]">
+      <form onSubmit={(event) => { event.preventDefault(); onSave?.(form) }} className="flex flex-col items-start gap-5.5 rounded-[1.75rem] border-[2.4px] border-bordo bg-papel p-8 shadow-[0.5rem_0.5rem_0_var(--color-bordo)]">
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-[2.125rem] font-black uppercase">Datos personales</h2>
           <div className="flex gap-2 text-[0.8125rem] font-extrabold uppercase">

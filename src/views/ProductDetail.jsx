@@ -7,14 +7,15 @@ import ProductCard from '../components/ProductCard.jsx'
 import ProductGallery from '../components/ProductGallery.jsx'
 import QuantitySelector from '../components/QuantitySelector.jsx'
 import ReviewCard from '../components/ReviewCard.jsx'
+import ReviewForm from '../components/ReviewForm.jsx'
 import { detailProduct, detailGallery, detailReviews, detailProductBackgrounds, detailPaymentLabel, detailTransferPromotion } from '../data/productDetailMocks.js'
 
 const typeLabels = { CARTA: 'Carta', SOBRE: 'Sobre', LOOTBOX: 'Lootbox' }
 
-function ProductDetail({ reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+function ProductDetail({ user, canReview, onPublishReview, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
   const location = useLocation()
   const product = location.state?.product ?? detailProduct
-  const reviews = providedReviews ?? detailReviews.filter((review) => review.productId === product.id)
+  const reviews = (providedReviews ?? detailReviews).filter((review) => review.productId === product.id)
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
 
@@ -37,7 +38,7 @@ function ProductDetail({ reviews: providedReviews, cartCount = 0, onAddToCart, o
 
   return (
     <>
-      <Header cartCount={cartCount} />
+      <Header cartCount={cartCount} isLoggedIn={Boolean(user)} />
       <main className="mx-auto flex w-full max-w-[85rem] flex-col gap-12 px-6 pt-9 pb-18 text-bordo lg:px-10">
         <nav aria-label="Ruta del producto" className="flex flex-wrap gap-2 text-[0.875rem] leading-[normal] font-semibold">
           <Link to="/" className="underline">Inicio</Link><span>/</span>
@@ -55,7 +56,7 @@ function ProductDetail({ reviews: providedReviews, cartCount = 0, onAddToCart, o
             <h1 id="product-heading" className="font-display text-[3.5rem] leading-[3.01rem] font-black text-balance uppercase xl:text-[4.75rem] xl:leading-[4.085rem]">{product.name}</h1>
             <div className="flex flex-wrap items-baseline gap-4">
               <p className="text-[2.125rem] font-extrabold">$ {product.price.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</p>
-              <p className="text-[0.9375rem] font-semibold opacity-80">★ {ratingLabel} · {reviews.length} reseñas</p>
+              <p className="text-[0.9375rem] font-semibold opacity-80">★ {ratingLabel} · {reviews.length} {reviews.length === 1 ? 'reseña' : 'reseñas'}</p>
             </div>
             <p className="text-[1.0625rem] leading-[1.59375rem] text-pretty">{product.description}</p>
             <div className="flex items-center gap-3.5 rounded-[1.125rem] border-3 border-bordo bg-amarillo px-4.5 py-3.5">
@@ -82,9 +83,14 @@ function ProductDetail({ reviews: providedReviews, cartCount = 0, onAddToCart, o
             <h2 id="reviews-heading" className="font-display text-[4rem] leading-[3.6rem] font-black uppercase">Reseñas</h2>
             <div className="flex items-end gap-4 leading-[normal]">
               <p className="font-display text-[5.5rem] leading-[4.95rem] font-black text-rojo">{ratingLabel}</p>
-              <p className="pb-0.5 text-[0.9375rem] font-bold">de 5 · {reviews.length} reseñas</p>
+              <p className="pb-0.5 text-[0.9375rem] font-bold">de 5 · {reviews.length} {reviews.length === 1 ? 'reseña' : 'reseñas'}</p>
             </div>
             <p className="text-[0.875rem] leading-[1.26875rem] opacity-80">Solo pueden reseñar quienes compraron este producto. Una reseña por persona.</p>
+            {!user ? (
+              <Link to="/ingresar" className="self-start rounded-[0.875rem] border-2 border-dashed border-bordo px-3.5 py-2.5 text-[0.875rem] leading-[1.18125rem] font-bold">Ingresá para reseñar productos que compraste.</Link>
+            ) : canReview?.(product) && (
+              <ReviewForm onPublish={(review) => onPublishReview?.(product, review)} />
+            )}
           </div>
           <div className="grid min-w-0 gap-4.5 md:grid-cols-3">
             {reviews.map((review) => <ReviewCard key={review.id} review={review} />)}
@@ -103,7 +109,7 @@ function ProductDetail({ reviews: providedReviews, cartCount = 0, onAddToCart, o
           </div>
         </section>
       </main>
-      <Footer />
+      <Footer isLoggedIn={Boolean(user)} />
     </>
   )
 }

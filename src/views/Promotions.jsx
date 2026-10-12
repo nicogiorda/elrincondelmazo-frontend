@@ -5,11 +5,11 @@ import ManagedPromotionCard from '../components/ManagedPromotionCard.jsx'
 import { promotionStatus } from '../data/promotionMocks.js'
 
 const tabs = [{ label: 'Todas' }, { label: 'Activas', status: 'Activa' }, { label: 'Programadas', status: 'Programada' }, { label: 'Vencidas', status: 'Vencida' }, { label: 'Inactivas', status: 'Inactiva' }]
-function Promotions({ user, cartCount, promotions, onEdit, onToggle }) {
+function Promotions({ user, onLogout, cartCount, promotions, onEdit, onToggle }) {
   const [filter, setFilter] = useState('Todas')
   const selectedTab = tabs.find((tab) => tab.label === filter)
   const visiblePromotions = promotions.filter((promotion) => !selectedTab.status || promotionStatus(promotion) === selectedTab.status)
-  return <AccountLayout user={user} cartCount={cartCount} activeView="promotions" administration>
+  return <AccountLayout user={user} cartCount={cartCount} onLogout={onLogout} activeView="promotions">
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div className="flex flex-col items-start gap-2.5"><span className="rounded-full bg-bordo px-3 py-1 text-[0.75rem] font-extrabold tracking-[0.06rem] text-crema uppercase">Administración</span><h1 className="font-display text-[3rem] leading-[2.64rem] font-black uppercase sm:text-[4rem] sm:leading-[3.52rem]">Promociones</h1></div>
       <Link to="/nueva-promocion" className="rounded-full border-[2.4px] border-bordo bg-rosa px-6.5 py-3.75 text-base font-extrabold shadow-[0.25rem_0.25rem_0_var(--color-bordo)]">+ Nueva promoción</Link>

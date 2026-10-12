@@ -5,7 +5,7 @@ import FormField from '../components/FormField.jsx'
 import ProductPreview from '../components/ProductPreview.jsx'
 import { publicationCollections, productTypeLabels } from '../data/accountMocks.js'
 
-function PublishProduct({ user, cartCount, onPublish }) {
+function PublishProduct({ user, onLogout, cartCount, onPublish }) {
   const location = useLocation()
   const product = location.state?.product
   const [form, setForm] = useState(() => ({ name: product?.name || '', description: product?.description || '', type: product?.type || 'CARTA', collectionId: product?.collectionId || 1, price: product?.price ?? '', stock: product?.stock ?? 1, imageUrls: product?.imageUrls || [] }))
@@ -17,7 +17,7 @@ function PublishProduct({ user, cartCount, onPublish }) {
     Promise.all(photos.map((file) => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file) }))).then((imageUrls) => changeField('imageUrls', imageUrls)).catch(() => { event.target.value = '' })
   }
   return (
-    <AccountLayout user={user} activeView="publications" cartCount={cartCount}>
+    <AccountLayout user={user} activeView="publications" cartCount={cartCount} onLogout={onLogout}>
       <div className="flex flex-col items-start gap-2.5">
         <Link to="/mis-publicaciones" className="text-[0.9375rem] font-bold underline">← Mis publicaciones</Link>
         <h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">{product ? 'Editar producto' : 'Publicar producto'}</h1>
