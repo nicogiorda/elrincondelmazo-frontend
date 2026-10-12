@@ -31,6 +31,6 @@ export function getMockProduct(id) {
   return productMocks.find((product) => product.id === id)
 }
 
-export function getRelatedProducts(product) {
-  return productMocks.filter((candidate) => candidate.collectionId === product.collectionId && candidate.id !== product.id).slice(0, 4)
+export function getRelatedProducts(product, products) {
+  return products.filter((candidate) => ['ACTIVO', 'AGOTADO'].includes(candidate.status) && candidate.collectionId === product.collectionId && candidate.id !== product.id).slice(0, 4)
 }

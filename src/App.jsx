@@ -7,7 +7,8 @@ import Register from './views/Register.jsx'
 import Promotions from './views/Promotions.jsx'
 import PromotionEditor from './views/PromotionEditor.jsx'
 import { promotionMocks } from './data/promotionMocks.js'
-import { detailReviews } from './data/productDetailMocks.js'
+import { homeProducts } from './data/homeMocks.js'
+import { detailProduct, detailReviews } from './data/productDetailMocks.js'
 import Catalog from './views/Catalog.jsx'
 import ProductDetail from './views/ProductDetail.jsx'
 import Publications from './views/Publications.jsx'
@@ -67,20 +68,38 @@ function App() {
   const isAdmin = currentUser.role === 'ADMIN'
   const selectedPromotion = promotions.find((promotion) => promotion.id === location.state?.promotion?.id)
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
+  // Las publicaciones reemplazan a los originales del usuario, incluso al eliminarlos.
+  // El resto conserva el orden original; las nuevas se agregan al final.
+  const products = [
+    ...productMocks.map((product) => product.sellerId === accountUser.id
+      ? publications.find((publication) => publication.id === product.id)
+      : product).filter(Boolean),
+    ...publications.filter((publication) => !productMocks.some((product) => product.id === publication.id)),
+  ]
+  const publicProducts = products.filter((product) => ['ACTIVO', 'AGOTADO'].includes(product.status))
+  const newProducts = publicProducts.filter((product) => !productMocks.some((original) => original.id === product.id))
+  const recentProducts = [
+    ...newProducts.slice().reverse(),
+    ...homeProducts.map((original) => publicProducts.find((product) => product.id === original.id)).filter(Boolean),
+    ...publicProducts.filter((product) => !homeProducts.some((original) => original.id === product.id)
+      && productMocks.some((original) => original.id === product.id)),
+  ].filter((product) => product.status === 'ACTIVO').slice(0, 4)
+  const selectedProduct = products.find((product) => product.id === (location.state?.product?.id ?? detailProduct.id))
+  const editingPublication = publications.find((product) => product.id === location.state?.product?.id)
 
   function openProduct(product) { navigate('/producto', { state: { product } }) }
-  function addToCart(product, quantity = 1) {
-    if (!canBuyProduct(product, user.id)) return false
+  function addToCart(requestedProduct, quantity = 1) {
+    const product = products.find((item) => item.id === requestedProduct.id)
+    if (!product || !canBuyProduct(product, user.id)) return false
     setItems((current) => {
       const existing = current.find((item) => item.product.id === product.id)
-      if (existing) return current.map((item) => item.id === existing.id ? { ...item, quantity: Math.min(item.quantity + quantity, product.stock) } : item)
+      if (existing) return current.map((item) => item.id === existing.id ? { ...item, product, quantity: Math.min(item.quantity + quantity, product.stock) } : item)
       return [...current, { id: Math.max(0, ...current.map((item) => item.id)) + 1, product, quantity: Math.min(quantity, product.stock) }]
     })
+    return true
   }
   function buyNow(product, quantity) {
-    if (!canBuyProduct(product, user.id)) return
-    addToCart(product, quantity)
-    navigate('/carrito')
+    if (addToCart(product, quantity)) navigate('/carrito')
   }
   // Los pedidos y las reseñas pertenecen al usuario mock; no es autenticación real.
   const orders = confirmedOrder ? [confirmedOrder, ...orderMocks] : orderMocks
@@ -126,26 +145,77 @@ function App() {
   }
   const shared = { cartCount, userId: user.id }
   const account = { ...shared, user: currentUser, onLogout: logout }
-  const home = <Home {...shared} onOpenProduct={openProduct} onAddToCart={addToCart} onSelectCollection={(collection) => navigate('/catalogo', { state: { collectionId: collection.id } })} />
+  function togglePublication(product) {
+    setPublications((current) => current.map((item) => item.id === product.id ? {
+      ...item,
+      status: item.status === 'ACTIVO' ? 'INACTIVO' : item.stock > 0 ? 'ACTIVO' : 'AGOTADO',
+    } : item))
+  }
 
   return (
     <Routes>
-      <Route path="/" element={home} />
-      <Route path="/catalogo" element={<Catalog {...shared} filters={catalogFilters} onFiltersChange={changeCatalogFilters} onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)} onOpenProduct={openProduct} onAddToCart={addToCart} />} />
-      <Route path="/producto" element={<ProductDetail key={location.state?.product?.id ?? 'preview'} {...shared} user={currentUser} reviews={reviews} canReview={canReview} onPublishReview={publishReview} onOpenProduct={openProduct} onAddToCart={addToCart} onBuyNow={buyNow} onViewCollection={(collectionId) => navigate('/catalogo', { state: { collectionId } })} />} />
-      <Route path="/mis-publicaciones" element={<Publications {...account} products={publications} onEdit={(product) => navigate('/publicar', { state: { product } })} onDelete={(product) => setPublications((current) => current.filter((item) => item.id !== product.id))} onToggleStatus={(product) => setPublications((current) => current.map((item) => item.id === product.id ? { ...item, status: item.status === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO' } : item))} />} />
-      <Route path="/publicar" element={<PublishProduct key={location.state?.product?.id ?? 'new'} {...account} onPublish={publishProduct} />} />
-      <Route path="/mis-pedidos" element={<Orders {...account} orders={orders} canReview={canReview} onReview={openProduct} />} />
+      <Route path="/" element={
+        <Home {...shared} products={recentProducts} onOpenProduct={openProduct} onAddToCart={addToCart}
+          onSelectCollection={(collection) => navigate('/catalogo', { state: { collectionId: collection.id } })} />
+      } />
+      <Route path="/catalogo" element={
+        <Catalog {...shared} products={publicProducts} filters={catalogFilters}
+          onFiltersChange={changeCatalogFilters} onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
+          onOpenProduct={openProduct} onAddToCart={addToCart} />
+      } />
+      <Route path="/producto" element={selectedProduct ? (
+        <ProductDetail key={selectedProduct.id} {...shared} product={selectedProduct} products={publicProducts}
+          user={currentUser} reviews={reviews} canReview={canReview} onPublishReview={publishReview}
+          onOpenProduct={openProduct} onAddToCart={addToCart} onBuyNow={buyNow}
+          onViewCollection={(collectionId) => navigate('/catalogo', { state: { collectionId } })} />
+      ) : <Navigate to="/catalogo" replace />} />
+      <Route path="/mis-publicaciones" element={
+        <Publications {...account} products={publications}
+          onEdit={(product) => navigate('/publicar', { state: { product } })}
+          onDelete={(product) => setPublications((current) => current.filter((item) => item.id !== product.id))}
+          onToggleStatus={togglePublication} />
+      } />
+      <Route path="/publicar" element={location.state?.product && !editingPublication ? (
+        <Navigate to="/mis-publicaciones" replace />
+      ) : <PublishProduct key={editingPublication?.id ?? 'new'} {...account} product={editingPublication} onPublish={publishProduct} />} />
+      <Route path="/mis-pedidos" element={
+        <Orders {...account} orders={orders} canReview={canReview} onReview={openProduct} />
+      } />
       <Route path="/mi-perfil" element={<Profile {...account} onSave={saveProfile} />} />
-      <Route path="/carrito" element={<Cart {...shared} items={items} onQuantityChange={changeQuantity} onRemove={(id) => setItems((current) => current.filter((item) => item.id !== id))} onCheckout={() => navigate('/checkout')} />} />
-      <Route path="/checkout" element={<Checkout {...shared} items={items} onConfirm={(order) => confirmOrder({ ...order, total: order.summary.total, discounts: order.summary.discounts })} />} />
-      <Route path="/pedido-confirmado" element={confirmedOrder ? <OrderConfirmation order={confirmedOrder} /> : <Navigate to="/" replace />} />
+      <Route path="/carrito" element={
+        <Cart {...shared} items={items} onQuantityChange={changeQuantity}
+          onRemove={(id) => setItems((current) => current.filter((item) => item.id !== id))}
+          onCheckout={() => navigate('/checkout')} />
+      } />
+      <Route path="/checkout" element={
+        <Checkout {...shared} items={items}
+          onConfirm={(order) => confirmOrder({ ...order, total: order.summary.total, discounts: order.summary.discounts })} />
+      } />
+      <Route path="/pedido-confirmado" element={confirmedOrder
+        ? <OrderConfirmation order={confirmedOrder} /> : <Navigate to="/" replace />} />
       {/* Acceso de demostración: sin autenticación ni almacenamiento de contraseñas. */}
-      <Route path="/ingresar" element={<Login {...shared} onLogin={() => { setDemoAdmin(false); navigate('/mi-perfil') }} />} />
-      <Route path="/crear-cuenta" element={<Register {...shared} onRegister={({ firstName, lastName, email }) => { setDemoAdmin(false); saveProfile({ firstName, lastName, email }); navigate('/mi-perfil') }} />} />
-      <Route path="/promociones" element={isAdmin ? <Promotions {...account} promotions={promotions} onEdit={(promotion) => navigate('/editar-promocion', { state: { promotion } })} onToggle={(promotion) => setPromotions((current) => current.map((item) => item.id === promotion.id ? { ...item, enabled: !item.enabled } : item))} /> : <Navigate to="/mi-perfil" replace />} />
-      <Route path="/editar-promocion" element={isAdmin ? selectedPromotion ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} onSave={savePromotion} /> : <Navigate to="/promociones" replace /> : <Navigate to="/mi-perfil" replace />} />
-      <Route path="/nueva-promocion" element={isAdmin ? <PromotionEditor key="new-promotion" {...account} isNew onSave={savePromotion} /> : <Navigate to="/mi-perfil" replace />} />
+      <Route path="/ingresar" element={
+        <Login {...shared} onLogin={() => { setDemoAdmin(false); navigate('/mi-perfil') }} />
+      } />
+      <Route path="/crear-cuenta" element={
+        <Register {...shared} onRegister={({ firstName, lastName, email }) => {
+          setDemoAdmin(false)
+          saveProfile({ firstName, lastName, email })
+          navigate('/mi-perfil')
+        }} />
+      } />
+      <Route path="/promociones" element={isAdmin ? (
+        <Promotions {...account} promotions={promotions}
+          onEdit={(promotion) => navigate('/editar-promocion', { state: { promotion } })}
+          onToggle={(promotion) => setPromotions((current) => current.map((item) => item.id === promotion.id
+            ? { ...item, enabled: !item.enabled } : item))} />
+      ) : <Navigate to="/mi-perfil" replace />} />
+      <Route path="/editar-promocion" element={isAdmin ? selectedPromotion
+        ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} onSave={savePromotion} />
+        : <Navigate to="/promociones" replace /> : <Navigate to="/mi-perfil" replace />} />
+      <Route path="/nueva-promocion" element={isAdmin
+        ? <PromotionEditor key="new-promotion" {...account} isNew onSave={savePromotion} />
+        : <Navigate to="/mi-perfil" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

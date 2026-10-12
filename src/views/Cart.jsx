@@ -16,7 +16,9 @@ function Cart({ items, cartCount, onQuantityChange, onRemove, onCheckout }) {
           <p className="text-[1.125rem] font-extrabold">{cartCount} {cartCount === 1 ? 'producto' : 'productos'}</p>
         </section>
         <div className="grid min-w-0 items-start gap-7 lg:grid-cols-[minmax(0,1fr)_21.25rem]">
-          <div className="flex min-w-0 flex-col items-stretch gap-4.5">{items.map((item) => <CartItem key={item.id} item={item} onQuantityChange={onQuantityChange} onRemove={onRemove} />)}<Link to="/catalogo" className="self-start text-[0.9375rem] font-bold underline">← Seguir comprando</Link>
+          <div className="flex min-w-0 flex-col items-stretch gap-4.5">
+            {!items.length && <p className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold">Tu carrito está vacío</p>}
+            {items.map((item) => <CartItem key={item.id} item={item} onQuantityChange={onQuantityChange} onRemove={onRemove} />)}<Link to="/catalogo" className="self-start text-[0.9375rem] font-bold underline">← Seguir comprando</Link>
           </div>
           <PurchaseSummary summary={summary} variant="cart">
             <button type="button" disabled={!items.length} onClick={onCheckout} className="rounded-full bg-bordo px-6 py-4 text-[1.0625rem] font-extrabold text-crema disabled:opacity-50">Iniciar compra</button>

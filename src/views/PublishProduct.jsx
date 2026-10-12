@@ -1,16 +1,24 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
 import ProductPreview from '../components/ProductPreview.jsx'
 import { publicationCollections, productTypeLabels } from '../data/accountMocks.js'
 
-function PublishProduct({ user, onLogout, cartCount, onPublish }) {
-  const location = useLocation()
-  const product = location.state?.product
+function PublishProduct({ user, onLogout, cartCount, product, onPublish }) {
   const [form, setForm] = useState(() => ({ name: product?.name || '', description: product?.description || '', type: product?.type || 'CARTA', collectionId: product?.collectionId || 1, price: product?.price ?? '', stock: product?.stock ?? 1, imageUrls: product?.imageUrls || [] }))
   const collection = publicationCollections.find((item) => item.id === form.collectionId)
-  const preview = { ...form, id: product?.id, price: Number(form.price), stock: Number(form.stock), collectionName: collection.name, sellerId: user.id, sellerName: `${user.firstName} ${user.lastName[0]}.`, status: Number(form.stock) > 0 ? 'ACTIVO' : 'AGOTADO' }
+  const preview = {
+    ...form,
+    id: product?.id,
+    price: Number(form.price),
+    stock: Number(form.stock),
+    collectionName: collection.name,
+    sellerId: product?.sellerId ?? user.id,
+    sellerName: product?.sellerName ?? `${user.firstName} ${user.lastName[0]}.`,
+    status: Number(form.stock) === 0 ? 'AGOTADO'
+      : product?.status === 'INACTIVO' ? 'INACTIVO' : 'ACTIVO',
+  }
   function changeField(field, value) { setForm((current) => ({ ...current, [field]: value })) }
   function loadPhotos(event) {
     const photos = Array.from(event.target.files).filter((file) => file.type.startsWith('image/')).slice(0, 3)

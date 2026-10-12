@@ -5,9 +5,9 @@ import ProductCard from '../components/ProductCard.jsx'
 import CollectionCard from '../components/CollectionCard.jsx'
 import PromotionCard from '../components/PromotionCard.jsx'
 import hero from '../assets/home-hero.png'
-import { homeCollections, homeProducts, homePromotions, homeProductBackgrounds } from '../data/homeMocks.js'
+import { homeCollections, homePromotions, homeProductBackgrounds } from '../data/homeMocks.js'
 
-function Home({ userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
+function Home({ products, userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
   return (
     <>
       <Header cartCount={cartCount} />
@@ -35,7 +35,7 @@ function Home({ userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddT
               <Link to="/catalogo" state={{ resetFilters: true }} className="rounded-full bg-rojo px-5 py-2.5 text-[0.875rem] leading-[normal] font-extrabold tracking-[0.035rem] text-crema uppercase">Ver catálogo</Link>
             </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
-              {homeProducts.map((product) => (
+              {products.map((product) => (
                 <ProductCard key={product.id} product={product} userId={userId} variant="home" imageBackground={homeProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
               ))}
             </div>

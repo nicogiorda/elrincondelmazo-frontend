@@ -20,7 +20,12 @@ function Publications({ user, onLogout, products, cartCount, onEdit, onDelete, o
           <strong className="font-display text-[2.625rem] leading-[2.625rem] font-black">{stat.value}</strong>
           <span className="text-[0.8125rem] font-extrabold uppercase">{stat.label}</span>
         </div>)}</div>
-      <div className="overflow-x-auto rounded-[1.625rem] border-[2.4px] border-bordo bg-papel">
+      {!products.length ? (
+        <div className="flex flex-col items-start gap-4 rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6">
+          <p className="font-bold">Todavía no tenés publicaciones</p>
+          <Link to="/publicar" className="font-bold underline">Publicar un producto</Link>
+        </div>
+      ) : <div className="overflow-x-auto rounded-[1.625rem] border-[2.4px] border-bordo bg-papel">
         <div role="table" aria-label="Mis publicaciones" className="min-w-[43rem]">
           <div role="row" className={`${columns} bg-bordo text-[0.6875rem] font-extrabold tracking-[0.04125rem] text-crema uppercase`}>
             <span aria-hidden="true" />
@@ -49,7 +54,7 @@ function Publications({ user, onLogout, products, cartCount, onEdit, onDelete, o
             </div>
           </div>)}
         </div>
-      </div>
+      </div>}
       <p className="text-[0.875rem] opacity-80">Tocá el estado para pausar o reactivar una publicación.</p>
     </AccountLayout>
   )

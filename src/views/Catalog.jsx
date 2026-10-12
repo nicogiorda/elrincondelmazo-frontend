@@ -3,14 +3,14 @@ import Footer from '../components/Footer.jsx'
 import ProductCard from '../components/ProductCard.jsx'
 import CatalogFilters from '../components/CatalogFilters.jsx'
 import Pagination from '../components/Pagination.jsx'
-import { catalogProducts, catalogTypes, catalogCollections, catalogProductBackgrounds } from '../data/catalogMocks.js'
+import { catalogTypes, catalogCollections, catalogProductBackgrounds } from '../data/catalogMocks.js'
 
 const pageSize = 9
 
-function Catalog({ userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+function Catalog({ products, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
   const { search, type, collection, minPrice, maxPrice, page } = filters
 
-  const filteredProducts = catalogProducts.filter((product) => (
+  const filteredProducts = products.filter((product) => (
     product.name.toLocaleLowerCase('es-AR').includes(search.trim().toLocaleLowerCase('es-AR'))
     && (type === '' || product.type === type)
     && (collection === '' || product.collectionId === Number(collection))
@@ -18,7 +18,8 @@ function Catalog({ userId, cartCount = 0, filters, onFiltersChange, onClearFilte
     && (maxPrice === '' || product.price <= Number(maxPrice))
   ))
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize))
-  const visibleProducts = filteredProducts.slice(page * pageSize, (page + 1) * pageSize)
+  const currentPage = Math.min(page, totalPages - 1)
+  const visibleProducts = filteredProducts.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
 
   function changeFilter(field, value) {
     onFiltersChange({ ...filters, [field]: value, page: 0 })
@@ -46,12 +47,19 @@ function Catalog({ userId, cartCount = 0, filters, onFiltersChange, onClearFilte
         <div className="grid min-w-0 gap-8 lg:grid-cols-[16.875rem_minmax(0,1fr)]">
           <CatalogFilters type={type} collection={collection} minPrice={minPrice} maxPrice={maxPrice} types={catalogTypes} collections={catalogCollections} onTypeChange={(value) => changeFilter('type', value)} onCollectionChange={(value) => changeFilter('collection', value)} onMinPriceChange={(value) => changeFilter('minPrice', value)} onMaxPriceChange={(value) => changeFilter('maxPrice', value)} onClear={onClearFilters} />
           <div className="flex min-w-0 flex-col gap-8">
+            {filteredProducts.length > 0 ? <>
             <div aria-label="Productos del catálogo" className="grid min-w-0 grid-cols-1 gap-6.5 sm:grid-cols-2 xl:grid-cols-3">
               {visibleProducts.map((product) => (
                 <ProductCard key={product.id} product={product} userId={userId} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
               ))}
             </div>
-            <Pagination page={page} totalPages={totalPages} onPageChange={changePage} />
+            <Pagination page={currentPage} totalPages={totalPages} onPageChange={changePage} />
+            </> : (
+              <div className="flex flex-col items-start gap-4 rounded-[1.375rem] border-3 border-bordo bg-papel p-6">
+                <p className="font-bold">No encontramos productos con esos filtros</p>
+                <button type="button" onClick={onClearFilters} className="rounded-full bg-bordo px-5 py-3 font-extrabold text-crema">Limpiar filtros</button>
+              </div>
+            )}
           </div>
         </div>
       </main>

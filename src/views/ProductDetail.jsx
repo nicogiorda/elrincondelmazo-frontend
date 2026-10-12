@@ -1,5 +1,5 @@
 import { canBuyProduct } from '../utils/productPurchase.js'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { getRelatedProducts } from '../data/productMocks.js'
 import { useState } from 'react'
 import Header from '../components/Header.jsx'
@@ -9,19 +9,17 @@ import ProductGallery from '../components/ProductGallery.jsx'
 import QuantitySelector from '../components/QuantitySelector.jsx'
 import ReviewCard from '../components/ReviewCard.jsx'
 import ReviewForm from '../components/ReviewForm.jsx'
-import { detailProduct, detailGallery, detailReviews, detailProductBackgrounds, detailPaymentLabel, detailTransferPromotion } from '../data/productDetailMocks.js'
+import { detailGallery, detailReviews, detailProductBackgrounds, detailPaymentLabel, detailTransferPromotion } from '../data/productDetailMocks.js'
 
 const typeLabels = { CARTA: 'Carta', SOBRE: 'Sobre', LOOTBOX: 'Lootbox' }
 
-function ProductDetail({ userId, user, canReview, onPublishReview, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
-  const location = useLocation()
-  const product = location.state?.product ?? detailProduct
+function ProductDetail({ product, products, userId, user, canReview, onPublishReview, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
   const reviews = (providedReviews ?? detailReviews).filter((review) => review.productId === product.id)
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [showReviewForm, setShowReviewForm] = useState(true)
 
-  const relatedProducts = getRelatedProducts(product)
+  const relatedProducts = getRelatedProducts(product, products)
   const canBuy = canBuyProduct(product, userId)
   const isOwnProduct = product.sellerId === userId
   const isLastUnit = canBuy && product.stock === 1
@@ -60,7 +58,7 @@ function ProductDetail({ userId, user, canReview, onPublishReview, reviews: prov
             <h1 id="product-heading" className="font-display text-[3.5rem] leading-[3.01rem] font-black text-balance uppercase xl:text-[4.75rem] xl:leading-[4.085rem]">{product.name}</h1>
             <div className="flex flex-wrap items-baseline gap-4">
               <p className="text-[2.125rem] font-extrabold">$ {product.price.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</p>
-              <p className="text-[0.9375rem] font-semibold opacity-80">★ {ratingLabel} · {reviews.length} {reviews.length === 1 ? 'reseña' : 'reseñas'}</p>
+              {reviews.length > 0 && <p className="text-[0.9375rem] font-semibold opacity-80">★ {ratingLabel} · {reviews.length} {reviews.length === 1 ? 'reseña' : 'reseñas'}</p>}
             </div>
             <p className="text-[1.0625rem] leading-[1.59375rem] text-pretty">{product.description}</p>
             <div className="flex items-center gap-3.5 rounded-[1.125rem] border-3 border-bordo bg-amarillo px-4.5 py-3.5">
@@ -85,10 +83,10 @@ function ProductDetail({ userId, user, canReview, onPublishReview, reviews: prov
         <section aria-labelledby="reviews-heading" className="grid items-start gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,2fr)]">
           <div className="flex flex-col gap-3.5">
             <h2 id="reviews-heading" className="font-display text-[4rem] leading-[3.6rem] font-black uppercase">Reseñas</h2>
-            <div className="flex items-end gap-4 leading-[normal]">
+            {reviews.length > 0 ? <div className="flex items-end gap-4 leading-[normal]">
               <p className="font-display text-[5.5rem] leading-[4.95rem] font-black text-rojo">{ratingLabel}</p>
               <p className="pb-0.5 text-[0.9375rem] font-bold">de 5 · {reviews.length} {reviews.length === 1 ? 'reseña' : 'reseñas'}</p>
-            </div>
+            </div> : <p className="text-[0.9375rem] font-bold">Todavía no hay reseñas</p>}
             <p className="text-[0.875rem] leading-[1.26875rem] opacity-80">Solo pueden reseñar quienes compraron este producto. Una reseña por persona.</p>
             {!user ? (
               <Link to="/ingresar" className="self-start rounded-[0.875rem] border-2 border-dashed border-bordo px-3.5 py-2.5 text-[0.875rem] leading-[1.18125rem] font-bold">Ingresá para reseñar productos que compraste.</Link>

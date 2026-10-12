@@ -21,6 +21,7 @@ function Orders({ user, onLogout, orders, cartCount, canReview, onReview }) {
         <h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">Mis pedidos</h1>
         <div className="flex flex-wrap gap-2" aria-label="Filtrar pedidos">{filters.map((label) => <button key={label} type="button" aria-pressed={filter === label} onClick={() => setFilter(label)} className={`rounded-full border-[1.6px] border-bordo px-3.5 py-1.75 text-[0.875rem] font-bold ${filter === label ? 'bg-bordo text-crema' : ''}`}>{label}</button>)}</div>
       </div>
+      {!visibleOrders.length && <p className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold">{orders.length ? 'No hay pedidos con ese filtro' : 'Todavía no tenés pedidos'}</p>}
       {visibleOrders.map((order) => {
         const isOpen = openOrderId === order.id
         const eligibleProducts = order.status === 'ENTREGADO' ? order.items.map((item) => item.product)
