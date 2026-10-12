@@ -13,7 +13,7 @@ export const homeCollections = [
 ]
 
 // Configuración visual separada de ProductResponse, indexada por collectionId.
-export const homeProductBackgrounds = { 1: 'rojo', 4: 'amarillo' }
+export const homeProductBackgrounds = { 1: 'rojo', 2: 'rosa', 4: 'amarillo' }
 
 // Productos mock con los campos y enums de ProductResponse.
 export const homeProducts = [13, 4, 5, 3].map(getMockProduct)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { canBuyProduct } from './utils/productPurchase.js'
+import { resolveCart, addCartItem, changeCartQuantity, checkoutError, completeOrder } from './utils/shopDemo.js'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Home from './views/Home.jsx'
 import Login from './views/Login.jsx'
@@ -20,7 +20,7 @@ import Checkout from './views/Checkout.jsx'
 import OrderConfirmation from './views/OrderConfirmation.jsx'
 import { productMocks } from './data/productMocks.js'
 import { accountUser, publicationProducts } from './data/accountMocks.js'
-import { cartItems, orderMocks, confirmationMock } from './data/purchaseMocks.js'
+import { cartItems, orderMocks } from './data/purchaseMocks.js'
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
 
@@ -33,11 +33,27 @@ function App() {
   const [demoAdmin, setDemoAdmin] = useState(() => import.meta.env.DEV
     && location.pathname === '/promociones'
     && new URLSearchParams(location.search).get('demoAdmin') === '1')
-  const [publications, setPublications] = useState(publicationProducts)
-  const [items, setItems] = useState(cartItems)
+  // Productos vigentes, cantidades y pedidos se actualizan juntos al confirmar.
+  const [shop, setShop] = useState(() => ({
+    products: productMocks,
+    cart: cartItems.map((item) => ({ id: item.id, productId: item.product.id, quantity: item.quantity })),
+    orders: orderMocks,
+    nextProductId: Math.max(...productMocks.map((product) => product.id)) + 1,
+    nextOrderId: Math.max(...orderMocks.map((order) => order.id)) + 1,
+    lastOrderId: null,
+    checkoutError: '',
+  }))
+  const products = shop.products
+  const items = resolveCart(shop)
+  const orders = shop.orders
+  const confirmedOrder = orders.find((order) => order.id === shop.lastOrderId)
+  const ownProducts = products.filter((product) => product.sellerId === user.id)
+  const publications = [
+    ...publicationProducts.map((original) => ownProducts.find((product) => product.id === original.id)).filter(Boolean),
+    ...ownProducts.filter((product) => !publicationProducts.some((original) => original.id === product.id)),
+  ]
   const [promotions, setPromotions] = useState(promotionMocks)
   const [reviews, setReviews] = useState(detailReviews)
-  const [confirmedOrder, setConfirmedOrder] = useState(null)
   const [catalogFilters, setCatalogFilters] = useState(emptyCatalogFilters)
   const [catalogFiltersByLocation, setCatalogFiltersByLocation] = useState({})
   const [catalogLocationKey, setCatalogLocationKey] = useState(null)
@@ -68,14 +84,6 @@ function App() {
   const isAdmin = currentUser.role === 'ADMIN'
   const selectedPromotion = promotions.find((promotion) => promotion.id === location.state?.promotion?.id)
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
-  // Las publicaciones reemplazan a los originales del usuario, incluso al eliminarlos.
-  // El resto conserva el orden original; las nuevas se agregan al final.
-  const products = [
-    ...productMocks.map((product) => product.sellerId === accountUser.id
-      ? publications.find((publication) => publication.id === product.id)
-      : product).filter(Boolean),
-    ...publications.filter((publication) => !productMocks.some((product) => product.id === publication.id)),
-  ]
   const publicProducts = products.filter((product) => ['ACTIVO', 'AGOTADO'].includes(product.status))
   const newProducts = publicProducts.filter((product) => !productMocks.some((original) => original.id === product.id))
   const recentProducts = [
@@ -88,21 +96,16 @@ function App() {
   const editingPublication = publications.find((product) => product.id === location.state?.product?.id)
 
   function openProduct(product) { navigate('/producto', { state: { product } }) }
-  function addToCart(requestedProduct, quantity = 1) {
-    const product = products.find((item) => item.id === requestedProduct.id)
-    if (!product || !canBuyProduct(product, user.id)) return false
-    setItems((current) => {
-      const existing = current.find((item) => item.product.id === product.id)
-      if (existing) return current.map((item) => item.id === existing.id ? { ...item, product, quantity: Math.min(item.quantity + quantity, product.stock) } : item)
-      return [...current, { id: Math.max(0, ...current.map((item) => item.id)) + 1, product, quantity: Math.min(quantity, product.stock) }]
-    })
+  function addToCart(product, quantity = 1) {
+    const next = addCartItem(shop, product.id, quantity, user.id)
+    if (next === shop) return false
+    setShop((current) => addCartItem(current, product.id, quantity, user.id))
     return true
   }
   function buyNow(product, quantity) {
     if (addToCart(product, quantity)) navigate('/carrito')
   }
   // Los pedidos y las reseñas pertenecen al usuario mock; no es autenticación real.
-  const orders = confirmedOrder ? [confirmedOrder, ...orderMocks] : orderMocks
   function canReview(product) {
     return orders.some((order) => order.status !== 'CANCELADO'
       && order.items.some((item) => item.product.id === product.id))
@@ -119,16 +122,27 @@ function App() {
     })
     return true
   }
-  function changeQuantity(id, quantity) { setItems((current) => current.map((item) => item.id === id && quantity >= 1 && quantity <= item.product.stock ? { ...item, quantity } : item)) }
+  function changeQuantity(id, quantity) {
+    setShop((current) => changeCartQuantity(current, id, quantity, user.id))
+  }
   function publishProduct(product) {
-    const saved = { ...product, id: product.id ?? Math.max(0, ...productMocks.map((item) => item.id), ...publications.map((item) => item.id)) + 1 }
-    setPublications((current) => product.id ? current.map((item) => item.id === product.id ? saved : item) : [...current, saved])
+    setShop((current) => {
+      const saved = { ...product, id: product.id ?? current.nextProductId }
+      return { ...current,
+        products: product.id ? current.products.map((item) => item.id === product.id ? saved : item)
+          : [...current.products, saved],
+        nextProductId: product.id ? current.nextProductId : current.nextProductId + 1,
+      }
+    })
     navigate('/mis-publicaciones')
   }
-  function confirmOrder(order) {
-    setConfirmedOrder({ ...confirmationMock, ...order })
-    setItems([])
+  function confirmOrder({ paymentMethod }) {
+    const date = new Date().toLocaleDateString('es-AR')
+    const next = completeOrder(shop, user.id, paymentMethod, shop.nextOrderId, date)
+    setShop((current) => completeOrder(current, user.id, paymentMethod, shop.nextOrderId, date))
+    if (next.checkoutError || next === shop) return false
     navigate('/pedido-confirmado')
+    return true
   }
   function saveProfile({ firstName, lastName, email }) {
     setUser((current) => ({ ...current, firstName, lastName, email }))
@@ -146,25 +160,26 @@ function App() {
   const shared = { cartCount, userId: user.id }
   const account = { ...shared, user: currentUser, onLogout: logout }
   function togglePublication(product) {
-    setPublications((current) => current.map((item) => item.id === product.id ? {
+    setShop((current) => ({ ...current, products: current.products.map((item) => item.id === product.id ? {
       ...item,
       status: item.status === 'ACTIVO' ? 'INACTIVO' : item.stock > 0 ? 'ACTIVO' : 'AGOTADO',
-    } : item))
+    } : item) }))
   }
 
   return (
     <Routes>
       <Route path="/" element={
-        <Home {...shared} products={recentProducts} onOpenProduct={openProduct} onAddToCart={addToCart}
+        <Home {...shared} products={recentProducts} cartItems={items} onOpenProduct={openProduct} onAddToCart={addToCart}
           onSelectCollection={(collection) => navigate('/catalogo', { state: { collectionId: collection.id } })} />
       } />
       <Route path="/catalogo" element={
-        <Catalog {...shared} products={publicProducts} filters={catalogFilters}
+        <Catalog {...shared} products={publicProducts} cartItems={items} filters={catalogFilters}
           onFiltersChange={changeCatalogFilters} onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
           onOpenProduct={openProduct} onAddToCart={addToCart} />
       } />
       <Route path="/producto" element={selectedProduct ? (
         <ProductDetail key={selectedProduct.id} {...shared} product={selectedProduct} products={publicProducts}
+          cartItems={items} cartQuantity={items.find((item) => item.productId === selectedProduct.id)?.quantity ?? 0}
           user={currentUser} reviews={reviews} canReview={canReview} onPublishReview={publishReview}
           onOpenProduct={openProduct} onAddToCart={addToCart} onBuyNow={buyNow}
           onViewCollection={(collectionId) => navigate('/catalogo', { state: { collectionId } })} />
@@ -172,7 +187,7 @@ function App() {
       <Route path="/mis-publicaciones" element={
         <Publications {...account} products={publications}
           onEdit={(product) => navigate('/publicar', { state: { product } })}
-          onDelete={(product) => setPublications((current) => current.filter((item) => item.id !== product.id))}
+          onDelete={(product) => setShop((current) => ({ ...current, products: current.products.filter((item) => item.id !== product.id) }))}
           onToggleStatus={togglePublication} />
       } />
       <Route path="/publicar" element={location.state?.product && !editingPublication ? (
@@ -183,13 +198,13 @@ function App() {
       } />
       <Route path="/mi-perfil" element={<Profile {...account} onSave={saveProfile} />} />
       <Route path="/carrito" element={
-        <Cart {...shared} items={items} onQuantityChange={changeQuantity}
-          onRemove={(id) => setItems((current) => current.filter((item) => item.id !== id))}
+        <Cart {...shared} items={items} userId={user.id} onQuantityChange={changeQuantity}
+          onRemove={(id) => setShop((current) => ({ ...current, cart: current.cart.filter((item) => item.id !== id), checkoutError: '' }))}
           onCheckout={() => navigate('/checkout')} />
       } />
       <Route path="/checkout" element={
-        <Checkout {...shared} items={items}
-          onConfirm={(order) => confirmOrder({ ...order, total: order.summary.total, discounts: order.summary.discounts })} />
+        <Checkout {...shared} items={items.filter((item) => item.product)}
+          error={shop.checkoutError || checkoutError(shop, user.id)} onConfirm={confirmOrder} />
       } />
       <Route path="/pedido-confirmado" element={confirmedOrder
         ? <OrderConfirmation order={confirmedOrder} /> : <Navigate to="/" replace />} />

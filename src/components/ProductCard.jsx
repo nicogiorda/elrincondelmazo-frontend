@@ -34,11 +34,12 @@ const homeImageSizes = {
   LOOTBOX: 'max-h-[15.1875rem] max-w-[14.4375rem]',
 }
 
-function ProductCard({ product, userId, variant = 'home', imageBackground = 'crema', onOpenProduct, onAddToCart }) {
+function ProductCard({ product, userId, cartQuantity = 0, variant = 'home', imageBackground = 'crema', onOpenProduct, onAddToCart }) {
   const styles = variantStyles[variant]
   const isSoldOut = product.stock === 0 || product.status === 'AGOTADO'
   const isOwnProduct = product.sellerId === userId
-  const canAddToCart = canBuyProduct(product, userId)
+  const isAvailable = canBuyProduct(product, userId)
+  const canAddToCart = isAvailable && cartQuantity < product.stock
   const imageUrl = product.imageUrls?.[0]
   const imageBackgroundClass = imageBackgrounds[imageBackground] ?? 'bg-crema'
 
@@ -77,7 +78,7 @@ function ProductCard({ product, userId, variant = 'home', imageBackground = 'cre
             onClick={() => { if (canAddToCart) onAddToCart?.(product) }}
             className={`rounded-full px-3.5 py-2 text-[0.8125rem] font-extrabold whitespace-nowrap text-crema disabled:cursor-not-allowed ${styles.button}`}
           >
-            {isOwnProduct ? 'Tu publicación' : isSoldOut ? 'Sin stock' : !canAddToCart ? 'No disponible' : 'Agregar'}
+            {isOwnProduct ? 'Tu publicación' : isSoldOut ? 'Sin stock' : !isAvailable ? 'No disponible' : 'Agregar'}
           </button>
         </div>
       </div>

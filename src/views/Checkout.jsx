@@ -10,10 +10,16 @@ import { calculateMockSummary, formatPrice } from '../data/purchaseMocks.js'
 
 const headings = ['Revisá tu pedido', '¿Cómo querés pagar?', 'Confirmá tu pedido']
 
-function Checkout({ items, cartCount, onConfirm }) {
+function Checkout({ items, cartCount, error, onConfirm }) {
   const [step, setStep] = useState(1)
+  const [isConfirmed, setIsConfirmed] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('TRANSFERENCIA')
   const summary = calculateMockSummary(items, step > 1 ? paymentMethod : '')
+  function advance() {
+    if (isConfirmed || !items.length) return
+    if (step < 3) setStep(step + 1)
+    else if (onConfirm?.({ paymentMethod }) === true) setIsConfirmed(true)
+  }
   return (
     <>
       <Header cartCount={cartCount} isLoggedIn />
@@ -42,9 +48,10 @@ function Checkout({ items, cartCount, onConfirm }) {
                 </div>)}</div>
               <p className="text-[0.9375rem] leading-[1.359375rem]">Al confirmar se crea el pedido en estado Pendiente y se descuenta el stock de cada producto.</p>
             </>}
+            {error && <p role="alert" className="text-[0.875rem] font-bold text-rojo">{error}</p>}
             <div className="flex flex-wrap items-center justify-between gap-4">
               {step === 1 ? <Link to="/carrito" className="text-[0.9375rem] font-bold underline">← Editar carrito</Link> : <button type="button" onClick={() => setStep(step - 1)} className="text-[0.9375rem] font-bold underline">← Volver</button>}
-              <button type="button" disabled={!items.length} onClick={() => step < 3 ? setStep(step + 1) : onConfirm?.({ items, paymentMethod, summary })} className={`rounded-full px-7.5 py-4 text-[1.0625rem] font-extrabold disabled:opacity-50 ${step === 3 ? 'border-[2.4px] border-bordo bg-rosa shadow-[0.25rem_0.25rem_0_var(--color-bordo)]' : 'bg-bordo text-crema'}`}>{step === 1 ? 'Continuar al pago' : step === 2 ? 'Revisar y confirmar' : `Confirmar pedido · ${formatPrice(summary.total)}`}</button>
+              <button type="button" disabled={!items.length || isConfirmed} onClick={advance} className={`rounded-full px-7.5 py-4 text-[1.0625rem] font-extrabold disabled:opacity-50 ${step === 3 ? 'border-[2.4px] border-bordo bg-rosa shadow-[0.25rem_0.25rem_0_var(--color-bordo)]' : 'bg-bordo text-crema'}`}>{step === 1 ? 'Continuar al pago' : step === 2 ? 'Revisar y confirmar' : `Confirmar pedido · ${formatPrice(summary.total)}`}</button>
             </div>
           </section>
           <PurchaseSummary summary={summary} />

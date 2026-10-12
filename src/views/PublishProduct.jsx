@@ -8,6 +8,7 @@ import { publicationCollections, productTypeLabels } from '../data/accountMocks.
 function PublishProduct({ user, onLogout, cartCount, product, onPublish }) {
   const [form, setForm] = useState(() => ({ name: product?.name || '', description: product?.description || '', type: product?.type || 'CARTA', collectionId: product?.collectionId || 1, price: product?.price ?? '', stock: product?.stock ?? 1, imageUrls: product?.imageUrls || [] }))
   const [photoError, setPhotoError] = useState('')
+  const [formError, setFormError] = useState('')
   const [isReadingPhotos, setIsReadingPhotos] = useState(false)
   const collection = publicationCollections.find((item) => item.id === form.collectionId)
   const preview = {
@@ -15,7 +16,7 @@ function PublishProduct({ user, onLogout, cartCount, product, onPublish }) {
     id: product?.id,
     price: Number(form.price),
     stock: Number(form.stock),
-    collectionName: collection.name,
+    collectionName: collection?.name ?? '',
     sellerId: product?.sellerId ?? user.id,
     sellerName: product?.sellerName ?? `${user.firstName} ${user.lastName[0]}.`,
     status: Number(form.stock) === 0 ? 'AGOTADO'
@@ -28,14 +29,29 @@ function PublishProduct({ user, onLogout, cartCount, product, onPublish }) {
       setPhotoError('Esperá a que terminen de cargar las fotografías.')
       return
     }
-    if (!product && form.imageUrls.length === 0) {
+    if ((!product || product.imageUrls.length > 0) && form.imageUrls.length === 0) {
       setPhotoError('Cargá al menos una fotografía para publicar el producto.')
       return
     }
-    onPublish?.(preview)
+    if ((!product || product.name?.trim() || form.name.length > 0) && !form.name.trim()) {
+      setFormError('Ingresá un nombre válido para el producto.')
+      return
+    }
+    if ((!product || product.description?.trim() || form.description.length > 0) && !form.description.trim()) {
+      setFormError('Ingresá una descripción válida para el producto.')
+      return
+    }
+    if (form.price === '' || !Number.isFinite(preview.price) || preview.price < 0.01
+      || form.stock === '' || !Number.isInteger(preview.stock) || preview.stock < 0
+      || !productTypeLabels[form.type] || !collection) {
+      setFormError('Revisá el precio, stock, tipo y colección del producto.')
+      return
+    }
+    setFormError('')
+    onPublish?.({ ...preview, name: form.name.trim(), description: form.description.trim() })
   }
 
-  function loadPhotos(event) {
+  function loadPhotos(event, replaceIndex = null) {
     const input = event.target
     const photos = Array.from(input.files)
     input.value = ''
@@ -44,7 +60,8 @@ function PublishProduct({ user, onLogout, cartCount, product, onPublish }) {
       setPhotoError('Seleccioná únicamente archivos de imagen válidos.')
       return
     }
-    if (form.imageUrls.length + photos.length > 3) {
+    if ((replaceIndex !== null && (photos.length !== 1 || !form.imageUrls[replaceIndex]))
+      || (replaceIndex === null && form.imageUrls.length + photos.length > 3)) {
       setPhotoError('Podés cargar hasta tres fotografías en total.')
       return
     }
@@ -69,11 +86,18 @@ function PublishProduct({ user, onLogout, cartCount, product, onPublish }) {
       reader.readAsDataURL(file)
     }))).then((imageUrls) => {
       // Incorporar el lote sólo si todas las fotografías cargaron correctamente.
-      setForm((current) => ({ ...current, imageUrls: [...current.imageUrls, ...imageUrls] }))
+      setForm((current) => ({ ...current, imageUrls: replaceIndex === null
+        ? [...current.imageUrls, ...imageUrls]
+        : current.imageUrls.map((url, index) => index === replaceIndex ? imageUrls[0] : url) }))
       setPhotoError('')
     }).catch(() => {
       setPhotoError('No pudimos cargar las fotografías. Probá con imágenes válidas nuevamente.')
     }).finally(() => setIsReadingPhotos(false))
+  }
+  function removePhoto(index) {
+    if (isReadingPhotos) return
+    setForm((current) => ({ ...current, imageUrls: current.imageUrls.filter((_, photoIndex) => photoIndex !== index) }))
+    setPhotoError('')
   }
   return (
     <AccountLayout user={user} activeView="publications" cartCount={cartCount} onLogout={onLogout}>
@@ -88,12 +112,27 @@ function PublishProduct({ user, onLogout, cartCount, product, onPublish }) {
               <span className="text-[0.8125rem] font-extrabold tracking-[0.04875rem] uppercase">Fotos</span>
               <div className="grid grid-cols-4 gap-3">
                 <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-[0.875rem] border-[2.4px] border-dashed border-bordo bg-crema">
-                  <input type="file" accept="image/*" multiple onChange={loadPhotos} disabled={isReadingPhotos} aria-busy={isReadingPhotos}
+                  <input type="file" accept="image/*" multiple onChange={(event) => loadPhotos(event)} disabled={isReadingPhotos} aria-busy={isReadingPhotos}
                     aria-invalid={Boolean(photoError)} aria-describedby={photoError || isReadingPhotos ? 'product-photo-feedback' : undefined}
                     className="sr-only" aria-label="Subir fotos" />
                   <span aria-hidden="true" className="flex size-[2.125rem] items-center justify-center rounded-full bg-bordo text-[1.5rem] font-black text-crema">+</span>
                   <span className="text-center text-[0.875rem] font-extrabold">Subir fotos</span>
-                </label>{[0, 1, 2].map((index) => <div key={index} className={`flex aspect-square items-center justify-center overflow-hidden rounded-[0.875rem] border-[2.4px] ${index < 2 || form.imageUrls[index] ? 'border-bordo bg-rojo' : 'border-dashed border-bordo/40'}`}>{form.imageUrls[index] ? <img src={form.imageUrls[index]} alt={`Foto ${index + 1} del producto`} className="size-full object-contain" /> : index < 2 && <span className="rounded-sm bg-crema px-1 font-mono text-[0.625rem]">{index === 0 ? 'frente' : 'dorso'}</span>}</div>)}</div>
+                </label>
+                {[0, 1, 2].map((index) => (
+                  <div key={index} className={`relative flex aspect-square items-center justify-center overflow-hidden rounded-[0.875rem] border-[2.4px] ${index < 2 || form.imageUrls[index] ? 'border-bordo bg-rojo' : 'border-dashed border-bordo/40'}`}>
+                    {form.imageUrls[index] ? <>
+                      <img src={form.imageUrls[index]} alt={`Foto ${index + 1} del producto`} className="size-full object-contain" />
+                      <button type="button" disabled={isReadingPhotos} aria-label={`Eliminar foto ${index + 1}`}
+                        onClick={() => removePhoto(index)} className="absolute top-1 right-1 rounded-full bg-crema px-1.5 text-[0.875rem] font-bold">×</button>
+                      <label className="absolute right-0 bottom-0 left-0 cursor-pointer bg-crema px-1 py-0.5 text-center text-[0.625rem] font-bold">
+                        Reemplazar
+                        <input type="file" accept="image/*" disabled={isReadingPhotos} onChange={(event) => loadPhotos(event, index)}
+                          aria-label={`Reemplazar foto ${index + 1}`} aria-describedby={photoError ? 'product-photo-feedback' : undefined} className="sr-only" />
+                      </label>
+                    </> : index < 2 && <span className="rounded-sm bg-crema px-1 font-mono text-[0.625rem]">{index === 0 ? 'frente' : 'dorso'}</span>}
+                  </div>
+                ))}
+              </div>
               {(photoError || isReadingPhotos) && (
                 <p id="product-photo-feedback" role={photoError ? 'alert' : 'status'}
                   className={`text-[0.8125rem] font-semibold ${photoError ? 'text-rojo' : ''}`}>
@@ -101,8 +140,8 @@ function PublishProduct({ user, onLogout, cartCount, product, onPublish }) {
                 </p>
               )}
             </div>
-            <FormField id="product-name" label="Nombre" required placeholder="Ej. Spider-Man Holo 60 aniversario" value={form.name} onChange={(e) => changeField('name', e.target.value)} />
-            <FormField id="product-description" label="Descripción" multiline placeholder="Estado, edición, si viene en funda o slab…" value={form.description} onChange={(e) => changeField('description', e.target.value)} />
+            <FormField id="product-name" label="Nombre" required={!product || Boolean(product.name?.trim())} placeholder="Ej. Spider-Man Holo 60 aniversario" value={form.name} onChange={(e) => changeField('name', e.target.value)} />
+            <FormField id="product-description" label="Descripción" multiline required={!product || Boolean(product.description?.trim())} placeholder="Estado, edición, si viene en funda o slab…" value={form.description} onChange={(e) => changeField('description', e.target.value)} />
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-2 text-[0.8125rem] font-extrabold tracking-[0.04875rem] uppercase">Tipo</legend>
               <div className="grid grid-cols-3 gap-2.5">{Object.entries(productTypeLabels).map(([type, label]) => <button key={type} type="button" aria-pressed={form.type === type} onClick={() => changeField('type', type)} className={`rounded-full border-[2.4px] border-bordo p-3 text-[0.9375rem] font-extrabold ${form.type === type ? 'bg-bordo text-crema' : 'bg-crema'}`}>{label}</button>)}</div>
@@ -116,6 +155,7 @@ function PublishProduct({ user, onLogout, cartCount, product, onPublish }) {
               <FormField id="product-stock" label="Stock" type="number" min="0" step="1" required value={form.stock} onChange={(e) => changeField('stock', e.target.value)} />
             </div>
           </div>
+          {formError && <p role="alert" className="text-[0.8125rem] font-semibold text-rojo">{formError}</p>}
           <div className="flex justify-end gap-3">
             <Link to="/mis-publicaciones" className="rounded-full border-[2.4px] border-bordo px-6 py-3.5 text-base font-extrabold">Cancelar</Link>
             <button type="submit" disabled={isReadingPhotos} className="rounded-full bg-bordo px-7 py-3.5 text-base font-extrabold text-crema">{product ? 'Guardar cambios' : 'Publicar'}</button>
