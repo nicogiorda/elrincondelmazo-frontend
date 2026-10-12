@@ -11,18 +11,21 @@ const statusLabels = { PENDIENTE: 'Pendiente', PAGO: 'Pagado', ENVIADO: 'Enviado
 const statusStyles = { PENDIENTE: 'bg-crema', PAGO: 'bg-amarillo', ENVIADO: 'bg-rosa', ENTREGADO: 'bg-bordo text-crema', CANCELADO: 'bg-papel' }
 const progress = { PENDIENTE: 1, PAGO: 2, ENVIADO: 3, ENTREGADO: 4 }
 
-function Orders({ user, orders, cartCount, onReview }) {
+function Orders({ user, onLogout, orders, cartCount, canReview, onReview }) {
   const [filter, setFilter] = useState('Todos')
   const [openOrderId, setOpenOrderId] = useState(1032)
   const visibleOrders = orders.filter((order) => filter === 'Todos' || (filter === 'En curso' && ['PENDIENTE', 'PAGO', 'ENVIADO'].includes(order.status)) || (filter === 'Entregados' && order.status === 'ENTREGADO') || (filter === 'Cancelados' && order.status === 'CANCELADO'))
   return (
-    <AccountLayout user={user} activeView="orders" cartCount={cartCount}>
+    <AccountLayout user={user} activeView="orders" cartCount={cartCount} onLogout={onLogout}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">Mis pedidos</h1>
         <div className="flex flex-wrap gap-2" aria-label="Filtrar pedidos">{filters.map((label) => <button key={label} type="button" aria-pressed={filter === label} onClick={() => setFilter(label)} className={`rounded-full border-[1.6px] border-bordo px-3.5 py-1.75 text-[0.875rem] font-bold ${filter === label ? 'bg-bordo text-crema' : ''}`}>{label}</button>)}</div>
       </div>
+      {!visibleOrders.length && <p className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold">{orders.length ? 'No hay pedidos con ese filtro' : 'Todavía no tenés pedidos'}</p>}
       {visibleOrders.map((order) => {
         const isOpen = openOrderId === order.id
+        const eligibleProducts = order.status === 'ENTREGADO' ? order.items.map((item) => item.product)
+          .filter((product, index, products) => canReview?.(product) && products.findIndex((item) => item.id === product.id) === index) : []
         const subtotal = order.items.reduce((sum, item) => sum + item.quantity * item.product.price, 0)
         const summary = { subtotal, discounts: order.discounts, total: order.total }
         return (
@@ -40,7 +43,14 @@ function Orders({ user, orders, cartCount, onReview }) {
           {isOpen && <div id={`order-${order.id}`} className="grid min-w-0 items-start gap-7 border-t-[2.4px] border-bordo p-6 xl:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-4.5">{progress[order.status] && <ProgressSteps step={progress[order.status]} variant="order" />}<PurchaseItems items={order.items} variant="order" />
             </div>
-            <PurchaseSummary summary={summary} variant="order">{order.status === 'ENTREGADO' && <button type="button" disabled={!onReview || !order.items.length} onClick={() => onReview?.(order.items[0].product)} className="rounded-full border-[2.4px] border-bordo bg-rosa px-5 py-3 text-[0.875rem] font-extrabold shadow-[0.1875rem_0.1875rem_0_var(--color-bordo)] disabled:cursor-not-allowed disabled:opacity-50">Dejar reseña</button>}</PurchaseSummary>
+            <PurchaseSummary summary={summary} variant="order">
+              {onReview && eligibleProducts.map((product) => (
+                <div key={product.id} className="flex min-w-0 flex-col gap-2">
+                  <p className="text-[0.875rem] font-bold">{product.name}</p>
+                  <button type="button" aria-label={`Dejar reseña de ${product.name}`} onClick={() => onReview(product)} className="rounded-full border-[2.4px] border-bordo bg-rosa px-5 py-3 text-[0.875rem] font-extrabold shadow-[0.1875rem_0.1875rem_0_var(--color-bordo)] disabled:cursor-not-allowed disabled:opacity-50">Dejar reseña</button>
+                </div>
+              ))}
+            </PurchaseSummary>
           </div>}
         </article>
         )

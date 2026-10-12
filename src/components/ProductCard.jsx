@@ -1,3 +1,5 @@
+import { canBuyProduct } from '../utils/productPurchase.js'
+
 const variantStyles = {
   home: {
     content: 'min-h-[9.3125rem]',
@@ -32,10 +34,12 @@ const homeImageSizes = {
   LOOTBOX: 'max-h-[15.1875rem] max-w-[14.4375rem]',
 }
 
-function ProductCard({ product, variant = 'home', imageBackground = 'crema', onOpenProduct, onAddToCart }) {
+function ProductCard({ product, userId, cartQuantity = 0, variant = 'home', imageBackground = 'crema', onOpenProduct, onAddToCart }) {
   const styles = variantStyles[variant]
   const isSoldOut = product.stock === 0 || product.status === 'AGOTADO'
-  const canAddToCart = product.status === 'ACTIVO' && !isSoldOut
+  const isOwnProduct = product.sellerId === userId
+  const isAvailable = canBuyProduct(product, userId)
+  const canAddToCart = isAvailable && cartQuantity < product.stock
   const imageUrl = product.imageUrls?.[0]
   const imageBackgroundClass = imageBackgrounds[imageBackground] ?? 'bg-crema'
 
@@ -71,10 +75,11 @@ function ProductCard({ product, variant = 'home', imageBackground = 'crema', onO
           <button
             type="button"
             disabled={!canAddToCart}
-            onClick={() => onAddToCart?.(product)}
+            title={isAvailable && !canAddToCart ? 'Ya agregaste todas las unidades disponibles al carrito.' : undefined}
+            onClick={() => { if (canAddToCart) onAddToCart?.(product) }}
             className={`rounded-full px-3.5 py-2 text-[0.8125rem] font-extrabold whitespace-nowrap text-crema disabled:cursor-not-allowed ${styles.button}`}
           >
-            {isSoldOut ? 'Sin stock' : 'Agregar'}
+            {isOwnProduct ? 'Tu publicación' : isSoldOut ? 'Sin stock' : !isAvailable ? 'No disponible' : canAddToCart ? 'Agregar' : 'Máximo'}
           </button>
         </div>
       </div>

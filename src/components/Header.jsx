@@ -5,12 +5,12 @@ const categories = ['Cartas', 'Sobres', 'Lootboxes', 'Colecciones']
 const categoryTypes = { Cartas: 'CARTA', Sobres: 'SOBRE', Lootboxes: 'LOOTBOX' }
 
 function Header({ cartCount = 0, isLoggedIn = false }) {
-  const actions = [{ label: 'Buscar', to: '/catalogo' }, { label: 'Vender', to: '/mis-publicaciones' }, { label: isLoggedIn ? 'Mi cuenta' : 'Ingresar', to: '/mi-perfil' }]
+  const actions = [{ label: 'Buscar', to: '/catalogo' }, { label: 'Vender', to: '/mis-publicaciones' }, { label: isLoggedIn ? 'Mi cuenta' : 'Ingresar', to: isLoggedIn ? '/mi-perfil' : '/ingresar' }]
   return (
     <header className="grid grid-cols-1 items-center gap-6 bg-bordo px-6 py-2.5 text-[0.9375rem] leading-[normal] font-bold text-crema lg:grid-cols-[minmax(0,1fr)_9.375rem_minmax(0,1fr)] lg:px-10">
       <nav aria-label="Categorías" className="flex flex-wrap justify-center gap-7 lg:justify-start">
         {categories.map((category) => (
-          <Link key={category} to={category === 'Colecciones' ? '/' : '/catalogo'} state={categoryTypes[category] ? { type: categoryTypes[category] } : undefined}>{category}</Link>
+          <Link key={category} replace={false} to={category === 'Colecciones' ? '/' : '/catalogo'} state={categoryTypes[category] ? { type: categoryTypes[category] } : undefined}>{category}</Link>
         ))}
       </nav>
 

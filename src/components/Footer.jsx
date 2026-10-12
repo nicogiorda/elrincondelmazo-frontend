@@ -7,7 +7,7 @@ const paymentMethods = ['Crédito', 'Débito', 'Mercado Pago', 'Transferencia']
 
 function Footer({ variant = 'default', isLoggedIn = false }) {
   const visibleAccountLinks = isLoggedIn ? ['Mi perfil', 'Mis pedidos', 'Carrito', 'Publicar un producto'] : accountLinks
-  const destinations = { Cartas: '/catalogo', Sobres: '/catalogo', Lootboxes: '/catalogo', 'Catálogo completo': '/catalogo', Ingresar: '/mi-perfil', 'Crear cuenta': '/mi-perfil', 'Mi perfil': '/mi-perfil', 'Mis pedidos': '/mis-pedidos', Carrito: '/carrito', 'Publicar un producto': '/publicar' }
+  const destinations = { Cartas: '/catalogo', Sobres: '/catalogo', Lootboxes: '/catalogo', 'Catálogo completo': '/catalogo', Ingresar: '/ingresar', 'Crear cuenta': '/crear-cuenta', 'Mi perfil': '/mi-perfil', 'Mis pedidos': '/mis-pedidos', Carrito: '/carrito', 'Publicar un producto': '/publicar' }
   const types = { Cartas: 'CARTA', Sobres: 'SOBRE', Lootboxes: 'LOOTBOX' }
   return (
     <footer className={`bg-bordo px-6 pt-14 pb-7 text-[0.9375rem] leading-[normal] text-crema lg:px-10 ${variant === 'home' ? 'min-h-[25.5625rem]' : ''}`}>
@@ -24,7 +24,7 @@ function Footer({ variant = 'default', isLoggedIn = false }) {
         <nav aria-label="Tienda" className="flex flex-col items-start gap-2.5">
           <h2 className="text-[0.8125rem] font-extrabold tracking-[0.065rem] text-amarillo uppercase">Tienda</h2>
           {storeLinks.map((label) => (
-            <Link key={label} to={destinations[label]} state={types[label] ? { type: types[label] } : label === 'Catálogo completo' ? { resetFilters: true } : undefined} className="text-left">{label}</Link>
+            <Link key={label} replace={false} to={destinations[label]} state={types[label] ? { type: types[label] } : label === 'Catálogo completo' ? { resetFilters: true } : undefined} className="text-left">{label}</Link>
           ))}
         </nav>
 

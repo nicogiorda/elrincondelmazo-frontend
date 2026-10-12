@@ -4,7 +4,9 @@ import Footer from './Footer.jsx'
 
 const links = [{ view: 'orders', to: '/mis-pedidos', label: 'Mis pedidos' }, { view: 'profile', to: '/mi-perfil', label: 'Mi perfil' }, { view: 'publications', to: '/mis-publicaciones', label: 'Mis publicaciones' }]
 
-function AccountLayout({ user, activeView, cartCount, children }) {
+function AccountLayout({ user, activeView, cartCount, onLogout, children }) {
+  const isAdmin = user.role === 'ADMIN'
+  const visibleLinks = isAdmin ? [...links, { view: 'promotions', to: '/promociones', label: 'Promociones' }] : links
   return (
     <>
       <Header cartCount={cartCount} isLoggedIn />
@@ -17,8 +19,9 @@ function AccountLayout({ user, activeView, cartCount, children }) {
               <p className="max-w-full text-[0.875rem] font-semibold wrap-anywhere">{user.email}</p>
             </div>
             <nav className="flex flex-col gap-1 rounded-[1.625rem] border-[2.4px] border-bordo bg-papel p-2.5">
-              {links.map((link) => <Link key={link.view} to={link.to} aria-current={activeView === link.view ? 'page' : undefined} className={`rounded-2xl px-4 py-3 text-left text-base font-extrabold ${activeView === link.view ? 'bg-bordo text-crema' : ''}`}>{link.label}</Link>)}
+              {visibleLinks.map((link) => <Link key={link.view} to={link.to} aria-current={activeView === link.view ? 'page' : undefined} className={`rounded-2xl px-4 py-3 text-left text-base font-extrabold ${activeView === link.view ? 'bg-bordo text-crema' : ''}`}>{link.label}</Link>)}
             </nav>
+            {isAdmin && <button type="button" onClick={onLogout} className="px-2.5 text-left text-[0.875rem] font-bold underline">Cerrar sesión</button>}
           </aside>
           <div className="flex min-w-0 flex-col gap-6">{children}</div>
         </div>
