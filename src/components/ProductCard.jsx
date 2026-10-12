@@ -75,10 +75,11 @@ function ProductCard({ product, userId, cartQuantity = 0, variant = 'home', imag
           <button
             type="button"
             disabled={!canAddToCart}
+            title={isAvailable && !canAddToCart ? 'Ya agregaste todas las unidades disponibles al carrito.' : undefined}
             onClick={() => { if (canAddToCart) onAddToCart?.(product) }}
             className={`rounded-full px-3.5 py-2 text-[0.8125rem] font-extrabold whitespace-nowrap text-crema disabled:cursor-not-allowed ${styles.button}`}
           >
-            {isOwnProduct ? 'Tu publicación' : isSoldOut ? 'Sin stock' : !isAvailable ? 'No disponible' : 'Agregar'}
+            {isOwnProduct ? 'Tu publicación' : isSoldOut ? 'Sin stock' : !isAvailable ? 'No disponible' : canAddToCart ? 'Agregar' : 'Máximo'}
           </button>
         </div>
       </div>

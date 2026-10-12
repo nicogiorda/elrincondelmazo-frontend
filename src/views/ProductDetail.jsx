@@ -22,6 +22,7 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
   const relatedProducts = getRelatedProducts(product, products)
   const availableUnits = Math.max(0, product.stock - cartQuantity)
   const canBuy = canBuyProduct(product, userId) && availableUnits > 0
+  const selectedQuantity = availableUnits > 0 ? Math.min(quantity, availableUnits) : 0
   const isOwnProduct = product.sellerId === userId
   const isLastUnit = canBuy && product.stock === 1
   const averageRating = reviews.length ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length : 0
@@ -36,6 +37,10 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
 
   function changeQuantity(nextQuantity) {
     if (canBuy && nextQuantity >= 1 && nextQuantity <= availableUnits) setQuantity(nextQuantity)
+  }
+
+  function addSelectedQuantity() {
+    if (canBuy && onAddToCart?.(product, selectedQuantity) === true) setQuantity(1)
   }
 
   return (
@@ -67,10 +72,10 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
               <p className="text-[0.9375rem] leading-[1.21875rem] font-bold">{detailTransferPromotion.text}</p>
             </div>
             <div className="flex flex-wrap items-stretch gap-3">
-              <QuantitySelector quantity={quantity} maxQuantity={canBuy ? availableUnits : 0} onChange={changeQuantity} />
-              <button type="button" disabled={!canBuy} onClick={() => { if (canBuy) onAddToCart?.(product, quantity) }} className="min-w-0 flex-1 rounded-full border-3 border-bordo bg-bordo px-6 py-4 text-[1.125rem] font-extrabold text-crema disabled:cursor-not-allowed">Agregar al carrito</button>
+              <QuantitySelector quantity={selectedQuantity} maxQuantity={canBuy ? availableUnits : 0} onChange={changeQuantity} />
+              <button type="button" disabled={!canBuy} onClick={addSelectedQuantity} className="min-w-0 flex-1 rounded-full border-3 border-bordo bg-bordo px-6 py-4 text-[1.125rem] font-extrabold text-crema disabled:cursor-not-allowed">Agregar al carrito</button>
             </div>
-            <button type="button" disabled={!canBuy} onClick={() => { if (canBuy) onBuyNow?.(product, quantity) }} className="w-full rounded-full border-3 border-bordo bg-rosa px-6 py-3.5 text-[1.0625rem] font-extrabold shadow-[0.25rem_0.25rem_0_var(--color-bordo)] disabled:cursor-not-allowed">Comprar ahora</button>
+            <button type="button" disabled={!canBuy} onClick={() => { if (canBuy) onBuyNow?.(product, selectedQuantity) }} className="w-full rounded-full border-3 border-bordo bg-rosa px-6 py-3.5 text-[1.0625rem] font-extrabold shadow-[0.25rem_0.25rem_0_var(--color-bordo)] disabled:cursor-not-allowed">Comprar ahora</button>
             <dl>
               {productInformation.map((item) => (
                 <div key={item.label} className="flex justify-between gap-4 border-b-3 border-bordo py-3.5 text-[0.9375rem]">
