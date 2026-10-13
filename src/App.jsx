@@ -173,7 +173,7 @@ function App() {
           onSelectCollection={(collection) => navigate('/catalogo', { state: { collectionId: collection.id } })} />
       } />
       <Route path="/catalogo" element={
-        <Catalog {...shared} products={publicProducts} cartItems={items} filters={catalogFilters}
+        <Catalog {...shared} cartItems={items} filters={catalogFilters}
           onFiltersChange={changeCatalogFilters} onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
           onOpenProduct={openProduct} onAddToCart={addToCart} />
       } />
