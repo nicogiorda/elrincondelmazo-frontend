@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect , useState } from 'react'
 import { resolveCart, addCartItem, changeCartQuantity, checkoutError, completeOrder } from './utils/shopDemo.js'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Home from './views/Home.jsx'
@@ -21,6 +21,8 @@ import OrderConfirmation from './views/OrderConfirmation.jsx'
 import { productMocks } from './data/productMocks.js'
 import { accountUser, publicationProducts } from './data/accountMocks.js'
 import { cartItems, orderMocks } from './data/purchaseMocks.js'
+import ProtectedRoute from './components/ProtectedRoute.jsx'
+
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
 
@@ -28,7 +30,50 @@ function App() {
   const navigate = useNavigate()
   const location = useLocation()
   // Operaciones de demostración en memoria; sin persistencia.
-  const [user, setUser] = useState(accountUser)
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [deactivateError, setDeactivateError] = useState("");
+  useEffect(() => {
+    async function recuperarSesion() {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          "http://localhost:8080/users/me",
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
+
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem("token");
+          }
+          return;
+        }
+
+        const usuario = await response.json();
+        setUser(usuario);
+
+      } catch (error) {
+        console.error("Error al recuperar la sesión:", error);
+      }
+
+      finally {
+        setLoading(false);
+      }
+    }
+
+    recuperarSesion();
+  }, []);
   // Sólo se habilita al iniciar una sesión de desarrollo con esta URL explícita.
   const [demoAdmin, setDemoAdmin] = useState(() => import.meta.env.DEV
     && location.pathname === '/promociones'
@@ -47,10 +92,9 @@ function App() {
   const items = resolveCart(shop)
   const orders = shop.orders
   const confirmedOrder = orders.find((order) => order.id === shop.lastOrderId)
-  const ownProducts = products.filter((product) => product.sellerId === user.id)
-  const publications = [
-    ...publicationProducts.map((original) => ownProducts.find((product) => product.id === original.id)).filter(Boolean),
-    ...ownProducts.filter((product) => !publicationProducts.some((original) => original.id === product.id)),
+  const ownProducts = user ? products.filter((product) => product.sellerId === user.id) : [];
+  const publications = [...publicationProducts.map((original) => ownProducts.find((product) => product.id === original.id)).filter(Boolean),
+  ...ownProducts.filter((product) => !publicationProducts.some((original) => original.id === product.id)),
   ]
   const [promotions, setPromotions] = useState(promotionMocks)
   const [reviews, setReviews] = useState(detailReviews)
@@ -80,8 +124,8 @@ function App() {
   }
   // Ir a los formularios de acceso también finaliza la vista previa.
   if (demoAdmin && ['/ingresar', '/crear-cuenta'].includes(location.pathname)) setDemoAdmin(false)
-  const currentUser = demoAdmin ? { ...user, role: 'ADMIN' } : user
-  const isAdmin = currentUser.role === 'ADMIN'
+  const currentUser = user && demoAdmin ? { ...user, role: 'ADMIN' } : user;
+  const isAdmin = currentUser?.role === 'ADMIN';
   const selectedPromotion = promotions.find((promotion) => promotion.id === location.state?.promotion?.id)
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
   const publicProducts = products.filter((product) => ['ACTIVO', 'AGOTADO'].includes(product.status))
@@ -144,20 +188,48 @@ function App() {
     navigate('/pedido-confirmado')
     return true
   }
-  function saveProfile({ firstName, lastName, email }) {
-    setUser((current) => ({ ...current, firstName, lastName, email }))
+  function saveProfile(usuarioActualizado) {
+    setUser(usuarioActualizado)
   }
   function logout() {
+    localStorage.removeItem("token");
     setDemoAdmin(false)
-    setUser((current) => ({ ...current, role: accountUser.role }))
-    navigate('/ingresar', { replace: true })
+    setUser(null);
+    navigate('/ingresar', { replace: true });
   }
   function savePromotion(promotion) {
     const saved = { ...promotion, id: promotion.id ?? Math.max(0, ...promotions.map((item) => item.id)) + 1 }
     setPromotions((current) => promotion.id ? current.map((item) => item.id === promotion.id ? saved : item) : [...current, saved])
     navigate('/promociones')
   }
-  const shared = { cartCount, userId: user.id }
+  async function deactivateAccount() {
+    const confirmado = window.confirm("¿Estás seguro de que deseás desactivar tu cuenta?")
+    if (!confirmado) return;
+    setDeactivateError("");
+
+    try {
+      const token = localStorage.getItem("token");
+
+      const response = await fetch("http://localhost:8080/users/me", {
+        method: "DELETE",
+        headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+      if (!response.ok) {
+        throw new Error("No se pudo desactivar la cuenta");
+      }
+
+      logout();
+
+    } catch (error) {
+      console.error("Error al desactivar la cuenta", error)
+      setDeactivateError(error.message);
+    }
+
+  }
+  const shared = { cartCount, userId: user?.id }
   const account = { ...shared, user: currentUser, onLogout: logout }
   function togglePublication(product) {
     setShop((current) => ({ ...current, products: current.products.map((item) => item.id === product.id ? {
@@ -165,7 +237,9 @@ function App() {
       status: item.status === 'ACTIVO' ? 'INACTIVO' : item.stock > 0 ? 'ACTIVO' : 'AGOTADO',
     } : item) }))
   }
-
+  if (loading) {
+    return <p>Verificando sesión...</p>
+  }
   return (
     <Routes>
       <Route path="/" element={
@@ -184,40 +258,36 @@ function App() {
           onOpenProduct={openProduct} onAddToCart={addToCart} onBuyNow={buyNow}
           onViewCollection={(collectionId) => navigate('/catalogo', { state: { collectionId } })} />
       ) : <Navigate to="/catalogo" replace />} />
-      <Route path="/mis-publicaciones" element={
+      <Route path="/mis-publicaciones" element={<ProtectedRoute user={user}>
         <Publications {...account} products={publications}
           onEdit={(product) => navigate('/publicar', { state: { product } })}
           onDelete={(product) => setShop((current) => ({ ...current, products: current.products.filter((item) => item.id !== product.id) }))}
-          onToggleStatus={togglePublication} />
+          onToggleStatus={togglePublication} /> </ProtectedRoute>
       } />
-      <Route path="/publicar" element={location.state?.product && !editingPublication ? (
-        <Navigate to="/mis-publicaciones" replace />
-      ) : <PublishProduct key={editingPublication?.id ?? 'new'} {...account} product={editingPublication} onPublish={publishProduct} />} />
-      <Route path="/mis-pedidos" element={
-        <Orders {...account} orders={orders} canReview={canReview} onReview={openProduct} />
-      } />
-      <Route path="/mi-perfil" element={<Profile {...account} onSave={saveProfile} />} />
+      <Route path="/publicar" element={<ProtectedRoute user={user}>
+        {location.state?.product && !editingPublication ? (
+          <Navigate to="/mis-publicaciones" replace />
+        ) : <PublishProduct key={editingPublication?.id ?? 'new'} {...account} product={editingPublication} onPublish={publishProduct} />}
+      </ProtectedRoute>} />
+      <Route path="/mis-pedidos" element={<ProtectedRoute user={user}>
+        <Orders {...account} orders={orders} canReview={canReview} onReview={openProduct} /></ProtectedRoute>} />
+      <Route path="/mi-perfil" element={<ProtectedRoute user={user}><Profile {...account} onSave={saveProfile} onDeactivate={deactivateAccount} deactivateError={deactivateError} /></ProtectedRoute>} />
       <Route path="/carrito" element={
-        <Cart {...shared} items={items} userId={user.id} onQuantityChange={changeQuantity}
+        <Cart {...shared} items={items} userId={user?.id} onQuantityChange={changeQuantity}
           onRemove={(id) => setShop((current) => ({ ...current, cart: current.cart.filter((item) => item.id !== id), checkoutError: '' }))}
           onCheckout={() => navigate('/checkout')} />
       } />
-      <Route path="/checkout" element={
+      <Route path="/checkout" element={<ProtectedRoute user={user}>
         <Checkout {...shared} items={items.filter((item) => item.product)}
-          error={shop.checkoutError || checkoutError(shop, user.id)} onConfirm={confirmOrder} />
-      } />
+          error={shop.checkoutError || checkoutError(shop, user?.id)} onConfirm={confirmOrder} />
+      </ProtectedRoute>} />
       <Route path="/pedido-confirmado" element={confirmedOrder
         ? <OrderConfirmation order={confirmedOrder} /> : <Navigate to="/" replace />} />
       {/* Acceso de demostración: sin autenticación ni almacenamiento de contraseñas. */}
       <Route path="/ingresar" element={
-        <Login {...shared} onLogin={() => { setDemoAdmin(false); navigate('/mi-perfil') }} />
-      } />
+        <Login {...shared} onLogin={(usuario) => {setDemoAdmin(false); setUser(usuario); navigate('/mi-perfil');}} />} />
       <Route path="/crear-cuenta" element={
-        <Register {...shared} onRegister={({ firstName, lastName, email }) => {
-          setDemoAdmin(false)
-          saveProfile({ firstName, lastName, email })
-          navigate('/mi-perfil')
-        }} />
+        <Register {...shared} onRegister={(usuario) => {setDemoAdmin(false); setUser(usuario); navigate("/mi-perfil", { replace: true });}} />
       } />
       <Route path="/promociones" element={isAdmin ? (
         <Promotions {...account} promotions={promotions}
