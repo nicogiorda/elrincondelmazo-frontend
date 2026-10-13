@@ -4,7 +4,7 @@ import Header from './Header.jsx'
 import Footer from './Footer.jsx'
 import FormField from './FormField.jsx'
 
-function AccountAccess({ mode, cartCount, onSubmit }) {
+function AccountAccess({ mode, cartCount, onSubmit, error, loading }) {
   const isRegister = mode === 'register'
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
@@ -41,7 +41,8 @@ function AccountAccess({ mode, cartCount, onSubmit }) {
                   <button type="button" aria-controls="access-password" aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)} className="rounded-full px-2.5 py-2 text-[0.8125rem] font-extrabold">{showPassword ? 'Ocultar' : 'Mostrar'}</button>
                 </span>
               </label>
-              <div className="pt-1"><button type="submit" className="min-h-[3.875rem] w-full rounded-full border-[2.4px] border-bordo bg-bordo px-6 py-4.25 text-[1.125rem] font-extrabold text-crema">{isRegister ? 'Crear cuenta' : 'Ingresar'}</button></div>
+              {error && <p className="error-message">{error}</p>}
+              <div className="pt-1"><button type="submit" disabled={loading} className="min-h-[3.875rem] w-full rounded-full border-[2.4px] border-bordo bg-bordo px-6 py-4.25 text-[1.125rem] font-extrabold text-crema">{loading ? (isRegister ? 'Registrando...' : 'Ingresando...') : (isRegister ? 'Crear cuenta' : 'Ingresar') }</button></div>
             </form>
             <p className="flex flex-wrap justify-center gap-1.5 text-[0.9375rem] font-semibold">{isRegister ? '¿Ya tenés cuenta?' : '¿Todavía no tenés cuenta?'} <Link to={isRegister ? '/ingresar' : '/crear-cuenta'} className="font-extrabold">{isRegister ? 'Ingresá' : 'Creá una'}</Link></p>
           </section>

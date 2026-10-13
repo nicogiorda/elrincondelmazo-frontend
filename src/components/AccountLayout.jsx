@@ -21,7 +21,7 @@ function AccountLayout({ user, activeView, cartCount, onLogout, children }) {
             <nav className="flex flex-col gap-1 rounded-[1.625rem] border-[2.4px] border-bordo bg-papel p-2.5">
               {visibleLinks.map((link) => <Link key={link.view} to={link.to} aria-current={activeView === link.view ? 'page' : undefined} className={`rounded-2xl px-4 py-3 text-left text-base font-extrabold ${activeView === link.view ? 'bg-bordo text-crema' : ''}`}>{link.label}</Link>)}
             </nav>
-            {isAdmin && <button type="button" onClick={onLogout} className="px-2.5 text-left text-[0.875rem] font-bold underline">Cerrar sesión</button>}
+            <button type="button" onClick={onLogout} className="px-2.5 text-left text-[0.875rem] font-bold underline">Cerrar sesión</button>
           </aside>
           <div className="flex min-w-0 flex-col gap-6">{children}</div>
         </div>
