@@ -1,4 +1,5 @@
-import { useState } from 'react'
+
+import { useEffect, useState } from 'react'
 import { resolveCart, addCartItem, changeCartQuantity, checkoutError, completeOrder } from './utils/shopDemo.js'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Home from './views/Home.jsx'
@@ -23,8 +24,10 @@ import { accountUser, publicationProducts } from './data/accountMocks.js'
 import { cartItems, orderMocks } from './data/purchaseMocks.js'
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
+const URL = 'http://localhost:8080'
 
 function App() {
+
   const navigate = useNavigate()
   const location = useLocation()
   // Operaciones de demostración en memoria; sin persistencia.
@@ -43,6 +46,23 @@ function App() {
     lastOrderId: null,
     checkoutError: '',
   }))
+  useEffect(() => {
+    fetch(`${URL}/products?size=100`)
+        .then((response) => response.json())
+        .then((data) => {
+          setShop((current) => ({
+            ...current,
+            products: data.content,
+            nextProductId: Math.max(
+                0,
+                ...data.content.map((product) => product.id)
+            ) + 1,
+          }))
+        })
+        .catch((error) => {
+          console.log(error)
+        })
+  }, [])
   const products = shop.products
   const items = resolveCart(shop)
   const orders = shop.orders
@@ -173,10 +193,17 @@ function App() {
           onSelectCollection={(collection) => navigate('/catalogo', { state: { collectionId: collection.id } })} />
       } />
       <Route path="/catalogo" element={
-        <Catalog {...shared} cartItems={items} filters={catalogFilters}
-          onFiltersChange={changeCatalogFilters} onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
-          onOpenProduct={openProduct} onAddToCart={addToCart} />
-      } />
+                                 <Catalog
+                                    {...shared}
+                                    products={publicProducts}
+                                    cartItems={items}
+                                    filters={catalogFilters}
+                                    onFiltersChange={changeCatalogFilters}
+                                    onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
+                                    onOpenProduct={openProduct}
+                                    onAddToCart={addToCart}
+                                />
+                              } />
       <Route path="/producto" element={selectedProduct ? (
         <ProductDetail key={selectedProduct.id} {...shared} product={selectedProduct} products={publicProducts}
           cartItems={items} cartQuantity={items.find((item) => item.productId === selectedProduct.id)?.quantity ?? 0}

@@ -3,34 +3,13 @@ import Footer from '../components/Footer.jsx'
 import ProductCard from '../components/ProductCard.jsx'
 import CatalogFilters from '../components/CatalogFilters.jsx'
 import Pagination from '../components/Pagination.jsx'
-import { useEffect, useState } from 'react'
 import { catalogTypes, catalogCollections, catalogProductBackgrounds } from '../data/catalogMocks.js'
 
-const URL = 'http://localhost:8080'
+
 const pageSize = 9
 
-function Catalog({ cartItems = [], userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+function Catalog({ cartItems = [],products, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
 
-  const [products, setProducts] = useState([])
-  useEffect(() => {
-    // fetch envía una solicitud HTTP al backend.
-    // Como no indicamos method, por defecto hace un GET.
-    fetch(`${URL}/products`)
-
-        // Cuando Spring responde, convertimos el body de la respuesta a JSON.
-        .then((response) => response.json())
-
-        // Cuando ya tenemos el JSON convertido, recibimos los datos.
-        .then((data) => {
-          setProducts(data.content) // Guardamos los productos en el estado.
-          //usamos content porqoue la response es de tipo Page<productResponse> y el contenido de la pagina viene en content
-        })
-
-        // Si ocurre un error en la comunicación, lo mostramos en consola.
-        .catch((error) => {
-          console.log(error)
-        })
-  }, []) // [] = ejecutar este efecto SOLO cuando se monta el componente.
 
   const { search, type, collection, minPrice, maxPrice, page } = filters
 
