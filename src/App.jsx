@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect , useState } from 'react'
 import { resolveCart, addCartItem, changeCartQuantity, checkoutError, completeOrder } from './utils/shopDemo.js'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Home from './views/Home.jsx'
@@ -28,7 +28,44 @@ function App() {
   const navigate = useNavigate()
   const location = useLocation()
   // Operaciones de demostración en memoria; sin persistencia.
-  const [user, setUser] = useState(accountUser)
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    async function recuperarSesion() {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          "http://localhost:8080/users/me",
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
+
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem("token");
+          }
+          return;
+        }
+
+        const usuario = await response.json();
+        setUser(usuario);
+
+      } catch (error) {
+        console.error("Error al recuperar la sesión:", error);
+      }
+    }
+
+    recuperarSesion();
+  }, []);
   // Sólo se habilita al iniciar una sesión de desarrollo con esta URL explícita.
   const [demoAdmin, setDemoAdmin] = useState(() => import.meta.env.DEV
     && location.pathname === '/promociones'
@@ -47,10 +84,9 @@ function App() {
   const items = resolveCart(shop)
   const orders = shop.orders
   const confirmedOrder = orders.find((order) => order.id === shop.lastOrderId)
-  const ownProducts = products.filter((product) => product.sellerId === user.id)
-  const publications = [
-    ...publicationProducts.map((original) => ownProducts.find((product) => product.id === original.id)).filter(Boolean),
-    ...ownProducts.filter((product) => !publicationProducts.some((original) => original.id === product.id)),
+  const ownProducts = user ? products.filter((product) => product.sellerId === user.id) : [];
+  const publications = [...publicationProducts.map((original) => ownProducts.find((product) => product.id === original.id)).filter(Boolean),
+  ...ownProducts.filter((product) => !publicationProducts.some((original) => original.id === product.id)),
   ]
   const [promotions, setPromotions] = useState(promotionMocks)
   const [reviews, setReviews] = useState(detailReviews)
@@ -80,8 +116,8 @@ function App() {
   }
   // Ir a los formularios de acceso también finaliza la vista previa.
   if (demoAdmin && ['/ingresar', '/crear-cuenta'].includes(location.pathname)) setDemoAdmin(false)
-  const currentUser = demoAdmin ? { ...user, role: 'ADMIN' } : user
-  const isAdmin = currentUser.role === 'ADMIN'
+  const currentUser = user && demoAdmin ? { ...user, role: 'ADMIN' } : user;
+  const isAdmin = currentUser?.role === 'ADMIN';
   const selectedPromotion = promotions.find((promotion) => promotion.id === location.state?.promotion?.id)
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
   const publicProducts = products.filter((product) => ['ACTIVO', 'AGOTADO'].includes(product.status))
@@ -210,8 +246,7 @@ function App() {
         ? <OrderConfirmation order={confirmedOrder} /> : <Navigate to="/" replace />} />
       {/* Acceso de demostración: sin autenticación ni almacenamiento de contraseñas. */}
       <Route path="/ingresar" element={
-        <Login {...shared} onLogin={() => { setDemoAdmin(false); navigate('/mi-perfil') }} />
-      } />
+        <Login {...shared} onLogin={(usuario) => {setDemoAdmin(false); setUser(usuario); navigate('/mi-perfil');}} />} />
       <Route path="/crear-cuenta" element={
         <Register {...shared} onRegister={({ firstName, lastName, email }) => {
           setDemoAdmin(false)

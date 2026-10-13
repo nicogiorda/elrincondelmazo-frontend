@@ -1,9 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
 
 function Profile({ user, onLogout, cartCount, onSave, onDeactivate }) {
   const [form, setForm] = useState({ firstName: user.firstName, lastName: user.lastName, email: user.email })
+
+  useEffect(() => {
+    setForm({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email
+    })
+  }, [user])
   function changeField(field, value) { setForm({ ...form, [field]: value }) }
   return (
     <AccountLayout user={user} activeView="profile" cartCount={cartCount} onLogout={onLogout}>
