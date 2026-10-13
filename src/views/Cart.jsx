@@ -3,10 +3,12 @@ import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import CartItem from '../components/CartItem.jsx'
 import PurchaseSummary from '../components/PurchaseSummary.jsx'
-import { calculateMockSummary } from '../data/purchaseMocks.js'
+import PurchaseNotice from '../components/PurchaseNotice.jsx'
 
-function Cart({ userId, items, cartCount, onQuantityChange, onRemove, onCheckout }) {
-  const summary = calculateMockSummary(items.filter((item) => item.product))
+function Cart({ userId, cart, products = [], cartCount, onQuantityChange, onRemove, onCheckout }) {
+  if (!cart) return <PurchaseNotice title="Tu carrito" />
+  const items = cart.items
+  const summary = { subtotal: cart.subtotal, discounts: [] }
   return (
     <>
       <Header cartCount={cartCount} isLoggedIn />
@@ -18,11 +20,11 @@ function Cart({ userId, items, cartCount, onQuantityChange, onRemove, onCheckout
         <div className="grid min-w-0 items-start gap-7 lg:grid-cols-[minmax(0,1fr)_21.25rem]">
           <div className="flex min-w-0 flex-col items-stretch gap-4.5">
             {!items.length && <p className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold">Tu carrito está vacío</p>}
-            {items.map((item) => <CartItem key={item.id} item={item} userId={userId} onQuantityChange={onQuantityChange} onRemove={onRemove} />)}<Link to="/catalogo" className="self-start text-[0.9375rem] font-bold underline">← Seguir comprando</Link>
+            {items.map((item) => <CartItem key={item.id} item={item} product={products.find((product) => product.id === item.productId)} userId={userId} onQuantityChange={onQuantityChange} onRemove={onRemove} />)}<Link to="/catalogo" className="self-start text-[0.9375rem] font-bold underline">← Seguir comprando</Link>
           </div>
           <PurchaseSummary summary={summary} variant="cart">
-            <button type="button" disabled={!items.length} onClick={onCheckout} className="rounded-full bg-bordo px-6 py-4 text-[1.0625rem] font-extrabold text-crema disabled:opacity-50">Iniciar compra</button>
-            <p className="text-[0.8125rem] leading-[1.1375rem] opacity-80">Pagando con transferencia se suma 10% off en el siguiente paso.</p>
+            <button type="button" disabled={!items.length || !onCheckout} onClick={onCheckout} className="rounded-full bg-bordo px-6 py-4 text-[1.0625rem] font-extrabold text-crema disabled:opacity-50">Iniciar compra</button>
+            <p className="text-[0.8125rem] leading-[1.1375rem] opacity-80">Los descuentos y el total final se calculan al confirmar el pedido.</p>
           </PurchaseSummary>
         </div>
       </main>
