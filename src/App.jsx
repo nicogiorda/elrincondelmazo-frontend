@@ -46,6 +46,8 @@ function App() {
     lastOrderId: null,
     checkoutError: '',
   }))
+  const [collections, setCollections] = useState([])
+
   useEffect(() => {
     fetch(`${URL}/products?size=100`)
         .then((response) => response.json())
@@ -63,6 +65,24 @@ function App() {
           console.log(error)
         })
   }, [])
+  useEffect(() => {
+    fetch(`${URL}/collections`)
+        .then((response) => response.json())
+        .then((data) => {
+          setCollections(data)
+        })
+        .catch((error) => {
+          console.log(error)
+        })
+  }, [])
+
+  const catalogCollections = [
+    { value: '', label: 'Todas' },
+    ...collections.map((collection) => ({
+      value: String(collection.id),
+      label: collection.name,
+    })),
+  ]
   const products = shop.products
   const items = resolveCart(shop)
   const orders = shop.orders
@@ -196,6 +216,7 @@ function App() {
                                  <Catalog
                                     {...shared}
                                     products={publicProducts}
+                                    collections={catalogCollections}
                                     cartItems={items}
                                     filters={catalogFilters}
                                     onFiltersChange={changeCatalogFilters}

@@ -1,14 +1,14 @@
+import Pagination from '../components/Pagination.jsx'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import ProductCard from '../components/ProductCard.jsx'
 import CatalogFilters from '../components/CatalogFilters.jsx'
-import Pagination from '../components/Pagination.jsx'
-import { catalogTypes, catalogCollections, catalogProductBackgrounds } from '../data/catalogMocks.js'
+import { catalogTypes, catalogProductBackgrounds } from '../data/catalogMocks.js'
 
 
 const pageSize = 9
 
-function Catalog({ cartItems = [],products, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+function Catalog({ cartItems = [],products, collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
 
 
   const { search, type, collection, minPrice, maxPrice, page } = filters
@@ -48,7 +48,7 @@ function Catalog({ cartItems = [],products, userId, cartCount = 0, filters, onFi
         </section>
 
         <div className="grid min-w-0 gap-8 lg:grid-cols-[16.875rem_minmax(0,1fr)]">
-          <CatalogFilters type={type} collection={collection} minPrice={minPrice} maxPrice={maxPrice} types={catalogTypes} collections={catalogCollections} onTypeChange={(value) => changeFilter('type', value)} onCollectionChange={(value) => changeFilter('collection', value)} onMinPriceChange={(value) => changeFilter('minPrice', value)} onMaxPriceChange={(value) => changeFilter('maxPrice', value)} onClear={onClearFilters} />
+          <CatalogFilters type={type} collection={collection} minPrice={minPrice} maxPrice={maxPrice} types={catalogTypes} collections={collections} onTypeChange={(value) => changeFilter('type', value)} onCollectionChange={(value) => changeFilter('collection', value)} onMinPriceChange={(value) => changeFilter('minPrice', value)} onMaxPriceChange={(value) => changeFilter('maxPrice', value)} onClear={onClearFilters} />
           <div className="flex min-w-0 flex-col gap-8">
             {filteredProducts.length > 0 ? <>
             <div aria-label="Productos del catálogo" className="grid min-w-0 grid-cols-1 gap-6.5 sm:grid-cols-2 xl:grid-cols-3">
