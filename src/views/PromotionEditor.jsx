@@ -1,18 +1,94 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
 import PromotionCard from '../components/PromotionCard.jsx'
 import ToggleSwitch from '../components/ToggleSwitch.jsx'
 import { promotionKinds, emptyPromotion, promotionStatus, promotionPeriod, promotionCondition } from '../data/promotionMocks.js'
-import { publicationCollections, productTypeLabels } from '../data/accountMocks.js'
-import { productMocks } from '../data/productMocks.js'
+import { productTypeLabels } from '../data/accountMocks.js'
 import { paymentMethods } from '../data/paymentMethods.js'
 
 function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave }) {
-  const [form, setForm] = useState(isNew ? emptyPromotion : promotion)
+    const [form, setForm] = useState(isNew ? emptyPromotion : promotion)
+    const [collections, setCollections] = useState([]);
+    const [products, setProducts] = useState([]);
+    const [dataLoading, setDataLoading] = useState(true);
+    const [dataError, setDataError] = useState('');
+
+useEffect(() => {
+  let cancelled = false;
+
+  async function loadData() {
+    try {
+      setDataLoading(true);
+      setDataError('');
+
+      const [collectionsResponse, productsResponse] =
+        await Promise.all([
+          fetch('http://localhost:8080/collections'),
+          fetch('http://localhost:8080/products?size=100')
+        ]);
+
+      if (!collectionsResponse.ok || !productsResponse.ok) {
+        throw new Error('No se pudieron cargar colecciones y productos');
+      }
+
+      const collectionsData = await collectionsResponse.json();
+      const productsData = await productsResponse.json();
+
+      if (!cancelled) {
+        setCollections(collectionsData);
+        setProducts(productsData.content);
+      }
+    } catch (error) {
+      if (!cancelled) {
+        setDataError(error.message);
+      }
+    } finally {
+      if (!cancelled) {
+        setDataLoading(false);
+      }
+    }
+  }
+
+  loadData();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+  
+useEffect(() => {
+  if (isNew && collections.length > 0) {
+    setForm((current) => ({
+      ...current,
+      collectionId: collections[0].id,
+    }));
+  }
+}, [collections, isNew]);
+
+useEffect(() => {
+  if (isNew && products.length > 0) {
+    setForm((current) => ({
+      ...current,
+      productId: products[0].id,
+    }));
+  }
+}, [products, isNew]);
+
+
+
   function changeField(field, value) { setForm((current) => ({ ...current, [field]: value })) }
-  const condition = promotionCondition(form, publicationCollections, productMocks, paymentMethods)
+  const condition = promotionCondition(form, collections, products, paymentMethods)
+  
+    if (dataLoading) {
+      return <p>Cargando datos de promociones...</p>;
+    }
+
+    if (dataError) {
+      return <p role="alert">{dataError}</p>;
+    }
+
   return <AccountLayout user={user} cartCount={cartCount} onLogout={onLogout} activeView="promotions">
     <div className="flex flex-col items-start gap-2.5"><Link to="/promociones" className="text-[0.9375rem] font-bold underline">← Promociones</Link><h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">{isNew ? 'Nueva promoción' : 'Editar promoción'}</h1></div>
     <div className="grid min-w-0 items-start gap-7 xl:grid-cols-[minmax(0,1fr)_17rem]">
@@ -26,7 +102,59 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
           {form.kind === 'quantity' && <div className="max-w-[14.8rem]"><FormField id="promotion-quantity" label="Cantidad mínima" type="number" min="1" step="1" required value={form.minimumQuantity} onChange={(event) => changeField('minimumQuantity', Number(event.target.value))} /></div>}
           {['quantity', 'type'].includes(form.kind) && <fieldset><legend className="mb-2 text-[0.8125rem] font-extrabold tracking-[0.04875rem] uppercase">Aplica a</legend><div className="flex flex-wrap gap-2">{[['', 'Todos'], ...Object.entries(productTypeLabels)].map(([value, label]) => <button key={value} type="button" aria-pressed={form.productType === value} onClick={() => changeField('productType', value)} className={`rounded-full border-[1.6px] border-bordo px-4 py-2.25 text-[0.875rem] font-bold ${form.productType === value ? 'bg-bordo text-crema' : 'bg-papel'}`}>{label}</button>)}</div></fieldset>}
           {form.kind === 'minimum' && <FormField id="promotion-minimum" label="Monto mínimo (ARS)" type="number" min="0.01" required value={form.minimumAmount} onChange={(event) => changeField('minimumAmount', Number(event.target.value))} />}
-          {['collection', 'payment', 'product'].includes(form.kind) && <label className="flex min-w-0 flex-col gap-2"><span className="text-[0.8125rem] font-extrabold tracking-[0.04875rem] uppercase">{form.kind === 'collection' ? 'Colección' : form.kind === 'payment' ? 'Medio de pago' : 'Producto'}</span><select value={form.kind === 'collection' ? form.collectionId : form.kind === 'payment' ? form.paymentMethod : form.productId} onChange={(event) => changeField(form.kind === 'collection' ? 'collectionId' : form.kind === 'payment' ? 'paymentMethod' : 'productId', form.kind === 'payment' ? event.target.value : Number(event.target.value))} className="min-w-0 rounded-[0.875rem] border-[2.4px] border-bordo bg-papel px-4 py-3.5 text-[1.0625rem] font-semibold">{(form.kind === 'collection' ? publicationCollections.map((item) => ({ value: item.id, label: item.name })) : form.kind === 'payment' ? paymentMethods : productMocks.map((item) => ({ value: item.id, label: item.name }))).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
+         
+{['collection', 'payment', 'product'].includes(form.kind) && (
+  <label className="flex min-w-0 flex-col gap-2">
+    <span className="text-[0.8125rem] font-extrabold tracking-[0.04875rem] uppercase">
+      {form.kind === 'collection'
+        ? 'Colección'
+        : form.kind === 'payment'
+          ? 'Medio de pago'
+          : 'Producto'}
+    </span>
+
+    <select
+      value={
+        form.kind === 'collection'
+          ? form.collectionId
+          : form.kind === 'payment'
+            ? form.paymentMethod
+            : form.productId
+      }
+      onChange={(event) =>
+        changeField(
+          form.kind === 'collection'
+            ? 'collectionId'
+            : form.kind === 'payment'
+              ? 'paymentMethod'
+              : 'productId',
+          form.kind === 'payment'
+            ? event.target.value
+            : Number(event.target.value)
+        )
+      }
+      className="min-w-0 rounded-[0.875rem] border-[2.4px] border-bordo bg-papel px-4 py-3.5 text-[1.0625rem] font-semibold"
+    >
+      {(form.kind === 'collection'
+        ? collections.map((item) => ({
+            value: item.id,
+            label: item.name,
+          }))
+        : form.kind === 'payment'
+          ? paymentMethods
+          : products.map((item) => ({
+              value: item.id,
+              label: item.name,
+            }))
+      ).map((item) => (
+        <option key={item.value} value={item.value}>
+          {item.label}
+        </option>
+      ))}
+    </select>
+  </label>
+)}
+
         </section>
         <div className="flex items-center gap-3.5"><ToggleSwitch large checked={form.stackable} onChange={(value) => changeField('stackable', value)} label="Acumulable" /><div><p className="font-extrabold">Acumulable</p><p className="text-[0.8125rem] leading-[1.096875rem] opacity-85">Se suma a las demás promociones que apliquen.</p></div></div>
         <div className="grid max-w-[40.2rem] grid-cols-1 gap-4.5 sm:grid-cols-2"><FormField id="promotion-start" label="Inicio" type="date" required value={form.startDate} onChange={(event) => changeField('startDate', event.target.value)} /><FormField id="promotion-end" label={<>Fin<span className="mt-2 block font-semibold tracking-normal normal-case opacity-70">(opcional)</span></>} type="date" min={form.startDate || undefined} value={form.endDate} onChange={(event) => changeField('endDate', event.target.value)} /></div>

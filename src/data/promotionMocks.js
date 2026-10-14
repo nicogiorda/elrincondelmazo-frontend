@@ -17,12 +17,29 @@ export const promotionMocks = [
   { ...emptyPromotion, id: 5, name: 'Hot Sale NBA', kind: 'collection', collectionId: 1, discount: 12, startDate: '2026-05-11', endDate: '2026-05-13', stackable: false },
   { ...emptyPromotion, id: 6, name: 'Lootboxes 10% off', kind: 'type', productType: 'LOOTBOX', discount: 10, startDate: '2026-09-15', enabled: false },
 ]
+
 export function promotionStatus(promotion) {
-  if (!promotion.enabled) return 'Inactiva'
-  if (promotion.startDate > promotionMockDate) return 'Programada'
-  if (promotion.endDate && promotion.endDate < promotionMockDate) return 'Vencida'
-  return 'Activa'
+  if (!promotion.enabled) return 'Inactiva';
+
+  const today = new Date();
+
+  const currentDate = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0')
+  ].join('-');
+
+  if (promotion.startDate > currentDate) {
+    return 'Programada';
+  }
+
+  if (promotion.endDate && promotion.endDate < currentDate) {
+    return 'Vencida';
+  }
+
+  return 'Activa';
 }
+
 export function promotionPeriod(promotion) {
   const format = (date) => date.split('-').reverse().join('/')
   if (!promotion.startDate) return ''
