@@ -5,18 +5,26 @@ import ProductCard from '../components/ProductCard.jsx'
 import CollectionCard from '../components/CollectionCard.jsx'
 import PromotionCard from '../components/PromotionCard.jsx'
 import hero from '../assets/home-hero.png'
-import { homeCollections, homePromotions, homeProductBackgrounds } from '../data/homeMocks.js'
+import { homeCollectionVisuals, homePromotions, homeProductBackgrounds } from '../data/homeMocks.js'
 
-function Home({ cartItems = [], products, userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
+function Home({ isLoggedIn, cartBusy, cartError, cartMessage, collections, productsLoading, productsError, collectionsLoading, collectionsError, cartItems = [], products, userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
+  const homeCollections = collections.map((collection) => ({
+    ...collection,
+    ...homeCollectionVisuals[collection.name],
+  }))
   return (
     <>
-      <Header cartCount={cartCount} />
+      <Header cartCount={cartCount} isLoggedIn={isLoggedIn} />
       <main>
+        {cartError && <p role="alert" className="px-6 py-3 font-bold text-rojo">{cartError} <Link to="/carrito" className="underline">Revisar carrito</Link></p>}
+        {cartMessage && <p role="status" className="px-6 py-3 font-bold">{cartMessage}</p>}
         <section aria-label="Cartas Topps NBA" className="px-6 py-10.5">
           <img src={hero} alt="Cartas coleccionables Topps NBA" className="mx-auto aspect-[1358/579] w-full max-w-[84.875rem] rounded-[0.5625rem] object-cover" />
         </section>
 
         <div className="mx-auto flex w-full max-w-[85rem] flex-col gap-14 px-6 pt-9 pb-18 lg:px-10 2xl:min-h-[109.625rem] 2xl:justify-end">
+          {collectionsLoading && <p role="status">Cargando colecciones…</p>}
+          {collectionsError && <p role="alert" className="font-bold text-rojo">{collectionsError}</p>}
           <section aria-labelledby="collections-heading" className="flex flex-col gap-5.5">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <h1 id="collections-heading" className="font-display text-[4rem] leading-[3.6rem] font-black uppercase">Colecciones</h1>
@@ -29,6 +37,8 @@ function Home({ cartItems = [], products, userId, cartCount = 0, onSelectCollect
             </div>
           </section>
 
+          {productsLoading && <p role="status">Cargando productos…</p>}
+          {productsError && <p role="alert" className="font-bold text-rojo">{productsError}</p>}
           <section aria-labelledby="products-heading" className="flex flex-col gap-5.5">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <h2 id="products-heading" className="font-display text-[4rem] leading-[3.6rem] font-black uppercase">Recién publicados</h2>
@@ -36,13 +46,13 @@ function Home({ cartItems = [], products, userId, cartCount = 0, onSelectCollect
             </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
               {products.map((product) => (
-                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="home" imageBackground={homeProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
+                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="home" imageBackground={homeProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
               ))}
             </div>
           </section>
 
           <section aria-labelledby="promotions-heading" className="grid items-center gap-10 rounded-[2.25rem] bg-amarillo px-6 py-11 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,2fr)] lg:px-12 2xl:grid-cols-[22.0732421875rem_minmax(0,1fr)]">
-            <h2 id="promotions-heading" className="max-w-[22.125rem] font-display text-[4.5rem] leading-[3.87rem] font-black text-crema uppercase text-shadow-product">Promos activas</h2>
+            <h2 id="promotions-heading" className="max-w-[22.125rem] font-display text-[4.5rem] leading-[3.87rem] font-black text-crema uppercase text-shadow-product">Ejemplos de promos</h2>
             <div className="grid min-w-0 gap-4.5 md:grid-cols-3 2xl:pr-1.5">
               {homePromotions.map((promotion) => (
                 <PromotionCard key={promotion.id} promotion={promotion} />
@@ -59,7 +69,7 @@ function Home({ cartItems = [], products, userId, cartCount = 0, onSelectCollect
           </section>
         </div>
       </main>
-      <Footer variant="home" />
+      <Footer variant="home" isLoggedIn={isLoggedIn} />
     </>
   )
 }

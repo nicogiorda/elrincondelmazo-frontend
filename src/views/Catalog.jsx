@@ -1,36 +1,16 @@
+import Pagination from '../components/Pagination.jsx'
+import { Link } from 'react-router-dom'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import ProductCard from '../components/ProductCard.jsx'
 import CatalogFilters from '../components/CatalogFilters.jsx'
-import Pagination from '../components/Pagination.jsx'
-import { useEffect, useState } from 'react'
-import { catalogTypes, catalogCollections, catalogProductBackgrounds } from '../data/catalogMocks.js'
+import { catalogTypes, catalogProductBackgrounds } from '../data/catalogMocks.js'
 
-const URL = 'http://localhost:8080'
+
 const pageSize = 9
 
-function Catalog({ cartItems = [], userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+function Catalog({ isLoggedIn, cartBusy, cartError, cartMessage, loading, error, collectionsError, totalProducts, loadedProducts, cartItems = [],products, collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
 
-  const [products, setProducts] = useState([])
-  useEffect(() => {
-    // fetch envía una solicitud HTTP al backend.
-    // Como no indicamos method, por defecto hace un GET.
-    fetch(`${URL}/products`)
-
-        // Cuando Spring responde, convertimos el body de la respuesta a JSON.
-        .then((response) => response.json())
-
-        // Cuando ya tenemos el JSON convertido, recibimos los datos.
-        .then((data) => {
-          setProducts(data.content) // Guardamos los productos en el estado.
-          //usamos content porqoue la response es de tipo Page<productResponse> y el contenido de la pagina viene en content
-        })
-
-        // Si ocurre un error en la comunicación, lo mostramos en consola.
-        .catch((error) => {
-          console.log(error)
-        })
-  }, []) // [] = ejecutar este efecto SOLO cuando se monta el componente.
 
   const { search, type, collection, minPrice, maxPrice, page } = filters
 
@@ -55,7 +35,7 @@ function Catalog({ cartItems = [], userId, cartCount = 0, filters, onFiltersChan
 
   return (
     <>
-      <Header cartCount={cartCount} />
+      <Header cartCount={cartCount} isLoggedIn={isLoggedIn} />
       <main className="mx-auto flex w-full max-w-[85rem] flex-col gap-8 px-6 pt-9 pb-18 text-bordo lg:px-10 2xl:min-h-[113.475rem]">
         <section aria-labelledby="catalog-heading" className="flex flex-wrap items-end justify-between gap-8 min-h-[11.8125rem] rounded-[2rem] border-3 border-bordo bg-rojo px-6 py-9 text-crema shadow-[0.5rem_0.5rem_0_var(--color-bordo)] lg:px-10">
           <div className="flex flex-col gap-2 leading-[normal]">
@@ -68,17 +48,23 @@ function Catalog({ cartItems = [], userId, cartCount = 0, filters, onFiltersChan
           </form>
         </section>
 
+        {cartError && <p role="alert" className="font-bold text-rojo">{cartError} <Link to="/carrito" className="underline">Revisar carrito</Link></p>}
+        {cartMessage && <p role="status" className="font-bold">{cartMessage}</p>}
+        {loading && <p role="status">Cargando productos…</p>}
+        {error && <p role="alert" className="font-bold text-rojo">{error}</p>}
+        {collectionsError && <p role="alert" className="font-bold text-rojo">{collectionsError}</p>}
+        {totalProducts > loadedProducts && <p role="status">Se cargaron {loadedProducts} de {totalProducts} productos. Los filtros y páginas abarcan la lista cargada.</p>}
         <div className="grid min-w-0 gap-8 lg:grid-cols-[16.875rem_minmax(0,1fr)]">
-          <CatalogFilters type={type} collection={collection} minPrice={minPrice} maxPrice={maxPrice} types={catalogTypes} collections={catalogCollections} onTypeChange={(value) => changeFilter('type', value)} onCollectionChange={(value) => changeFilter('collection', value)} onMinPriceChange={(value) => changeFilter('minPrice', value)} onMaxPriceChange={(value) => changeFilter('maxPrice', value)} onClear={onClearFilters} />
+          <CatalogFilters type={type} collection={collection} minPrice={minPrice} maxPrice={maxPrice} types={catalogTypes} collections={collections} onTypeChange={(value) => changeFilter('type', value)} onCollectionChange={(value) => changeFilter('collection', value)} onMinPriceChange={(value) => changeFilter('minPrice', value)} onMaxPriceChange={(value) => changeFilter('maxPrice', value)} onClear={onClearFilters} />
           <div className="flex min-w-0 flex-col gap-8">
             {filteredProducts.length > 0 ? <>
             <div aria-label="Productos del catálogo" className="grid min-w-0 grid-cols-1 gap-6.5 sm:grid-cols-2 xl:grid-cols-3">
               {visibleProducts.map((product) => (
-                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
+                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
               ))}
             </div>
             <Pagination page={currentPage} totalPages={totalPages} onPageChange={changePage} />
-            </> : (
+            </> : !loading && !error && (
               <div className="flex flex-col items-start gap-4 rounded-[1.375rem] border-3 border-bordo bg-papel p-6">
                 <p className="font-bold">No encontramos productos con esos filtros</p>
                 <button type="button" onClick={onClearFilters} className="rounded-full bg-bordo px-5 py-3 font-extrabold text-crema">Limpiar filtros</button>
@@ -87,7 +73,7 @@ function Catalog({ cartItems = [], userId, cartCount = 0, filters, onFiltersChan
           </div>
         </div>
       </main>
-      <Footer />
+      <Footer isLoggedIn={isLoggedIn} />
     </>
   )
 }

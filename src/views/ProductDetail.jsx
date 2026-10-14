@@ -1,6 +1,5 @@
 import { canBuyProduct } from '../utils/productPurchase.js'
 import { Link } from 'react-router-dom'
-import { getRelatedProducts } from '../data/productMocks.js'
 import { useState } from 'react'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
@@ -9,17 +8,22 @@ import ProductGallery from '../components/ProductGallery.jsx'
 import QuantitySelector from '../components/QuantitySelector.jsx'
 import ReviewCard from '../components/ReviewCard.jsx'
 import ReviewForm from '../components/ReviewForm.jsx'
-import { detailGallery, detailReviews, detailProductBackgrounds, detailPaymentLabel, detailTransferPromotion } from '../data/productDetailMocks.js'
+import {
+  detailGallery,
+  detailProductBackgrounds,
+  detailPaymentLabel,
+  detailPromotionLabel
+} from '../data/productDetailMocks.js'
 
 const typeLabels = { CARTA: 'Carta', SOBRE: 'Sobre', LOOTBOX: 'Lootbox' }
 
-function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, userId, user, canReview, onPublishReview, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
-  const reviews = (providedReviews ?? detailReviews).filter((review) => review.productId === product.id)
+function ProductDetail({ cartBusy, cartError, cartMessage, cartItems = [], cartQuantity = 0, product, products, userId, user, canReview, onPublishReview, reviewsLoading, reviewsError, onRetryReviews, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+  const reviews = providedReviews ?? []
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [showReviewForm, setShowReviewForm] = useState(true)
 
-  const relatedProducts = getRelatedProducts(product, products)
+  const relatedProducts = products.filter((candidate) => candidate.collectionId === product.collectionId && candidate.id !== product.id).slice(0, 4)
   const availableUnits = Math.max(0, product.stock - cartQuantity)
   const canBuy = canBuyProduct(product, userId) && availableUnits > 0
   const selectedQuantity = availableUnits > 0 ? Math.min(quantity, availableUnits) : 0
@@ -27,7 +31,7 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
   const isLastUnit = canBuy && product.stock === 1
   const averageRating = reviews.length ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length : 0
   const ratingLabel = averageRating.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-  const images = detailGallery.map((image, index) => ({ ...image, url: product.imageUrls[index] }))
+  const images = detailGallery.map((image, index) => ({ ...image, url: product.imageUrls?.[index] }))
   const productInformation = [
     { label: 'Vendido por', value: product.sellerName },
     { label: 'Tipo', value: typeLabels[product.type] },
@@ -40,7 +44,8 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
   }
 
   function addSelectedQuantity() {
-    if (canBuy && onAddToCart?.(product, selectedQuantity) === true) setQuantity(1)
+    if (!canBuy || cartBusy || !onAddToCart) return
+    onAddToCart(product, selectedQuantity).then((saved) => { if (saved) setQuantity(1) })
   }
 
   return (
@@ -68,14 +73,18 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
             </div>
             <p className="text-[1.0625rem] leading-[1.59375rem] text-pretty">{product.description}</p>
             <div className="flex items-center gap-3.5 rounded-[1.125rem] border-3 border-bordo bg-amarillo px-4.5 py-3.5">
-              <p className="font-display text-[2.125rem] leading-[2.125rem] font-black text-rojo">{detailTransferPromotion.discount}</p>
-              <p className="text-[0.9375rem] leading-[1.21875rem] font-bold">{detailTransferPromotion.text}</p>
+              <p className="font-display text-[2.125rem] leading-[2.125rem] font-black text-rojo">Promos</p>
+              <p className="text-[0.9375rem] leading-[1.21875rem] font-bold">{detailPromotionLabel}</p>
             </div>
             <div className="flex flex-wrap items-stretch gap-3">
-              <QuantitySelector quantity={selectedQuantity} maxQuantity={canBuy ? availableUnits : 0} onChange={changeQuantity} />
-              <button type="button" disabled={!canBuy} onClick={addSelectedQuantity} className="min-w-0 flex-1 rounded-full border-3 border-bordo bg-bordo px-6 py-4 text-[1.125rem] font-extrabold text-crema disabled:cursor-not-allowed">Agregar al carrito</button>
+              <QuantitySelector quantity={selectedQuantity} maxQuantity={canBuy && !cartBusy ? availableUnits : 0} onChange={changeQuantity} />
+              <button type="button" disabled={!canBuy || cartBusy || !onAddToCart} onClick={addSelectedQuantity} className="min-w-0 flex-1 rounded-full border-3 border-bordo bg-bordo px-6 py-4 text-[1.125rem] font-extrabold text-crema disabled:cursor-not-allowed disabled:opacity-50">Agregar al carrito</button>
             </div>
-            <button type="button" disabled={!canBuy} onClick={() => { if (canBuy) onBuyNow?.(product, selectedQuantity) }} className="w-full rounded-full border-3 border-bordo bg-rosa px-6 py-3.5 text-[1.0625rem] font-extrabold shadow-[0.25rem_0.25rem_0_var(--color-bordo)] disabled:cursor-not-allowed">Comprar ahora</button>
+            <button type="button" disabled={!canBuy || cartBusy || !onBuyNow} onClick={() => { if (canBuy) onBuyNow?.(product, selectedQuantity) }} className="w-full rounded-full border-3 border-bordo bg-rosa px-6 py-3.5 text-[1.0625rem] font-extrabold shadow-[0.25rem_0.25rem_0_var(--color-bordo)] disabled:cursor-not-allowed disabled:opacity-50">Comprar ahora</button>
+            {cartError && <p role="alert" className="font-bold text-rojo">{cartError} <Link to="/carrito" className="underline">Revisar carrito</Link></p>}
+            {cartMessage && <p role="status" className="font-bold">{cartMessage}</p>}
+            {!user && <Link to="/ingresar" className="font-bold underline">Ingresá para comprar.</Link>}
+            {!onAddToCart && <p className="text-[0.875rem] font-semibold">Las compras todavía no están disponibles. Podés seguir explorando el catálogo.</p>}
             <dl>
               {productInformation.map((item) => (
                 <div key={item.label} className="flex justify-between gap-4 border-b-3 border-bordo py-3.5 text-[0.9375rem]">
@@ -89,19 +98,24 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
         <section aria-labelledby="reviews-heading" className="grid items-start gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,2fr)]">
           <div className="flex flex-col gap-3.5">
             <h2 id="reviews-heading" className="font-display text-[4rem] leading-[3.6rem] font-black uppercase">Reseñas</h2>
-            {reviews.length > 0 ? <div className="flex items-end gap-4 leading-[normal]">
+            {reviewsLoading ? <p role="status">Cargando reseñas…</p> : reviewsError ? (
+              <div><p role="alert" className="font-bold text-rojo">{reviewsError}</p><button type="button" onClick={onRetryReviews} className="mt-2 font-bold underline">Reintentar</button></div>
+            ) : reviews.length > 0 ? <div className="flex items-end gap-4 leading-[normal]">
               <p className="font-display text-[5.5rem] leading-[4.95rem] font-black text-rojo">{ratingLabel}</p>
               <p className="pb-0.5 text-[0.9375rem] font-bold">de 5 · {reviews.length} {reviews.length === 1 ? 'reseña' : 'reseñas'}</p>
             </div> : <p className="text-[0.9375rem] font-bold">Todavía no hay reseñas</p>}
             <p className="text-[0.875rem] leading-[1.26875rem] opacity-80">Solo pueden reseñar quienes compraron este producto. Una reseña por persona.</p>
-            {!user ? (
+            {!onPublishReview ? (
+              <p className="text-[0.875rem] font-semibold">Publicar reseñas todavía no está disponible.</p>
+            ) : !user ? (
               <Link to="/ingresar" className="self-start rounded-[0.875rem] border-2 border-dashed border-bordo px-3.5 py-2.5 text-[0.875rem] leading-[1.18125rem] font-bold">Ingresá para reseñar productos que compraste.</Link>
-            ) : canReview?.(product) && (
+            ) : !reviewsLoading && !reviewsError && canReview?.(product) && (
               showReviewForm ? (
                 <ReviewForm onCancel={() => setShowReviewForm(false)} onPublish={(review) => {
-                  const published = onPublishReview?.(product, review) === true
-                  if (published) setShowReviewForm(false)
-                  return published
+                  return onPublishReview(product, review).then((published) => {
+                    if (published) setShowReviewForm(false)
+                    return published
+                  })
                 }} />
               ) : (
                 <button type="button" onClick={() => setShowReviewForm(true)} className="self-start rounded-full border-[2.4px] border-bordo bg-rosa px-5 py-3 text-[0.875rem] font-extrabold shadow-[0.1875rem_0.1875rem_0_var(--color-bordo)]">Dejar reseña</button>
@@ -120,7 +134,7 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {relatedProducts.map((relatedProduct) => (
-              <ProductCard key={relatedProduct.id} product={relatedProduct} userId={userId} cartQuantity={cartItems.find((item) => item.productId === relatedProduct.id)?.quantity ?? 0} variant="related" imageBackground={detailProductBackgrounds[relatedProduct.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={(item) => onAddToCart?.(item, 1)} />
+              <ProductCard key={relatedProduct.id} product={relatedProduct} userId={userId} cartQuantity={cartItems.find((item) => item.productId === relatedProduct.id)?.quantity ?? 0} variant="related" imageBackground={detailProductBackgrounds[relatedProduct.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
             ))}
           </div>
         </section>
