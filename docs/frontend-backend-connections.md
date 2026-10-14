@@ -1,5 +1,7 @@
 # Conexiones frontend/backend — 13/10/2026
 
+> Documento de la etapa anterior. El 14/10 se incorporó la autenticación del equipo y se conectaron carrito, checkout y POST de reseñas. El estado actual y sus verificaciones están en [frontend-jwt-integration.md](frontend-jwt-integration.md).
+
 ## 1. Qué conectaste
 
 Se completó el flujo público: Home, Catalog y ProductDetail comparten los productos y colecciones que App pide al backend. Las reseñas se cargan por producto y quedan en memoria. Se continuaron los cambios no commiteados que ya empezaban a usar `reviewsByProduct` y eliminaban los fallbacks de detalle.

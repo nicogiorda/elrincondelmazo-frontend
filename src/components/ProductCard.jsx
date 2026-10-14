@@ -34,12 +34,12 @@ const homeImageSizes = {
   LOOTBOX: 'max-h-[15.1875rem] max-w-[14.4375rem]',
 }
 
-function ProductCard({ product, userId, cartQuantity = 0, variant = 'home', imageBackground = 'crema', onOpenProduct, onAddToCart }) {
+function ProductCard({ cartBusy = false, product, userId, cartQuantity = 0, variant = 'home', imageBackground = 'crema', onOpenProduct, onAddToCart }) {
   const styles = variantStyles[variant]
   const isSoldOut = product.stock === 0 || product.status === 'AGOTADO'
   const isOwnProduct = product.sellerId === userId
   const isAvailable = canBuyProduct(product, userId)
-  const canAddToCart = isAvailable && cartQuantity < product.stock && Boolean(onAddToCart)
+  const canAddToCart = isAvailable && cartQuantity < product.stock && Boolean(onAddToCart) && !cartBusy
   const imageUrl = product.imageUrls?.[0]
   const imageBackgroundClass = imageBackgrounds[imageBackground] ?? 'bg-crema'
 
@@ -75,7 +75,7 @@ function ProductCard({ product, userId, cartQuantity = 0, variant = 'home', imag
           <button
             type="button"
             disabled={!canAddToCart}
-            title={!onAddToCart ? 'Las compras todavía no están disponibles.' : isAvailable && !canAddToCart ? 'Ya agregaste todas las unidades disponibles al carrito.' : undefined}
+            title={cartBusy ? 'Esperá a que termine la actualización del carrito.' : !onAddToCart ? 'Las compras todavía no están disponibles.' : isAvailable && !canAddToCart ? 'Ya agregaste todas las unidades disponibles al carrito.' : undefined}
             onClick={() => { if (canAddToCart) onAddToCart?.(product) }}
             className={`rounded-full px-3.5 py-2 text-[0.8125rem] font-extrabold whitespace-nowrap text-crema disabled:cursor-not-allowed disabled:opacity-50 ${styles.button}`}
           >
