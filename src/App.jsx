@@ -6,7 +6,7 @@ import Login from './views/Login.jsx'
 import Register from './views/Register.jsx'
 import Promotions from './views/Promotions.jsx'
 import PromotionEditor from './views/PromotionEditor.jsx'
-import { promotionMocks } from './data/promotionMocks.js'
+//import { promotionMocks } from './data/promotionMocks.js'
 import { homeProducts } from './data/homeMocks.js'
 import { detailProduct, detailReviews } from './data/productDetailMocks.js'
 import Catalog from './views/Catalog.jsx'
@@ -25,6 +25,76 @@ import ProtectedRoute from './components/ProtectedRoute.jsx'
 
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
+
+const promotionTypes = {
+  quantity: 'CANTIDAD',
+  collection: 'COLECCION',
+  type: 'TIPO_PRODUCTO',
+  payment: 'METODO_PAGO',
+  minimum: 'MONTO_MINIMO',
+  product: 'PRODUCTO',
+};
+
+const frontendPromotionTypes = Object.fromEntries(
+  Object.entries(promotionTypes).map(([key, value]) => [value, key])
+);
+
+function promotionFromBackend(promotion) {
+  return {
+    id: promotion.id,
+    name: promotion.name,
+    description: promotion.description ?? '',
+    kind: frontendPromotionTypes[promotion.type],
+    discount: Number(promotion.discountPercentage),
+    minimumQuantity: promotion.minimumQuantity ?? 1,
+    minimumAmount: Number(promotion.minimumAmount ?? 0),
+    productType: promotion.productType ?? '',
+    paymentMethod: promotion.paymentMethod ?? '',
+    collectionId: promotion.collectionId ?? '',
+    productId: promotion.productId ?? '',
+    stackable: promotion.stackable,
+    startDate: promotion.startDate?.slice(0, 10) ?? '',
+    endDate: promotion.endDate?.slice(0, 10) ?? '',
+    enabled: promotion.active,
+  };
+}
+
+function promotionToBackend(promotion) {
+  const kind = promotion.kind;
+
+  return {
+    name: promotion.name.trim(),
+    description: promotion.description,
+    type: promotionTypes[kind],
+    discountPercentage: Number(promotion.discount),
+
+    minimumQuantity: kind === 'quantity'
+      ? Number(promotion.minimumQuantity) : null,
+
+    minimumAmount: kind === 'minimum'
+      ? Number(promotion.minimumAmount) : null,
+
+    productType: kind === 'type'
+      ? promotion.productType || null : null,
+
+    paymentMethod: kind === 'payment'
+      ? promotion.paymentMethod || null : null,
+
+    collectionId: kind === 'collection'
+      ? Number(promotion.collectionId) : null,
+
+    productId: kind === 'product'
+      ? Number(promotion.productId) : null,
+
+    stackable: promotion.stackable,
+
+    startDate: `${promotion.startDate}T00:00:00`,
+
+    endDate: promotion.endDate
+      ? `${promotion.endDate}T23:59:59`
+      : null,
+  };
+}
 
 function App() {
   const navigate = useNavigate()
@@ -96,7 +166,66 @@ function App() {
   const publications = [...publicationProducts.map((original) => ownProducts.find((product) => product.id === original.id)).filter(Boolean),
   ...ownProducts.filter((product) => !publicationProducts.some((original) => original.id === product.id)),
   ]
-  const [promotions, setPromotions] = useState(promotionMocks)
+  
+  const [promotions, setPromotions] = useState([])
+  const [promotionLoading, setPromotionLoading] = useState(false)
+  const [promotionError, setPromotionError] = useState('')
+  
+useEffect(() => {
+  if (user?.role !== 'ADMIN') {
+    setPromotions([]);
+    setPromotionError('');
+    return;
+  }
+
+  let cancelled = false;
+
+  async function loadPromotions() {
+    setPromotionLoading(true);
+    setPromotionError('');
+
+    try {
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(
+        'http://localhost:8080/promotions',
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `No se pudieron cargar las promociones (${response.status})`
+        );
+      }
+
+      const data = await response.json();
+
+      if (!cancelled) {
+        setPromotions(data.map(promotionFromBackend));
+      }
+    } catch (error) {
+      if (!cancelled) {
+        setPromotionError(error.message);
+      }
+    } finally {
+      if (!cancelled) {
+        setPromotionLoading(false);
+      }
+    }
+  }
+
+  loadPromotions();
+
+  return () => {
+    cancelled = true;
+  };
+}, [user?.role]);
+
   const [reviews, setReviews] = useState(detailReviews)
   const [catalogFilters, setCatalogFilters] = useState(emptyCatalogFilters)
   const [catalogFiltersByLocation, setCatalogFiltersByLocation] = useState({})
@@ -197,11 +326,51 @@ function App() {
     setUser(null);
     navigate('/ingresar', { replace: true });
   }
-  function savePromotion(promotion) {
-    const saved = { ...promotion, id: promotion.id ?? Math.max(0, ...promotions.map((item) => item.id)) + 1 }
-    setPromotions((current) => promotion.id ? current.map((item) => item.id === promotion.id ? saved : item) : [...current, saved])
-    navigate('/promociones')
+  
+  async function savePromotion(promotion) {
+  try {
+    const token = localStorage.getItem('token');
+
+    const editing = promotion.id != null;
+
+    const url = editing
+      ? `http://localhost:8080/promotions/${promotion.id}`
+      : 'http://localhost:8080/promotions';
+
+    const response = await fetch(url, {
+      method: editing ? 'PUT' : 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(promotionToBackend(promotion)),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+
+      throw new Error(
+        `No se pudo guardar la promoción (${response.status}). ${detail}`
+      );
+    }
+
+    const saved = promotionFromBackend(await response.json());
+
+    setPromotions((current) =>
+      editing
+        ? current.map((item) =>
+            item.id === saved.id ? saved : item
+          )
+        : [...current, saved]
+    );
+
+    navigate('/promociones');
+  } catch (error) {
+    console.error('Error al guardar la promoción:', error);
+    alert(error.message);
   }
+}
+
   async function deactivateAccount() {
     const confirmado = window.confirm("¿Estás seguro de que deseás desactivar tu cuenta?")
     if (!confirmado) return;
@@ -289,12 +458,24 @@ function App() {
       <Route path="/crear-cuenta" element={
         <Register {...shared} onRegister={(usuario) => {setDemoAdmin(false); setUser(usuario); navigate("/mi-perfil", { replace: true });}} />
       } />
+      
       <Route path="/promociones" element={isAdmin ? (
-        <Promotions {...account} promotions={promotions}
-          onEdit={(promotion) => navigate('/editar-promocion', { state: { promotion } })}
-          onToggle={(promotion) => setPromotions((current) => current.map((item) => item.id === promotion.id
-            ? { ...item, enabled: !item.enabled } : item))} />
+        promotionLoading
+          ? <p>Cargando promociones...</p>
+          : promotionError
+            ? <p role="alert">{promotionError}</p>
+            : <Promotions
+                {...account}
+                promotions={promotions}
+                onEdit={(promotion) =>
+                  navigate('/editar-promocion', {
+                    state: { promotion }
+                  })
+                }
+                onToggle={togglePromotion}
+              />
       ) : <Navigate to="/mi-perfil" replace />} />
+
       <Route path="/editar-promocion" element={isAdmin ? selectedPromotion
         ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} onSave={savePromotion} />
         : <Navigate to="/promociones" replace /> : <Navigate to="/mi-perfil" replace />} />
