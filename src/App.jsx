@@ -16,7 +16,6 @@ import Cart from './views/Cart.jsx'
 import Checkout from './views/Checkout.jsx'
 import OrderConfirmation from './views/OrderConfirmation.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
-import { orderMocks } from './data/purchaseMocks.js'
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
 const URL = 'http://localhost:8080'
@@ -127,6 +126,7 @@ function App() {
   const cartRequest = useRef(false)
   const reviewRequest = useRef(false)
   const [confirmedOrder, setConfirmedOrder] = useState(null)
+  const [orderDetails, setOrderDetails] = useState({})
 
   const [promotions, setPromotions] = useState([])
   const [promotionLoading, setPromotionLoading] = useState(false)
@@ -140,6 +140,7 @@ function App() {
     setUser(null)
     setCart(null)
     setConfirmedOrder(null)
+    setOrderDetails({})
     setCartError('')
     setCartMessage('')
     setCartLoading(false)
@@ -205,10 +206,9 @@ function App() {
       })
   }, [user?.id, token, cartAttempt, logout])
 
-  // El catálogo público empieza vacío; los mocks de cuenta siguen siendo del otro flujo.
+  // El catálogo público empieza vacío.
   const [shop, setShop] = useState(() => ({
     products: [],
-    orders: orderMocks,
     nextProductId: 1,
   }))
   const [collections, setCollections] = useState([])
@@ -272,7 +272,6 @@ function App() {
     })),
   ]
   const products = shop.products
-  const orders = shop.orders
   const publications = products.filter((product) => product.sellerId === user?.id)
 
 useEffect(() => {
@@ -540,6 +539,28 @@ useEffect(() => {
         if (version === sessionVersion.current) reviewRequest.current = false
       })
   }
+  function loadOrderDetail(orderId) {
+    if (!user || !token || orderDetails[orderId]?.data || orderDetails[orderId]?.loading) return
+    const version = sessionVersion.current
+    setOrderDetails((current) => ({ ...current, [orderId]: { loading: true, error: '', data: null } }))
+    fetch(URL + '/orders/' + orderId, { headers: { Authorization: 'Bearer ' + token } })
+      .then(readResponse)
+      .then((data) => {
+        if (data.id !== orderId || !Array.isArray(data.items)) throw new Error('El detalle recibido no corresponde al pedido.')
+        if (version === sessionVersion.current) {
+          setOrderDetails((current) => ({ ...current, [orderId]: { loading: false, error: '', data } }))
+        }
+      })
+      .catch((error) => {
+        if (version !== sessionVersion.current) return
+        if (error.status === 401) {
+          logout()
+          setSessionError(error.message)
+        } else {
+          setOrderDetails((current) => ({ ...current, [orderId]: { loading: false, error: error.message, data: null } }))
+        }
+      })
+  }
   function publishProduct(product) {
     setShop((current) => {
       const saved = { ...product, id: product.id ?? current.nextProductId }
@@ -561,6 +582,7 @@ useEffect(() => {
     reviewRequest.current = false
     setCart(null)
     setConfirmedOrder(null)
+    setOrderDetails({})
     setCartError('')
     setCartMessage('')
     setCartBusy(false)
@@ -754,7 +776,8 @@ async function togglePromotion(promotion) {
           : <PublishProduct key={editingPublication?.id ?? 'new'} {...account} product={editingPublication} onPublish={publishProduct} />}
       </ProtectedRoute>} />
       <Route path="/mis-pedidos" element={<ProtectedRoute user={user}>
-        <Orders {...account} orders={orders} canReview={() => false} onReview={openProduct} />
+        <Orders key={user?.id + ':' + token} {...account} token={token} details={orderDetails}
+          onLoadDetail={loadOrderDetail} onUnauthorized={logout} />
       </ProtectedRoute>} />
       <Route path="/mi-perfil" element={<ProtectedRoute user={user}>
         <Profile {...account} onSave={saveProfile} onDeactivate={deactivateAccount} deactivateError={deactivateError} />
