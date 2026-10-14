@@ -370,6 +370,46 @@ useEffect(() => {
     alert(error.message);
   }
 }
+  
+async function togglePromotion(promotion) {
+  try {
+    const token = localStorage.getItem('token');
+
+    const action = promotion.enabled
+      ? 'deactivate'
+      : 'activate';
+
+    const response = await fetch(
+      `http://localhost:8080/promotions/${promotion.id}/${action}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `No se pudo cambiar el estado (${response.status})`
+      );
+    }
+
+    const updated = promotionFromBackend(await response.json());
+
+    setPromotions((current) =>
+      current.map((item) =>
+        item.id === updated.id ? updated : item
+      )
+    );
+
+  } catch (error) {
+    console.error('Error al cambiar la promoción:', error);
+    alert(error.message);
+  }
+}
+  
+
 
   async function deactivateAccount() {
     const confirmado = window.confirm("¿Estás seguro de que deseás desactivar tu cuenta?")
