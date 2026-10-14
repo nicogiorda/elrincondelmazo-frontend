@@ -6,19 +6,31 @@ import Footer from '../components/Footer.jsx'
 import ProgressSteps from '../components/ProgressSteps.jsx'
 import PurchaseItems from '../components/PurchaseItems.jsx'
 import PurchaseSummary from '../components/PurchaseSummary.jsx'
-import { calculateMockSummary, formatPrice } from '../data/purchaseMocks.js'
+import PurchaseNotice from '../components/PurchaseNotice.jsx'
 
 const headings = ['Revisá tu pedido', '¿Cómo querés pagar?', 'Confirmá tu pedido']
 
-function Checkout({ items, cartCount, error, onConfirm }) {
+function Checkout({ cart, products = [], cartCount, error, onConfirm }) {
   const [step, setStep] = useState(1)
   const [isConfirmed, setIsConfirmed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('TRANSFERENCIA')
-  const summary = calculateMockSummary(items, step > 1 ? paymentMethod : '')
+  if (!cart) return <PurchaseNotice title="Finalizar compra" />
+  const items = cart.items
+  const summary = { subtotal: cart.subtotal, discounts: [] }
   function advance() {
-    if (isConfirmed || !items.length) return
+    if (submitting || isConfirmed || !items.length || !onConfirm) return
     if (step < 3) setStep(step + 1)
-    else if (onConfirm?.({ paymentMethod }) === true) setIsConfirmed(true)
+    else {
+      setSubmitting(true)
+      setSubmitError('')
+      // El futuro handler debe resolver con la orden real y rechazar si falla el POST.
+      Promise.resolve().then(() => onConfirm({ paymentMethod }))
+        .then((order) => { if (order?.id) setIsConfirmed(true) })
+        .catch((error) => setSubmitError(error.message || 'No pudimos confirmar el pedido.'))
+        .finally(() => setSubmitting(false))
+    }
   }
   return (
     <>
@@ -36,10 +48,10 @@ function Checkout({ items, cartCount, error, onConfirm }) {
               <p className="text-[0.8125rem] font-extrabold tracking-[0.065rem] text-rojo uppercase">Paso {step} de 3</p>
               <h2 className="font-display text-[3rem] leading-[2.85rem] font-black uppercase">{headings[step - 1]}</h2>
             </div>
-            {step === 1 && <PurchaseItems items={items} />}
+            {step === 1 && <PurchaseItems items={items} products={products} />}
             {step === 2 && <div role="group" aria-label="Medio de pago" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{paymentMethods.map((method) => <button key={method.value} type="button" aria-pressed={paymentMethod === method.value} onClick={() => setPaymentMethod(method.value)} className={`relative flex min-w-0 items-center gap-4 rounded-[1.375rem] border-[2.4px] border-bordo p-5.5 text-left text-[1.1875rem] font-extrabold ${paymentMethod === method.value ? 'bg-amarillo shadow-[0.3125rem_0.3125rem_0_var(--color-bordo)]' : 'bg-crema'}`}>
                 <span aria-hidden="true" className={`size-[1.925rem] shrink-0 rounded-full border-[2.4px] border-bordo ${paymentMethod === method.value ? 'bg-bordo' : ''}`} />
-                <span>{method.label}</span>{method.value === 'TRANSFERENCIA' && <span className="absolute -top-3 right-0 rotate-6 rounded-full border-[2.4px] border-bordo bg-amarillo px-3 py-1 font-display text-[1.125rem] font-black uppercase">10% off</span>}</button>)}</div>}
+                <span>{method.label}</span></button>)}</div>}
             {step === 3 && <>
               <div className="grid gap-4 sm:grid-cols-2">{[{ label: 'Productos', value: `${cartCount} productos`, step: 1 }, { label: 'Medio de pago', value: paymentMethodLabel(paymentMethod), step: 2 }].map((item) => <div key={item.label} className="flex flex-col items-start gap-1.5 rounded-[1.25rem] border-[2.4px] border-bordo bg-papel px-5 py-4.5">
                   <span className="text-[0.75rem] font-extrabold tracking-[0.06rem] uppercase opacity-75">{item.label}</span>
@@ -48,13 +60,13 @@ function Checkout({ items, cartCount, error, onConfirm }) {
                 </div>)}</div>
               <p className="text-[0.9375rem] leading-[1.359375rem]">Al confirmar se crea el pedido en estado Pendiente y se descuenta el stock de cada producto.</p>
             </>}
-            {error && <p role="alert" className="text-[0.875rem] font-bold text-rojo">{error}</p>}
+            {(error || submitError) && <p role="alert" className="text-[0.875rem] font-bold text-rojo">{error || submitError}</p>}
             <div className="flex flex-wrap items-center justify-between gap-4">
               {step === 1 ? <Link to="/carrito" className="text-[0.9375rem] font-bold underline">← Editar carrito</Link> : <button type="button" onClick={() => setStep(step - 1)} className="text-[0.9375rem] font-bold underline">← Volver</button>}
-              <button type="button" disabled={!items.length || isConfirmed} onClick={advance} className={`rounded-full px-7.5 py-4 text-[1.0625rem] font-extrabold disabled:opacity-50 ${step === 3 ? 'border-[2.4px] border-bordo bg-rosa shadow-[0.25rem_0.25rem_0_var(--color-bordo)]' : 'bg-bordo text-crema'}`}>{step === 1 ? 'Continuar al pago' : step === 2 ? 'Revisar y confirmar' : `Confirmar pedido · ${formatPrice(summary.total)}`}</button>
+              <button type="button" disabled={!items.length || isConfirmed || submitting || !onConfirm} onClick={advance} className={`rounded-full px-7.5 py-4 text-[1.0625rem] font-extrabold disabled:opacity-50 ${step === 3 ? 'border-[2.4px] border-bordo bg-rosa shadow-[0.25rem_0.25rem_0_var(--color-bordo)]' : 'bg-bordo text-crema'}`}>{step === 1 ? 'Continuar al pago' : step === 2 ? 'Revisar y confirmar' : submitting ? 'Confirmando…' : 'Confirmar pedido'}</button>
             </div>
           </section>
-          <PurchaseSummary summary={summary} />
+          <PurchaseSummary summary={summary}><p className="text-[0.875rem]">El total y los descuentos serán calculados por la tienda al confirmar.</p></PurchaseSummary>
         </div>
       </main>
       <Footer isLoggedIn />

@@ -39,7 +39,7 @@ function ProductCard({ product, userId, cartQuantity = 0, variant = 'home', imag
   const isSoldOut = product.stock === 0 || product.status === 'AGOTADO'
   const isOwnProduct = product.sellerId === userId
   const isAvailable = canBuyProduct(product, userId)
-  const canAddToCart = isAvailable && cartQuantity < product.stock
+  const canAddToCart = isAvailable && cartQuantity < product.stock && Boolean(onAddToCart)
   const imageUrl = product.imageUrls?.[0]
   const imageBackgroundClass = imageBackgrounds[imageBackground] ?? 'bg-crema'
 
@@ -75,11 +75,11 @@ function ProductCard({ product, userId, cartQuantity = 0, variant = 'home', imag
           <button
             type="button"
             disabled={!canAddToCart}
-            title={isAvailable && !canAddToCart ? 'Ya agregaste todas las unidades disponibles al carrito.' : undefined}
+            title={!onAddToCart ? 'Las compras todavía no están disponibles.' : isAvailable && !canAddToCart ? 'Ya agregaste todas las unidades disponibles al carrito.' : undefined}
             onClick={() => { if (canAddToCart) onAddToCart?.(product) }}
-            className={`rounded-full px-3.5 py-2 text-[0.8125rem] font-extrabold whitespace-nowrap text-crema disabled:cursor-not-allowed ${styles.button}`}
+            className={`rounded-full px-3.5 py-2 text-[0.8125rem] font-extrabold whitespace-nowrap text-crema disabled:cursor-not-allowed disabled:opacity-50 ${styles.button}`}
           >
-            {isOwnProduct ? 'Tu publicación' : isSoldOut ? 'Sin stock' : !isAvailable ? 'No disponible' : canAddToCart ? 'Agregar' : 'Máximo'}
+            {isOwnProduct ? 'Tu publicación' : isSoldOut ? 'Sin stock' : !isAvailable ? 'No disponible' : cartQuantity < product.stock ? 'Agregar' : 'Máximo'}
           </button>
         </div>
       </div>

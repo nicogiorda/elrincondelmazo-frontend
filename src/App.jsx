@@ -1,14 +1,12 @@
-import { useEffect , useState } from 'react'
-import { resolveCart, addCartItem, changeCartQuantity, checkoutError, completeOrder } from './utils/shopDemo.js'
+
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Home from './views/Home.jsx'
 import Login from './views/Login.jsx'
 import Register from './views/Register.jsx'
 import Promotions from './views/Promotions.jsx'
 import PromotionEditor from './views/PromotionEditor.jsx'
-//import { promotionMocks } from './data/promotionMocks.js'
-import { homeProducts } from './data/homeMocks.js'
-import { detailProduct, detailReviews } from './data/productDetailMocks.js'
+
 import Catalog from './views/Catalog.jsx'
 import ProductDetail from './views/ProductDetail.jsx'
 import Publications from './views/Publications.jsx'
@@ -18,13 +16,13 @@ import Profile from './views/Profile.jsx'
 import Cart from './views/Cart.jsx'
 import Checkout from './views/Checkout.jsx'
 import OrderConfirmation from './views/OrderConfirmation.jsx'
-import { productMocks } from './data/productMocks.js'
-import { accountUser, publicationProducts } from './data/accountMocks.js'
-import { cartItems, orderMocks } from './data/purchaseMocks.js'
+
+import { orderMocks } from './data/purchaseMocks.js'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
+const URL = 'http://localhost:8080'
 
 const promotionTypes = {
   quantity: 'CANTIDAD',
@@ -97,6 +95,7 @@ function promotionToBackend(promotion) {
 }
 
 function App() {
+
   const navigate = useNavigate()
   const location = useLocation()
   // Operaciones de demostración en memoria; sin persistencia.
@@ -148,44 +147,97 @@ function App() {
   const [demoAdmin, setDemoAdmin] = useState(() => import.meta.env.DEV
     && location.pathname === '/promociones'
     && new URLSearchParams(location.search).get('demoAdmin') === '1')
-  // Productos vigentes, cantidades y pedidos se actualizan juntos al confirmar.
+  // El catálogo público empieza vacío; los mocks de cuenta siguen siendo del otro flujo.
   const [shop, setShop] = useState(() => ({
-    products: productMocks,
-    cart: cartItems.map((item) => ({ id: item.id, productId: item.product.id, quantity: item.quantity })),
+    products: [],
     orders: orderMocks,
-    nextProductId: Math.max(...productMocks.map((product) => product.id)) + 1,
-    nextOrderId: Math.max(...orderMocks.map((order) => order.id)) + 1,
-    lastOrderId: null,
-    checkoutError: '',
+    nextProductId: 1,
   }))
-  const products = shop.products
-  const items = resolveCart(shop)
-  const orders = shop.orders
-  const confirmedOrder = orders.find((order) => order.id === shop.lastOrderId)
-  const ownProducts = user ? products.filter((product) => product.sellerId === user.id) : [];
-  const publications = [...publicationProducts.map((original) => ownProducts.find((product) => product.id === original.id)).filter(Boolean),
-  ...ownProducts.filter((product) => !publicationProducts.some((original) => original.id === product.id)),
+  const [collections, setCollections] = useState([])
+  const [productsLoading, setProductsLoading] = useState(true)
+  const [collectionsLoading, setCollectionsLoading] = useState(true)
+  const [productsError, setProductsError] = useState('')
+  const [collectionsError, setCollectionsError] = useState('')
+  const [totalProducts, setTotalProducts] = useState(0)
+  // Estas marcas evitan duplicar los GET incluso con StrictMode en desarrollo.
+  const productsRequested = useRef(false)
+  const collectionsRequested = useRef(false)
+
+  useEffect(() => {
+    if (productsRequested.current) return
+    productsRequested.current = true
+    fetch(`${URL}/products?size=100`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Error ${response.status} al cargar productos`)
+        return response.json()
+      })
+      .then((data) => {
+        if (!Array.isArray(data.content)) throw new Error('La respuesta de productos no contiene una lista')
+        setShop((current) => ({
+          ...current,
+          products: data.content,
+          nextProductId: Math.max(0, ...data.content.map((product) => product.id)) + 1,
+        }))
+        setTotalProducts(data.totalElements)
+      })
+      .catch((error) => {
+        console.log(error)
+        setProductsError('No pudimos cargar los productos. Recargá la página para reintentar.')
+      })
+      .finally(() => setProductsLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (collectionsRequested.current) return
+    collectionsRequested.current = true
+    fetch(`${URL}/collections`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Error ${response.status} al cargar colecciones`)
+        return response.json()
+      })
+      .then((data) => {
+        if (!Array.isArray(data)) throw new Error('La respuesta de colecciones no es una lista')
+        setCollections(data)
+      })
+      .catch((error) => {
+        console.log(error)
+        setCollectionsError('No pudimos cargar las colecciones. Recargá la página para reintentar.')
+      })
+      .finally(() => setCollectionsLoading(false))
+  }, [])
+
+  const catalogCollections = [
+    { value: '', label: 'Todas' },
+    ...collections.map((collection) => ({
+      value: String(collection.id),
+      label: collection.name,
+    })),
   ]
-  
-  const [promotions, setPromotions] = useState([])
-  const [promotionLoading, setPromotionLoading] = useState(false)
-  const [promotionError, setPromotionError] = useState('')
-  
+  const products = shop.products
+  const orders = shop.orders
+const publications = user
+  ? products.filter((product) => product.sellerId === user.id)
+  : []
+
+const [promotions, setPromotions] = useState([])
+const [promotionLoading, setPromotionLoading] = useState(false)
+const [promotionError, setPromotionError] = useState('')
+
 useEffect(() => {
   if (user?.role !== 'ADMIN') {
-    setPromotions([]);
-    setPromotionError('');
-    return;
+    setPromotions([])
+    setPromotionError('')
+    return
   }
 
-  let cancelled = false;
+  let cancelled = false
 
   async function loadPromotions() {
-    setPromotionLoading(true);
-    setPromotionError('');
+    setPromotionLoading(true)
+    setPromotionError('')
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('token')
 
       const response = await fetch(
         'http://localhost:8080/promotions',
@@ -195,38 +247,42 @@ useEffect(() => {
             Authorization: `Bearer ${token}`,
           },
         }
-      );
+      )
 
       if (!response.ok) {
         throw new Error(
           `No se pudieron cargar las promociones (${response.status})`
-        );
+        )
       }
 
-      const data = await response.json();
+      const data = await response.json()
 
       if (!cancelled) {
-        setPromotions(data.map(promotionFromBackend));
+        setPromotions(data.map(promotionFromBackend))
       }
     } catch (error) {
       if (!cancelled) {
-        setPromotionError(error.message);
+        setPromotionError(error.message)
       }
     } finally {
       if (!cancelled) {
-        setPromotionLoading(false);
+        setPromotionLoading(false)
       }
     }
   }
 
-  loadPromotions();
+  loadPromotions()
 
   return () => {
-    cancelled = true;
-  };
-}, [user?.role]);
+    cancelled = true
+  }
+}, [user?.role])
 
-  const [reviews, setReviews] = useState(detailReviews)
+const [reviewsByProduct, setReviewsByProduct] = useState({})
+const [reviewErrors, setReviewErrors] = useState({})
+const [reviewAttempt, setReviewAttempt] = useState(0)
+const requestedReviews = useRef(new Set())
+
   const [catalogFilters, setCatalogFilters] = useState(emptyCatalogFilters)
   const [catalogFiltersByLocation, setCatalogFiltersByLocation] = useState({})
   const [catalogLocationKey, setCatalogLocationKey] = useState(null)
@@ -256,48 +312,46 @@ useEffect(() => {
   const currentUser = user && demoAdmin ? { ...user, role: 'ADMIN' } : user;
   const isAdmin = currentUser?.role === 'ADMIN';
   const selectedPromotion = promotions.find((promotion) => promotion.id === location.state?.promotion?.id)
-  const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
+  // No hay sesión JWT todavía. No usamos el usuario mock para autorizar compras.
+  const cartCount = 0
   const publicProducts = products.filter((product) => ['ACTIVO', 'AGOTADO'].includes(product.status))
-  const newProducts = publicProducts.filter((product) => !productMocks.some((original) => original.id === product.id))
-  const recentProducts = [
-    ...newProducts.slice().reverse(),
-    ...homeProducts.map((original) => publicProducts.find((product) => product.id === original.id)).filter(Boolean),
-    ...publicProducts.filter((product) => !homeProducts.some((original) => original.id === product.id)
-      && productMocks.some((original) => original.id === product.id)),
-  ].filter((product) => product.status === 'ACTIVO').slice(0, 4)
-  const selectedProduct = products.find((product) => product.id === (location.state?.product?.id ?? detailProduct.id))
+  const recentProducts = publicProducts.filter((product) => product.status === 'ACTIVO')
+    .slice().sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 4)
+  const selectedProductId = location.state?.product?.id
+  const selectedProduct = products.find((product) => product.id === selectedProductId)
+  const reviewProductId = location.pathname === '/producto' ? selectedProduct?.id : undefined
+
+  useEffect(() => {
+    if (reviewProductId === undefined || requestedReviews.current.has(reviewProductId)) return
+    // Registrar antes del fetch evita duplicados si salimos y volvemos mientras carga.
+    requestedReviews.current.add(reviewProductId)
+    fetch(`${URL}/products/${reviewProductId}/reviews`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Error ${response.status} al cargar reseñas`)
+        return response.json()
+      })
+      .then((data) => {
+        if (!Array.isArray(data)) throw new Error('La respuesta de reseñas no es una lista')
+        setReviewsByProduct((current) => ({ ...current, [reviewProductId]: data }))
+      })
+      .catch((error) => {
+        console.log(error)
+        setReviewErrors((current) => ({ ...current, [reviewProductId]: 'No pudimos cargar las reseñas.' }))
+      })
+  }, [reviewProductId, reviewAttempt])
+
+  function retryReviews() {
+    if (!reviewErrors[reviewProductId]) return
+    requestedReviews.current.delete(reviewProductId)
+    setReviewErrors((current) => ({ ...current, [reviewProductId]: '' }))
+    setReviewAttempt((current) => current + 1)
+  }
+
   const editingPublication = publications.find((product) => product.id === location.state?.product?.id)
 
   function openProduct(product) { navigate('/producto', { state: { product } }) }
-  function addToCart(product, quantity = 1) {
-    const next = addCartItem(shop, product.id, quantity, user.id)
-    if (next === shop) return false
-    setShop((current) => addCartItem(current, product.id, quantity, user.id))
-    return true
-  }
-  function buyNow(product, quantity) {
-    if (addToCart(product, quantity)) navigate('/carrito')
-  }
-  // Los pedidos y las reseñas pertenecen al usuario mock; no es autenticación real.
-  function canReview(product) {
-    return orders.some((order) => order.status !== 'CANCELADO'
-      && order.items.some((item) => item.product.id === product.id))
-      && !reviews.some((review) => review.productId === product.id && review.userId === user.id)
-  }
-  function publishReview(product, { rating, comment }) {
-    if (!canReview(product) || !Number.isInteger(rating) || rating < 1 || rating > 5
-      || !comment.trim() || comment.length > 1000) return false
-    setReviews((current) => {
-      if (current.some((review) => review.productId === product.id && review.userId === user.id)) return current
-      return [{ id: Math.max(0, ...current.map((review) => review.id)) + 1,
-        productId: product.id, userId: user.id, userName: `${user.firstName} ${user.lastName}`,
-        rating, comment: comment.trim(), createdAt: new Date().toISOString() }, ...current]
-    })
-    return true
-  }
-  function changeQuantity(id, quantity) {
-    setShop((current) => changeCartQuantity(current, id, quantity, user.id))
-  }
+  // POST de reseñas pendiente de la sesión real; nunca se agregan reseñas ficticias.
+  function canReview() { return false }
   function publishProduct(product) {
     setShop((current) => {
       const saved = { ...product, id: product.id ?? current.nextProductId }
@@ -309,16 +363,11 @@ useEffect(() => {
     })
     navigate('/mis-publicaciones')
   }
-  function confirmOrder({ paymentMethod }) {
-    const date = new Date().toLocaleDateString('es-AR')
-    const next = completeOrder(shop, user.id, paymentMethod, shop.nextOrderId, date)
-    setShop((current) => completeOrder(current, user.id, paymentMethod, shop.nextOrderId, date))
-    if (next.checkoutError || next === shop) return false
-    navigate('/pedido-confirmado')
-    return true
-  }
+
   function saveProfile(usuarioActualizado) {
-    setUser(usuarioActualizado)
+  setUser(usuarioActualizado)
+}
+  
   }
   function logout() {
     localStorage.removeItem("token");
@@ -452,20 +501,38 @@ async function togglePromotion(promotion) {
   return (
     <Routes>
       <Route path="/" element={
-        <Home {...shared} products={recentProducts} cartItems={items} onOpenProduct={openProduct} onAddToCart={addToCart}
+        <Home {...shared} products={recentProducts} collections={collections} onOpenProduct={openProduct}
+          productsLoading={productsLoading} productsError={productsError}
+          collectionsLoading={collectionsLoading} collectionsError={collectionsError}
           onSelectCollection={(collection) => navigate('/catalogo', { state: { collectionId: collection.id } })} />
       } />
       <Route path="/catalogo" element={
-        <Catalog {...shared} cartItems={items} filters={catalogFilters}
-          onFiltersChange={changeCatalogFilters} onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
-          onOpenProduct={openProduct} onAddToCart={addToCart} />
-      } />
+                                 <Catalog
+                                    {...shared}
+                                    products={publicProducts}
+                                    collections={catalogCollections}
+                                    loading={productsLoading}
+                                    error={productsError}
+                                    collectionsError={collectionsError}
+                                    totalProducts={totalProducts}
+                                    loadedProducts={products.length}
+                                    filters={catalogFilters}
+                                    onFiltersChange={changeCatalogFilters}
+                                    onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
+                                    onOpenProduct={openProduct}
+                                />
+                              } />
       <Route path="/producto" element={selectedProduct ? (
         <ProductDetail key={selectedProduct.id} {...shared} product={selectedProduct} products={publicProducts}
-          cartItems={items} cartQuantity={items.find((item) => item.productId === selectedProduct.id)?.quantity ?? 0}
-          user={currentUser} reviews={reviews} canReview={canReview} onPublishReview={publishReview}
-          onOpenProduct={openProduct} onAddToCart={addToCart} onBuyNow={buyNow}
+          reviews={reviewsByProduct[selectedProduct.id] ?? []}
+          reviewsLoading={reviewsByProduct[selectedProduct.id] === undefined && !reviewErrors[selectedProduct.id]}
+          reviewsError={reviewErrors[selectedProduct.id]} onRetryReviews={retryReviews}
+          onOpenProduct={openProduct}
           onViewCollection={(collectionId) => navigate('/catalogo', { state: { collectionId } })} />
+      ) : productsLoading ? (
+        <p role="status" className="p-8 font-bold">Cargando producto…</p>
+      ) : productsError ? (
+        <p role="alert" className="p-8 font-bold text-rojo">{productsError}</p>
       ) : <Navigate to="/catalogo" replace />} />
       <Route path="/mis-publicaciones" element={<ProtectedRoute user={user}>
         <Publications {...account} products={publications}
@@ -473,25 +540,69 @@ async function togglePromotion(promotion) {
           onDelete={(product) => setShop((current) => ({ ...current, products: current.products.filter((item) => item.id !== product.id) }))}
           onToggleStatus={togglePublication} /> </ProtectedRoute>
       } />
-      <Route path="/publicar" element={<ProtectedRoute user={user}>
-        {location.state?.product && !editingPublication ? (
-          <Navigate to="/mis-publicaciones" replace />
-        ) : <PublishProduct key={editingPublication?.id ?? 'new'} {...account} product={editingPublication} onPublish={publishProduct} />}
-      </ProtectedRoute>} />
-      <Route path="/mis-pedidos" element={<ProtectedRoute user={user}>
-        <Orders {...account} orders={orders} canReview={canReview} onReview={openProduct} /></ProtectedRoute>} />
-      <Route path="/mi-perfil" element={<ProtectedRoute user={user}><Profile {...account} onSave={saveProfile} onDeactivate={deactivateAccount} deactivateError={deactivateError} /></ProtectedRoute>} />
-      <Route path="/carrito" element={
-        <Cart {...shared} items={items} userId={user?.id} onQuantityChange={changeQuantity}
-          onRemove={(id) => setShop((current) => ({ ...current, cart: current.cart.filter((item) => item.id !== id), checkoutError: '' }))}
-          onCheckout={() => navigate('/checkout')} />
-      } />
-      <Route path="/checkout" element={<ProtectedRoute user={user}>
-        <Checkout {...shared} items={items.filter((item) => item.product)}
-          error={shop.checkoutError || checkoutError(shop, user?.id)} onConfirm={confirmOrder} />
-      </ProtectedRoute>} />
-      <Route path="/pedido-confirmado" element={confirmedOrder
-        ? <OrderConfirmation order={confirmedOrder} /> : <Navigate to="/" replace />} />
+<Route path="/publicar" element={
+  <ProtectedRoute user={user}>
+    {location.state?.product && !editingPublication ? (
+      <Navigate to="/mis-publicaciones" replace />
+    ) : (
+      <PublishProduct
+        key={editingPublication?.id ?? 'new'}
+        {...account}
+        product={editingPublication}
+        onPublish={publishProduct}
+      />
+    )}
+  </ProtectedRoute>
+} />
+
+<Route path="/mis-pedidos" element={
+  <ProtectedRoute user={user}>
+    <Orders
+      {...account}
+      orders={orders}
+      canReview={canReview}
+      onReview={openProduct}
+    />
+  </ProtectedRoute>
+} />
+
+<Route path="/mi-perfil" element={
+  <ProtectedRoute user={user}>
+    <Profile
+      {...account}
+      onSave={saveProfile}
+      onDeactivate={deactivateAccount}
+      deactivateError={deactivateError}
+    />
+  </ProtectedRoute>
+} />
+
+<Route path="/carrito" element={
+  <ProtectedRoute user={user}>
+    <Cart
+      {...shared}
+      cart={null}
+      products={products}
+    />
+  </ProtectedRoute>
+} />
+
+<Route path="/checkout" element={
+  <ProtectedRoute user={user}>
+    <Checkout
+      {...shared}
+      cart={null}
+      products={products}
+    />
+  </ProtectedRoute>
+} />
+
+<Route path="/pedido-confirmado" element={
+  <ProtectedRoute user={user}>
+    <OrderConfirmation order={null} />
+  </ProtectedRoute>
+} />
+
       {/* Acceso de demostración: sin autenticación ni almacenamiento de contraseñas. */}
       <Route path="/ingresar" element={
         <Login {...shared} onLogin={(usuario) => {setDemoAdmin(false); setUser(usuario); navigate('/mi-perfil');}} />} />
