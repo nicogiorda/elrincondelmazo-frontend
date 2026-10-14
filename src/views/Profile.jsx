@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
 
@@ -6,13 +6,6 @@ function Profile({ user, onLogout, cartCount, onSave, onDeactivate, deactivateEr
   const [form, setForm] = useState({ firstName: user.firstName, lastName: user.lastName, email: user.email })
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    setForm({
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email
-    })
-  }, [user])
   function changeField(field, value) { setForm({ ...form, [field]: value }) }
   async function handleSave(form) {
     setError("");
@@ -46,6 +39,11 @@ function Profile({ user, onLogout, cartCount, onSave, onDeactivate, deactivateEr
         return;
       }
       onSave(usuarioActualizado);
+      setForm({
+        firstName: usuarioActualizado.firstName,
+        lastName: usuarioActualizado.lastName,
+        email: usuarioActualizado.email,
+      });
 
     } catch (error) {
       console.error("Error al actualizar el perfil:", error);

@@ -9,7 +9,7 @@ import { productTypeLabels } from '../data/accountMocks.js'
 import { paymentMethods } from '../data/paymentMethods.js'
 
 function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave }) {
-    const [form, setForm] = useState(isNew ? emptyPromotion : promotion)
+    const [form, setForm] = useState(isNew ? { ...emptyPromotion, collectionId: '', productId: '' } : promotion)
     const [collections, setCollections] = useState([]);
     const [products, setProducts] = useState([]);
     const [dataLoading, setDataLoading] = useState(true);
@@ -39,6 +39,13 @@ useEffect(() => {
       if (!cancelled) {
         setCollections(collectionsData);
         setProducts(productsData.content);
+        if (isNew) {
+          setForm((current) => ({
+            ...current,
+            collectionId: current.collectionId === '' ? collectionsData[0]?.id ?? '' : current.collectionId,
+            productId: current.productId === '' ? productsData.content[0]?.id ?? '' : current.productId,
+          }));
+        }
       }
     } catch (error) {
       if (!cancelled) {
@@ -56,27 +63,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, []);
-  
-useEffect(() => {
-  if (isNew && collections.length > 0) {
-    setForm((current) => ({
-      ...current,
-      collectionId: collections[0].id,
-    }));
-  }
-}, [collections, isNew]);
-
-useEffect(() => {
-  if (isNew && products.length > 0) {
-    setForm((current) => ({
-      ...current,
-      productId: products[0].id,
-    }));
-  }
-}, [products, isNew]);
-
-
+}, [isNew]);
 
   function changeField(field, value) { setForm((current) => ({ ...current, [field]: value })) }
   const condition = promotionCondition(form, collections, products, paymentMethods)
