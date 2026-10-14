@@ -1,12 +1,11 @@
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Home from './views/Home.jsx'
 import Login from './views/Login.jsx'
 import Register from './views/Register.jsx'
 import Promotions from './views/Promotions.jsx'
 import PromotionEditor from './views/PromotionEditor.jsx'
-
 import Catalog from './views/Catalog.jsx'
 import ProductDetail from './views/ProductDetail.jsx'
 import Publications from './views/Publications.jsx'
@@ -16,10 +15,8 @@ import Profile from './views/Profile.jsx'
 import Cart from './views/Cart.jsx'
 import Checkout from './views/Checkout.jsx'
 import OrderConfirmation from './views/OrderConfirmation.jsx'
-
-import { orderMocks } from './data/purchaseMocks.js'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
-
+import { orderMocks } from './data/purchaseMocks.js'
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
 const URL = 'http://localhost:8080'
@@ -94,59 +91,120 @@ function promotionToBackend(promotion) {
   };
 }
 
+// Solo interpreta respuestas; las requests y su estado siguen en App.
+function readResponse(response) {
+  return response.json().catch(() => ({})).then((data) => {
+    if (!response.ok) {
+      const error = new Error(response.status === 401
+        ? 'Tu sesión venció. Volvé a ingresar.'
+        : data.message || data.detail || 'No se pudo completar la operación (HTTP ' + response.status + ').')
+      error.status = response.status
+      throw error
+    }
+    return data
+  })
+}
+
 function App() {
 
   const navigate = useNavigate()
   const location = useLocation()
-  // Operaciones de demostración en memoria; sin persistencia.
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [deactivateError, setDeactivateError] = useState("");
+  // Reutiliza exactamente el token que guardan Login y Register del compañero.
+  const [user, setUser] = useState(null)
+  const [token, setToken] = useState(() => localStorage.getItem('token'))
+  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem('token')))
+  const [sessionError, setSessionError] = useState('')
+  const [deactivateError, setDeactivateError] = useState('')
+  const sessionRequested = useRef(false)
+  const sessionVersion = useRef(0)
+  const [cart, setCart] = useState(null)
+  const [cartLoading, setCartLoading] = useState(false)
+  const [cartBusy, setCartBusy] = useState(false)
+  const [cartError, setCartError] = useState('')
+  const [cartMessage, setCartMessage] = useState('')
+  const [cartAttempt, setCartAttempt] = useState(0)
+  const cartRequested = useRef(null)
+  const cartRequest = useRef(false)
+  const reviewRequest = useRef(false)
+  const [confirmedOrder, setConfirmedOrder] = useState(null)
+
+  const [promotions, setPromotions] = useState([])
+  const [promotionLoading, setPromotionLoading] = useState(false)
+  const [promotionError, setPromotionError] = useState('')
+
+  // La misma función se usa desde botones y desde requests que reciben 401.
+  const logout = useCallback(() => {
+    sessionVersion.current += 1
+    localStorage.removeItem('token')
+    setToken(null)
+    setUser(null)
+    setCart(null)
+    setConfirmedOrder(null)
+    setCartError('')
+    setCartMessage('')
+    setCartLoading(false)
+    setCartBusy(false)
+    setPromotions([])
+    setPromotionError('')
+    setPromotionLoading(false)
+    cartRequested.current = null
+    cartRequest.current = false
+    reviewRequest.current = false
+    navigate('/ingresar', { replace: true })
+  }, [navigate])
+
   useEffect(() => {
-    async function recuperarSesion() {
-      const token = localStorage.getItem("token");
+    if (sessionRequested.current) return
+    sessionRequested.current = true
+    const savedToken = localStorage.getItem('token')
+    if (!savedToken) return
+    const version = sessionVersion.current
+    fetch(URL + '/users/me', { headers: { Authorization: 'Bearer ' + savedToken } })
+      .then(readResponse)
+      .then((usuario) => {
+        if (version === sessionVersion.current) setUser(usuario)
+      })
+      .catch((error) => {
+        if (version !== sessionVersion.current) return
+        if (error.status === 401 || error.status === 403) logout()
+        setSessionError(error.message)
+      })
+      .finally(() => {
+        if (version === sessionVersion.current || !localStorage.getItem('token')) setLoading(false)
+      })
+  }, [logout])
 
-      if (!token) {
-        setLoading(false);
-        return;
-      }
+  useEffect(() => {
+    if (!user?.id || !token) return
+    const version = sessionVersion.current
+    const requestKey = version + ':' + cartAttempt
+    if (cartRequested.current === requestKey) return
+    cartRequested.current = requestKey
+    cartRequest.current = true
+    setCartLoading(true)
+    setCartBusy(true)
+    setCartError('')
+    fetch(URL + '/carts', { headers: { Authorization: 'Bearer ' + token } })
+      .then(readResponse)
+      .then((data) => {
+        if (!Array.isArray(data.items)) throw new Error('El carrito recibido no tiene una lista de ítems.')
+        if (version === sessionVersion.current) setCart(data)
+      })
+      .catch((error) => {
+        if (version !== sessionVersion.current) return
+        if (error.status === 401) {
+          logout()
+          setSessionError(error.message)
+        } else setCartError(error.message)
+      })
+      .finally(() => {
+        if (version !== sessionVersion.current) return
+        cartRequest.current = false
+        setCartLoading(false)
+        setCartBusy(false)
+      })
+  }, [user?.id, token, cartAttempt, logout])
 
-      try {
-        const response = await fetch(
-          "http://localhost:8080/users/me",
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
-        );
-
-        if (!response.ok) {
-          if (response.status === 401 || response.status === 403) {
-            localStorage.removeItem("token");
-          }
-          return;
-        }
-
-        const usuario = await response.json();
-        setUser(usuario);
-
-      } catch (error) {
-        console.error("Error al recuperar la sesión:", error);
-      }
-
-      finally {
-        setLoading(false);
-      }
-    }
-
-    recuperarSesion();
-  }, []);
-  // Sólo se habilita al iniciar una sesión de desarrollo con esta URL explícita.
-  const [demoAdmin, setDemoAdmin] = useState(() => import.meta.env.DEV
-    && location.pathname === '/promociones'
-    && new URLSearchParams(location.search).get('demoAdmin') === '1')
   // El catálogo público empieza vacío; los mocks de cuenta siguen siendo del otro flujo.
   const [shop, setShop] = useState(() => ({
     products: [],
@@ -215,29 +273,21 @@ function App() {
   ]
   const products = shop.products
   const orders = shop.orders
-const publications = user
-  ? products.filter((product) => product.sellerId === user.id)
-  : []
-
-const [promotions, setPromotions] = useState([])
-const [promotionLoading, setPromotionLoading] = useState(false)
-const [promotionError, setPromotionError] = useState('')
+  const publications = products.filter((product) => product.sellerId === user?.id)
 
 useEffect(() => {
   if (user?.role !== 'ADMIN') {
-    setPromotions([])
-    setPromotionError('')
-    return
+    return;
   }
 
-  let cancelled = false
+  let cancelled = false;
 
   async function loadPromotions() {
-    setPromotionLoading(true)
-    setPromotionError('')
+    setPromotionLoading(true);
+    setPromotionError('');
 
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('token');
 
       const response = await fetch(
         'http://localhost:8080/promotions',
@@ -247,42 +297,41 @@ useEffect(() => {
             Authorization: `Bearer ${token}`,
           },
         }
-      )
+      );
 
       if (!response.ok) {
         throw new Error(
           `No se pudieron cargar las promociones (${response.status})`
-        )
+        );
       }
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (!cancelled) {
-        setPromotions(data.map(promotionFromBackend))
+        setPromotions(data.map(promotionFromBackend));
       }
     } catch (error) {
       if (!cancelled) {
-        setPromotionError(error.message)
+        setPromotionError(error.message);
       }
     } finally {
       if (!cancelled) {
-        setPromotionLoading(false)
+        setPromotionLoading(false);
       }
     }
   }
 
-  loadPromotions()
+  loadPromotions();
 
   return () => {
-    cancelled = true
-  }
-}, [user?.role])
+    cancelled = true;
+  };
+}, [user?.id, user?.role, token]);
 
-const [reviewsByProduct, setReviewsByProduct] = useState({})
-const [reviewErrors, setReviewErrors] = useState({})
-const [reviewAttempt, setReviewAttempt] = useState(0)
-const requestedReviews = useRef(new Set())
-
+  const [reviewsByProduct, setReviewsByProduct] = useState({})
+  const [reviewErrors, setReviewErrors] = useState({})
+  const [reviewAttempt, setReviewAttempt] = useState(0)
+  const requestedReviews = useRef(new Set())
   const [catalogFilters, setCatalogFilters] = useState(emptyCatalogFilters)
   const [catalogFiltersByLocation, setCatalogFiltersByLocation] = useState({})
   const [catalogLocationKey, setCatalogLocationKey] = useState(null)
@@ -307,13 +356,11 @@ const requestedReviews = useRef(new Set())
     setCatalogFilters(filters)
     setCatalogFiltersByLocation((current) => ({ ...current, [location.key]: filters }))
   }
-  // Ir a los formularios de acceso también finaliza la vista previa.
-  if (demoAdmin && ['/ingresar', '/crear-cuenta'].includes(location.pathname)) setDemoAdmin(false)
-  const currentUser = user && demoAdmin ? { ...user, role: 'ADMIN' } : user;
-  const isAdmin = currentUser?.role === 'ADMIN';
+  const currentUser = user
+  const isAdmin = user?.role === 'ADMIN'
   const selectedPromotion = promotions.find((promotion) => promotion.id === location.state?.promotion?.id)
-  // No hay sesión JWT todavía. No usamos el usuario mock para autorizar compras.
-  const cartCount = 0
+  const items = cart?.items ?? []
+  const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
   const publicProducts = products.filter((product) => ['ACTIVO', 'AGOTADO'].includes(product.status))
   const recentProducts = publicProducts.filter((product) => product.status === 'ACTIVO')
     .slice().sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 4)
@@ -350,8 +397,149 @@ const requestedReviews = useRef(new Set())
   const editingPublication = publications.find((product) => product.id === location.state?.product?.id)
 
   function openProduct(product) { navigate('/producto', { state: { product } }) }
-  // POST de reseñas pendiente de la sesión real; nunca se agregan reseñas ficticias.
-  function canReview() { return false }
+  // Solo ocultamos duplicados conocidos. Spring decide si hubo compra previa.
+  function canReview(product) {
+    return Boolean(user && reviewsByProduct[product.id]
+      && !reviewsByProduct[product.id].some((review) => review.userId === user.id))
+  }
+
+  function changeCart(method, path, body) {
+    if (!user || !token) {
+      navigate('/ingresar')
+      return Promise.resolve(false)
+    }
+    if (cartRequest.current || !cart) return Promise.resolve(false)
+    const version = sessionVersion.current
+    cartRequest.current = true
+    setCartBusy(true)
+    setCartError('')
+    setCartMessage('')
+    return fetch(URL + path, {
+      method,
+      headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+      .then(readResponse)
+      .then((data) => {
+        if (version !== sessionVersion.current) return false
+        if (!Array.isArray(data.items)) throw new Error('El carrito recibido no tiene una lista de ítems.')
+        setCart(data)
+        setCartMessage('Carrito actualizado.')
+        return true
+      })
+      .catch((error) => {
+        if (version !== sessionVersion.current) return false
+        if (error.status === 401) {
+          logout()
+          setSessionError(error.message)
+        } else setCartError(error.message)
+        return false
+      })
+      .finally(() => {
+        if (version !== sessionVersion.current) return
+        cartRequest.current = false
+        setCartBusy(false)
+      })
+  }
+
+  function addToCart(product, quantity = 1) {
+    return changeCart('POST', '/carts/items', { productId: product.id, quantity })
+  }
+  function changeQuantity(id, quantity) {
+    return changeCart('PUT', '/carts/items/' + id, { quantity })
+  }
+  function removeItem(id) {
+    return changeCart('DELETE', '/carts/items/' + id)
+  }
+  function buyNow(product, quantity) {
+    return addToCart(product, quantity).then((saved) => {
+      if (saved) navigate('/carrito')
+      return saved
+    })
+  }
+  function retryCart() {
+    if (!cartRequest.current) setCartAttempt((attempt) => attempt + 1)
+  }
+
+  function confirmOrder({ paymentMethod }) {
+    if (!user || !token || !cart?.items.length || cartRequest.current) {
+      return Promise.reject(new Error('Revisá el carrito antes de confirmar.'))
+    }
+    const version = sessionVersion.current
+    cartRequest.current = true
+    setCartBusy(true)
+    setCartError('')
+    setCartMessage('')
+    return fetch(URL + '/orders', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentMethod }),
+    })
+      .then(readResponse)
+      .then((order) => {
+        if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
+        if (!order.id || !Array.isArray(order.items) || !Array.isArray(order.promotions)) {
+          throw new Error('La respuesta no contiene el detalle del pedido. Revisá tus pedidos antes de reintentar.')
+        }
+        setConfirmedOrder(order)
+        // El service vacía el carrito. Ajustamos la copia local con las cantidades confirmadas.
+        setCart((current) => ({ ...current, items: [], subtotal: 0 }))
+        setShop((current) => ({ ...current, products: current.products.map((product) => {
+          const purchased = order.items.find((item) => item.productId === product.id)
+          if (!purchased) return product
+          const stock = Math.max(0, product.stock - purchased.quantity)
+          return { ...product, stock, status: stock === 0 ? 'AGOTADO' : product.status }
+        }) }))
+        navigate('/pedido-confirmado')
+        return order
+      })
+      .catch((error) => {
+        if (version === sessionVersion.current && error.status === 401) {
+          logout()
+          setSessionError(error.message)
+        }
+        throw error
+      })
+      .finally(() => {
+        if (version !== sessionVersion.current) return
+        cartRequest.current = false
+        setCartBusy(false)
+      })
+  }
+
+  function publishReview(product, { rating, comment }) {
+    if (!user || !token || reviewRequest.current) return Promise.reject(new Error('Ingresá o esperá a que termine el envío.'))
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !comment.trim() || comment.length > 1000) {
+      return Promise.reject(new Error('Revisá la puntuación y el comentario.'))
+    }
+    const version = sessionVersion.current
+    reviewRequest.current = true
+    return fetch(URL + '/products/' + product.id + '/reviews', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating, comment: comment.trim() }),
+    })
+      .then(readResponse)
+      .then((review) => {
+        if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
+        if (!review.id || review.productId !== product.id) throw new Error('La respuesta no contiene la reseña esperada.')
+        setReviewsByProduct((current) => ({
+          ...current,
+          [product.id]: [review, ...(current[product.id] ?? []).filter((item) => item.id !== review.id)],
+        }))
+        return true
+      })
+      .catch((error) => {
+        if (version === sessionVersion.current && error.status === 401) {
+          logout()
+          setSessionError(error.message)
+        }
+        throw error
+      })
+      .finally(() => {
+        if (version === sessionVersion.current) reviewRequest.current = false
+      })
+  }
   function publishProduct(product) {
     setShop((current) => {
       const saved = { ...product, id: product.id ?? current.nextProductId }
@@ -363,19 +551,30 @@ const requestedReviews = useRef(new Set())
     })
     navigate('/mis-publicaciones')
   }
-
   function saveProfile(usuarioActualizado) {
-  setUser(usuarioActualizado)
-}
-  
+    setUser(usuarioActualizado)
   }
-  function logout() {
-    localStorage.removeItem("token");
-    setDemoAdmin(false)
-    setUser(null);
-    navigate('/ingresar', { replace: true });
+  function startSession(usuario) {
+    sessionVersion.current += 1
+    cartRequested.current = null
+    cartRequest.current = false
+    reviewRequest.current = false
+    setCart(null)
+    setConfirmedOrder(null)
+    setCartError('')
+    setCartMessage('')
+    setCartBusy(false)
+    setCartLoading(false)
+    setSessionError('')
+    setDeactivateError('')
+    setPromotions([])
+    setPromotionError('')
+    setPromotionLoading(false)
+    setToken(localStorage.getItem('token'))
+    setUser(usuario)
+    navigate('/mi-perfil', { replace: true })
   }
-  
+
   async function savePromotion(promotion) {
   try {
     const token = localStorage.getItem('token');
@@ -419,7 +618,7 @@ const requestedReviews = useRef(new Set())
     alert(error.message);
   }
 }
-  
+
 async function togglePromotion(promotion) {
   try {
     const token = localStorage.getItem('token');
@@ -457,7 +656,7 @@ async function togglePromotion(promotion) {
     alert(error.message);
   }
 }
-  
+
 
 
   async function deactivateAccount() {
@@ -487,7 +686,10 @@ async function togglePromotion(promotion) {
     }
 
   }
-  const shared = { cartCount, userId: user?.id }
+  const shared = {
+    cartCount, userId: user?.id, isLoggedIn: Boolean(user),
+    cartBusy: cartBusy || Boolean(user && !cart), cartError, cartMessage,
+  }
   const account = { ...shared, user: currentUser, onLogout: logout }
   function togglePublication(product) {
     setShop((current) => ({ ...current, products: current.products.map((item) => item.id === product.id ? {
@@ -495,13 +697,15 @@ async function togglePromotion(promotion) {
       status: item.status === 'ACTIVO' ? 'INACTIVO' : item.stock > 0 ? 'ACTIVO' : 'AGOTADO',
     } : item) }))
   }
-  if (loading) {
-    return <p>Verificando sesión...</p>
-  }
+
+  if (loading) return <p role="status" className="p-8">Verificando sesión…</p>
+
   return (
+    <>
+    {sessionError && <p role="alert" className="p-4 font-bold text-rojo">{sessionError}</p>}
     <Routes>
       <Route path="/" element={
-        <Home {...shared} products={recentProducts} collections={collections} onOpenProduct={openProduct}
+        <Home {...shared} cartItems={items} onAddToCart={addToCart} products={recentProducts} collections={collections} onOpenProduct={openProduct}
           productsLoading={productsLoading} productsError={productsError}
           collectionsLoading={collectionsLoading} collectionsError={collectionsError}
           onSelectCollection={(collection) => navigate('/catalogo', { state: { collectionId: collection.id } })} />
@@ -509,6 +713,8 @@ async function togglePromotion(promotion) {
       <Route path="/catalogo" element={
                                  <Catalog
                                     {...shared}
+                                    cartItems={items}
+                                    onAddToCart={addToCart}
                                     products={publicProducts}
                                     collections={catalogCollections}
                                     loading={productsLoading}
@@ -523,7 +729,10 @@ async function togglePromotion(promotion) {
                                 />
                               } />
       <Route path="/producto" element={selectedProduct ? (
-        <ProductDetail key={selectedProduct.id} {...shared} product={selectedProduct} products={publicProducts}
+        <ProductDetail key={(user?.id ?? 'guest') + ':' + selectedProduct.id} {...shared}
+          user={user} canReview={canReview} onPublishReview={publishReview}
+          cartItems={items} cartQuantity={items.find((item) => item.productId === selectedProduct.id)?.quantity ?? 0}
+          onAddToCart={addToCart} onBuyNow={buyNow} product={selectedProduct} products={publicProducts}
           reviews={reviewsByProduct[selectedProduct.id] ?? []}
           reviewsLoading={reviewsByProduct[selectedProduct.id] === undefined && !reviewErrors[selectedProduct.id]}
           reviewsError={reviewErrors[selectedProduct.id]} onRetryReviews={retryReviews}
@@ -538,78 +747,31 @@ async function togglePromotion(promotion) {
         <Publications {...account} products={publications}
           onEdit={(product) => navigate('/publicar', { state: { product } })}
           onDelete={(product) => setShop((current) => ({ ...current, products: current.products.filter((item) => item.id !== product.id) }))}
-          onToggleStatus={togglePublication} /> </ProtectedRoute>
-      } />
-<Route path="/publicar" element={
-  <ProtectedRoute user={user}>
-    {location.state?.product && !editingPublication ? (
-      <Navigate to="/mis-publicaciones" replace />
-    ) : (
-      <PublishProduct
-        key={editingPublication?.id ?? 'new'}
-        {...account}
-        product={editingPublication}
-        onPublish={publishProduct}
-      />
-    )}
-  </ProtectedRoute>
-} />
-
-<Route path="/mis-pedidos" element={
-  <ProtectedRoute user={user}>
-    <Orders
-      {...account}
-      orders={orders}
-      canReview={canReview}
-      onReview={openProduct}
-    />
-  </ProtectedRoute>
-} />
-
-<Route path="/mi-perfil" element={
-  <ProtectedRoute user={user}>
-    <Profile
-      {...account}
-      onSave={saveProfile}
-      onDeactivate={deactivateAccount}
-      deactivateError={deactivateError}
-    />
-  </ProtectedRoute>
-} />
-
-<Route path="/carrito" element={
-  <ProtectedRoute user={user}>
-    <Cart
-      {...shared}
-      cart={null}
-      products={products}
-    />
-  </ProtectedRoute>
-} />
-
-<Route path="/checkout" element={
-  <ProtectedRoute user={user}>
-    <Checkout
-      {...shared}
-      cart={null}
-      products={products}
-    />
-  </ProtectedRoute>
-} />
-
-<Route path="/pedido-confirmado" element={
-  <ProtectedRoute user={user}>
-    <OrderConfirmation order={null} />
-  </ProtectedRoute>
-} />
-
-      {/* Acceso de demostración: sin autenticación ni almacenamiento de contraseñas. */}
-      <Route path="/ingresar" element={
-        <Login {...shared} onLogin={(usuario) => {setDemoAdmin(false); setUser(usuario); navigate('/mi-perfil');}} />} />
-      <Route path="/crear-cuenta" element={
-        <Register {...shared} onRegister={(usuario) => {setDemoAdmin(false); setUser(usuario); navigate("/mi-perfil", { replace: true });}} />
-      } />
-      
+          onToggleStatus={togglePublication} />
+      </ProtectedRoute>} />
+      <Route path="/publicar" element={<ProtectedRoute user={user}>
+        {location.state?.product && !editingPublication ? <Navigate to="/mis-publicaciones" replace />
+          : <PublishProduct key={editingPublication?.id ?? 'new'} {...account} product={editingPublication} onPublish={publishProduct} />}
+      </ProtectedRoute>} />
+      <Route path="/mis-pedidos" element={<ProtectedRoute user={user}>
+        <Orders {...account} orders={orders} canReview={() => false} onReview={openProduct} />
+      </ProtectedRoute>} />
+      <Route path="/mi-perfil" element={<ProtectedRoute user={user}>
+        <Profile {...account} onSave={saveProfile} onDeactivate={deactivateAccount} deactivateError={deactivateError} />
+      </ProtectedRoute>} />
+      <Route path="/carrito" element={<ProtectedRoute user={user}>
+        <Cart {...shared} cart={cart} products={products} loading={cartLoading} onRetry={retryCart}
+          onQuantityChange={changeQuantity} onRemove={removeItem} onCheckout={() => navigate('/checkout')} />
+      </ProtectedRoute>} />
+      <Route path="/checkout" element={<ProtectedRoute user={user}>
+        <Checkout {...shared} cart={cart} products={products} loading={cartLoading}
+          error={cartError} onRetry={retryCart} onConfirm={confirmOrder} />
+      </ProtectedRoute>} />
+      <Route path="/pedido-confirmado" element={<ProtectedRoute user={user}>
+        <OrderConfirmation order={confirmedOrder} cartCount={cartCount} />
+      </ProtectedRoute>} />
+      <Route path="/ingresar" element={<Login {...shared} onLogin={startSession} />} />
+      <Route path="/crear-cuenta" element={<Register {...shared} onRegister={startSession} />} />
       <Route path="/promociones" element={isAdmin ? (
         promotionLoading
           ? <p>Cargando promociones...</p>
@@ -635,6 +797,7 @@ async function togglePromotion(promotion) {
         : <Navigate to="/mi-perfil" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }
 export default App

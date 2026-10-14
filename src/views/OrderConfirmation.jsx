@@ -7,8 +7,8 @@ import PurchaseSummary from '../components/PurchaseSummary.jsx'
 
 const stateLabels = { PENDIENTE: 'Pendiente', PAGO: 'Pagado', ENVIADO: 'Enviado', ENTREGADO: 'Entregado', CANCELADO: 'Cancelado' }
 
-function OrderConfirmation({ order }) {
-  if (!order) return <PurchaseNotice title="Tu pedido" message="No hay una compra confirmada para mostrar." />
+function OrderConfirmation({ order, cartCount = 0 }) {
+  if (!order) return <PurchaseNotice title="Tu pedido" isLoggedIn cartCount={cartCount} message="No hay una compra confirmada para mostrar." />
   const summary = {
     subtotal: order.subtotal,
     discounts: order.promotions.map((promotion) => ({ label: promotion.promotionName, amount: promotion.discountApplied })),
@@ -18,7 +18,7 @@ function OrderConfirmation({ order }) {
   const date = new Date(order.orderDate).toLocaleDateString('es-AR')
   return (
     <>
-      <Header cartCount={0} isLoggedIn />
+      <Header cartCount={cartCount} isLoggedIn />
       <main className="mx-auto w-full max-w-[66.25rem] px-6 pt-9 pb-18 leading-[normal] lg:px-10">
         <div className="flex min-w-0 flex-col gap-8">
           <section className="relative flex min-h-[25.0375rem] flex-col items-start gap-4.5 overflow-hidden rounded-[2.25rem] border-[2.4px] border-bordo bg-amarillo px-6 py-13 shadow-[0.625rem_0.625rem_0_var(--color-bordo)] sm:px-12">

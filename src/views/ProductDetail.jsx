@@ -17,7 +17,7 @@ import {
 
 const typeLabels = { CARTA: 'Carta', SOBRE: 'Sobre', LOOTBOX: 'Lootbox' }
 
-function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, userId, user, canReview, onPublishReview, reviewsLoading, reviewsError, onRetryReviews, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+function ProductDetail({ cartBusy, cartError, cartMessage, cartItems = [], cartQuantity = 0, product, products, userId, user, canReview, onPublishReview, reviewsLoading, reviewsError, onRetryReviews, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
   const reviews = providedReviews ?? []
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
@@ -44,7 +44,8 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
   }
 
   function addSelectedQuantity() {
-    if (canBuy && onAddToCart?.(product, selectedQuantity) === true) setQuantity(1)
+    if (!canBuy || cartBusy || !onAddToCart) return
+    onAddToCart(product, selectedQuantity).then((saved) => { if (saved) setQuantity(1) })
   }
 
   return (
@@ -76,10 +77,13 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
               <p className="text-[0.9375rem] leading-[1.21875rem] font-bold">{detailPromotionLabel}</p>
             </div>
             <div className="flex flex-wrap items-stretch gap-3">
-              <QuantitySelector quantity={selectedQuantity} maxQuantity={canBuy ? availableUnits : 0} onChange={changeQuantity} />
-              <button type="button" disabled={!canBuy || !onAddToCart} onClick={addSelectedQuantity} className="min-w-0 flex-1 rounded-full border-3 border-bordo bg-bordo px-6 py-4 text-[1.125rem] font-extrabold text-crema disabled:cursor-not-allowed disabled:opacity-50">Agregar al carrito</button>
+              <QuantitySelector quantity={selectedQuantity} maxQuantity={canBuy && !cartBusy ? availableUnits : 0} onChange={changeQuantity} />
+              <button type="button" disabled={!canBuy || cartBusy || !onAddToCart} onClick={addSelectedQuantity} className="min-w-0 flex-1 rounded-full border-3 border-bordo bg-bordo px-6 py-4 text-[1.125rem] font-extrabold text-crema disabled:cursor-not-allowed disabled:opacity-50">Agregar al carrito</button>
             </div>
-            <button type="button" disabled={!canBuy || !onBuyNow} onClick={() => { if (canBuy) onBuyNow?.(product, selectedQuantity) }} className="w-full rounded-full border-3 border-bordo bg-rosa px-6 py-3.5 text-[1.0625rem] font-extrabold shadow-[0.25rem_0.25rem_0_var(--color-bordo)] disabled:cursor-not-allowed disabled:opacity-50">Comprar ahora</button>
+            <button type="button" disabled={!canBuy || cartBusy || !onBuyNow} onClick={() => { if (canBuy) onBuyNow?.(product, selectedQuantity) }} className="w-full rounded-full border-3 border-bordo bg-rosa px-6 py-3.5 text-[1.0625rem] font-extrabold shadow-[0.25rem_0.25rem_0_var(--color-bordo)] disabled:cursor-not-allowed disabled:opacity-50">Comprar ahora</button>
+            {cartError && <p role="alert" className="font-bold text-rojo">{cartError} <Link to="/carrito" className="underline">Revisar carrito</Link></p>}
+            {cartMessage && <p role="status" className="font-bold">{cartMessage}</p>}
+            {!user && <Link to="/ingresar" className="font-bold underline">Ingresá para comprar.</Link>}
             {!onAddToCart && <p className="text-[0.875rem] font-semibold">Las compras todavía no están disponibles. Podés seguir explorando el catálogo.</p>}
             <dl>
               {productInformation.map((item) => (
@@ -105,12 +109,13 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
               <p className="text-[0.875rem] font-semibold">Publicar reseñas todavía no está disponible.</p>
             ) : !user ? (
               <Link to="/ingresar" className="self-start rounded-[0.875rem] border-2 border-dashed border-bordo px-3.5 py-2.5 text-[0.875rem] leading-[1.18125rem] font-bold">Ingresá para reseñar productos que compraste.</Link>
-            ) : canReview?.(product) && (
+            ) : !reviewsLoading && !reviewsError && canReview?.(product) && (
               showReviewForm ? (
                 <ReviewForm onCancel={() => setShowReviewForm(false)} onPublish={(review) => {
-                  const published = onPublishReview?.(product, review) === true
-                  if (published) setShowReviewForm(false)
-                  return published
+                  return onPublishReview(product, review).then((published) => {
+                    if (published) setShowReviewForm(false)
+                    return published
+                  })
                 }} />
               ) : (
                 <button type="button" onClick={() => setShowReviewForm(true)} className="self-start rounded-full border-[2.4px] border-bordo bg-rosa px-5 py-3 text-[0.875rem] font-extrabold shadow-[0.1875rem_0.1875rem_0_var(--color-bordo)]">Dejar reseña</button>
@@ -129,7 +134,7 @@ function ProductDetail({ cartItems = [], cartQuantity = 0, product, products, us
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {relatedProducts.map((relatedProduct) => (
-              <ProductCard key={relatedProduct.id} product={relatedProduct} userId={userId} cartQuantity={cartItems.find((item) => item.productId === relatedProduct.id)?.quantity ?? 0} variant="related" imageBackground={detailProductBackgrounds[relatedProduct.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
+              <ProductCard key={relatedProduct.id} product={relatedProduct} userId={userId} cartQuantity={cartItems.find((item) => item.productId === relatedProduct.id)?.quantity ?? 0} variant="related" imageBackground={detailProductBackgrounds[relatedProduct.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
             ))}
           </div>
         </section>

@@ -1,4 +1,5 @@
 import Pagination from '../components/Pagination.jsx'
+import { Link } from 'react-router-dom'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import ProductCard from '../components/ProductCard.jsx'
@@ -8,7 +9,7 @@ import { catalogTypes, catalogProductBackgrounds } from '../data/catalogMocks.js
 
 const pageSize = 9
 
-function Catalog({ loading, error, collectionsError, totalProducts, loadedProducts, cartItems = [],products, collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+function Catalog({ isLoggedIn, cartBusy, cartError, cartMessage, loading, error, collectionsError, totalProducts, loadedProducts, cartItems = [],products, collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
 
 
   const { search, type, collection, minPrice, maxPrice, page } = filters
@@ -34,7 +35,7 @@ function Catalog({ loading, error, collectionsError, totalProducts, loadedProduc
 
   return (
     <>
-      <Header cartCount={cartCount} />
+      <Header cartCount={cartCount} isLoggedIn={isLoggedIn} />
       <main className="mx-auto flex w-full max-w-[85rem] flex-col gap-8 px-6 pt-9 pb-18 text-bordo lg:px-10 2xl:min-h-[113.475rem]">
         <section aria-labelledby="catalog-heading" className="flex flex-wrap items-end justify-between gap-8 min-h-[11.8125rem] rounded-[2rem] border-3 border-bordo bg-rojo px-6 py-9 text-crema shadow-[0.5rem_0.5rem_0_var(--color-bordo)] lg:px-10">
           <div className="flex flex-col gap-2 leading-[normal]">
@@ -47,6 +48,8 @@ function Catalog({ loading, error, collectionsError, totalProducts, loadedProduc
           </form>
         </section>
 
+        {cartError && <p role="alert" className="font-bold text-rojo">{cartError} <Link to="/carrito" className="underline">Revisar carrito</Link></p>}
+        {cartMessage && <p role="status" className="font-bold">{cartMessage}</p>}
         {loading && <p role="status">Cargando productos…</p>}
         {error && <p role="alert" className="font-bold text-rojo">{error}</p>}
         {collectionsError && <p role="alert" className="font-bold text-rojo">{collectionsError}</p>}
@@ -57,7 +60,7 @@ function Catalog({ loading, error, collectionsError, totalProducts, loadedProduc
             {filteredProducts.length > 0 ? <>
             <div aria-label="Productos del catálogo" className="grid min-w-0 grid-cols-1 gap-6.5 sm:grid-cols-2 xl:grid-cols-3">
               {visibleProducts.map((product) => (
-                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
+                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
               ))}
             </div>
             <Pagination page={currentPage} totalPages={totalPages} onPageChange={changePage} />
@@ -70,7 +73,7 @@ function Catalog({ loading, error, collectionsError, totalProducts, loadedProduc
           </div>
         </div>
       </main>
-      <Footer />
+      <Footer isLoggedIn={isLoggedIn} />
     </>
   )
 }

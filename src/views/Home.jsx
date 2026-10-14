@@ -7,15 +7,17 @@ import PromotionCard from '../components/PromotionCard.jsx'
 import hero from '../assets/home-hero.png'
 import { homeCollectionVisuals, homePromotions, homeProductBackgrounds } from '../data/homeMocks.js'
 
-function Home({ collections, productsLoading, productsError, collectionsLoading, collectionsError, cartItems = [], products, userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
+function Home({ isLoggedIn, cartBusy, cartError, cartMessage, collections, productsLoading, productsError, collectionsLoading, collectionsError, cartItems = [], products, userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
   const homeCollections = collections.map((collection) => ({
     ...collection,
     ...homeCollectionVisuals[collection.name],
   }))
   return (
     <>
-      <Header cartCount={cartCount} />
+      <Header cartCount={cartCount} isLoggedIn={isLoggedIn} />
       <main>
+        {cartError && <p role="alert" className="px-6 py-3 font-bold text-rojo">{cartError} <Link to="/carrito" className="underline">Revisar carrito</Link></p>}
+        {cartMessage && <p role="status" className="px-6 py-3 font-bold">{cartMessage}</p>}
         <section aria-label="Cartas Topps NBA" className="px-6 py-10.5">
           <img src={hero} alt="Cartas coleccionables Topps NBA" className="mx-auto aspect-[1358/579] w-full max-w-[84.875rem] rounded-[0.5625rem] object-cover" />
         </section>
@@ -44,7 +46,7 @@ function Home({ collections, productsLoading, productsError, collectionsLoading,
             </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
               {products.map((product) => (
-                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="home" imageBackground={homeProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} />
+                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="home" imageBackground={homeProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
               ))}
             </div>
           </section>
@@ -67,7 +69,7 @@ function Home({ collections, productsLoading, productsError, collectionsLoading,
           </section>
         </div>
       </main>
-      <Footer variant="home" />
+      <Footer variant="home" isLoggedIn={isLoggedIn} />
     </>
   )
 }
