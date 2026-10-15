@@ -209,7 +209,6 @@ function App() {
   // El catálogo público empieza vacío.
   const [shop, setShop] = useState(() => ({
     products: [],
-    nextProductId: 1,
   }))
   const [collections, setCollections] = useState([])
   const [productsLoading, setProductsLoading] = useState(true)
@@ -234,7 +233,6 @@ function App() {
         setShop((current) => ({
           ...current,
           products: data.content,
-          nextProductId: Math.max(0, ...data.content.map((product) => product.id)) + 1,
         }))
         setTotalProducts(data.totalElements)
       })
@@ -561,16 +559,53 @@ useEffect(() => {
         }
       })
   }
-  function publishProduct(product) {
-    setShop((current) => {
-      const saved = { ...product, id: product.id ?? current.nextProductId }
-      return { ...current,
-        products: product.id ? current.products.map((item) => item.id === product.id ? saved : item)
-          : [...current.products, saved],
-        nextProductId: product.id ? current.nextProductId : current.nextProductId + 1,
+  async function uploadProductPhoto(file) {
+    if (!user || !token) throw new Error('Ingresá para subir fotografías.')
+    const version = sessionVersion.current
+    const body = new FormData()
+    body.append('file', file)
+    try {
+      const response = await fetch(URL + '/products/images', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + token }, body,
+      })
+      const data = await readResponse(response)
+      if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
+      if (typeof data.url !== 'string' || !/^https?:\/\//.test(data.url)) throw new Error('La subida no devolvió una URL de imagen válida.')
+      return data.url
+    } catch (error) {
+      if (version === sessionVersion.current && error.status === 401) {
+        logout()
+        setSessionError(error.message)
       }
-    })
-    navigate('/mis-publicaciones')
+      throw error
+    }
+  }
+  async function publishProduct(request, productId) {
+    if (!user || !token) throw new Error('Ingresá para guardar la publicación.')
+    const version = sessionVersion.current
+    try {
+      const response = await fetch(URL + '/products' + (productId == null ? '' : '/' + productId), {
+        method: productId == null ? 'POST' : 'PUT',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      })
+      const saved = await readResponse(response)
+      if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
+      if (!saved.id || saved.sellerId !== user.id || (productId != null && saved.id !== productId)) throw new Error('La respuesta no contiene la publicación esperada.')
+      setShop((current) => ({ ...current,
+        products: current.products.some((item) => item.id === saved.id)
+          ? current.products.map((item) => item.id === saved.id ? saved : item)
+          : [...current.products, saved],
+      }))
+      if (productId == null) setTotalProducts((current) => current + 1)
+      navigate('/mis-publicaciones')
+    } catch (error) {
+      if (version === sessionVersion.current && error.status === 401) {
+        logout()
+        setSessionError(error.message)
+      }
+      throw error
+    }
   }
   function saveProfile(usuarioActualizado) {
     setUser(usuarioActualizado)
@@ -773,7 +808,9 @@ async function togglePromotion(promotion) {
       </ProtectedRoute>} />
       <Route path="/publicar" element={<ProtectedRoute user={user}>
         {location.state?.product && !editingPublication ? <Navigate to="/mis-publicaciones" replace />
-          : <PublishProduct key={editingPublication?.id ?? 'new'} {...account} product={editingPublication} onPublish={publishProduct} />}
+          : <PublishProduct key={(user?.id ?? '') + ':' + (editingPublication?.id ?? 'new')} {...account}
+              product={editingPublication} collections={collections} collectionsLoading={collectionsLoading} collectionsError={collectionsError}
+              onUploadPhoto={uploadProductPhoto} onPublish={(request) => publishProduct(request, editingPublication?.id)} />}
       </ProtectedRoute>} />
       <Route path="/mis-pedidos" element={<ProtectedRoute user={user}>
         <Orders key={user?.id + ':' + token} {...account} token={token} details={orderDetails}
