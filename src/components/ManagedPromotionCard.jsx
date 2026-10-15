@@ -1,7 +1,5 @@
 import ToggleSwitch from './ToggleSwitch.jsx'
 import { promotionKinds, promotionStatus, promotionPeriod, promotionCondition } from '../data/promotionMocks.js'
-import { publicationCollections } from '../data/accountMocks.js'
-import { productMocks } from '../data/productMocks.js'
 import { paymentMethods } from '../data/paymentMethods.js'
 
 function ManagedPromotionCard({ promotion, onEdit, onToggle }) {
@@ -15,7 +13,7 @@ function ManagedPromotionCard({ promotion, onEdit, onToggle }) {
     </div>
     <div className="flex flex-1 flex-col gap-2 px-5 pt-4 pb-4.5">
       <h2 className="text-[1.125rem] leading-[1.35rem] font-extrabold text-pretty">{promotion.name}</h2>
-      <p className="text-[0.875rem] leading-[1.225rem]">{promotionCondition(promotion, publicationCollections, productMocks, paymentMethods)}</p>
+      <p className="text-[0.875rem] leading-[1.225rem]">{promotionCondition(promotion, [], [], paymentMethods)}</p>
       <p className="text-[0.8125rem] font-semibold opacity-80">{promotionPeriod(promotion)}</p>
       <div className="flex flex-wrap gap-1.5 text-[0.75rem] font-bold"><span className="rounded-full border-[1.6px] border-bordo px-2.5 py-0.75">{promotionKinds.find((kind) => kind.value === promotion.kind)?.label}</span><span className="rounded-full border-[1.6px] border-bordo px-2.5 py-0.75">{promotion.stackable ? 'Acumulable' : 'No acumulable'}</span></div>
       <div className="mt-auto flex items-center justify-between gap-2 border-t-[1.6px] border-bordo/20 pt-3.5 text-[0.875rem] font-bold">

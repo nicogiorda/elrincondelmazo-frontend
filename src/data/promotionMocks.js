@@ -21,36 +21,30 @@ export const promotionMocks = [
 export function promotionStatus(promotion) {
   if (!promotion.enabled) return 'Inactiva';
 
-  const today = new Date();
+  const now = new Date();
+  // LocalDateTime no tiene zona: interpretar como hora local, sin convertir a UTC.
+  const start = promotion.startDate.includes('T')
+    ? promotion.startDate : `${promotion.startDate}T00:00:00`;
+  const end = promotion.endDate && (promotion.endDate.includes('T')
+    ? promotion.endDate : `${promotion.endDate}T23:59:59`);
 
-  const currentDate = [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, '0'),
-    String(today.getDate()).padStart(2, '0')
-  ].join('-');
-
-  if (promotion.startDate > currentDate) {
-    return 'Programada';
-  }
-
-  if (promotion.endDate && promotion.endDate < currentDate) {
-    return 'Vencida';
-  }
+  if (new Date(start) > now) return 'Programada';
+  if (end && new Date(end) < now) return 'Vencida';
 
   return 'Activa';
 }
 
 export function promotionPeriod(promotion) {
-  const format = (date) => date.split('-').reverse().join('/')
+  const format = (date) => date.slice(0, 10).split('-').reverse().join('/')
   if (!promotion.startDate) return ''
   return promotion.endDate ? `${format(promotion.startDate)} al ${format(promotion.endDate)}` : `Desde ${format(promotion.startDate)} · sin fecha de fin`
 }
 export function promotionCondition(promotion, collections, products, payments) {
   const typeNames = { CARTA: 'cartas', SOBRE: 'sobres', LOOTBOX: 'lootboxes' }
   if (promotion.kind === 'quantity') return `Llevando ${promotion.minimumQuantity} o más ${typeNames[promotion.productType] ?? 'productos'}`
-  if (promotion.kind === 'collection') return `Productos de ${collections.find((item) => item.id === Number(promotion.collectionId))?.name ?? ''}`
+  if (promotion.kind === 'collection') return `Productos de ${collections.find((item) => item.id === Number(promotion.collectionId))?.name ?? promotion.collectionName ?? ''}`
   if (promotion.kind === 'type') return `Solo ${typeNames[promotion.productType] ?? 'productos'}`
   if (promotion.kind === 'payment') return `Pagando con ${payments.find((item) => item.value === promotion.paymentMethod)?.label.toLocaleLowerCase('es-AR') ?? ''}`
   if (promotion.kind === 'minimum') return `Compras desde $ ${Number(promotion.minimumAmount).toLocaleString('es-AR')}`
-  return products.find((item) => item.id === Number(promotion.productId))?.name ?? ''
+  return products.find((item) => item.id === Number(promotion.productId))?.name ?? promotion.productName ?? ''
 }

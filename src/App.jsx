@@ -45,16 +45,21 @@ function promotionFromBackend(promotion) {
     productType: promotion.productType ?? '',
     paymentMethod: promotion.paymentMethod ?? '',
     collectionId: promotion.collectionId ?? '',
+    collectionName: promotion.collectionName ?? '',
     productId: promotion.productId ?? '',
+    productName: promotion.productName ?? '',
     stackable: promotion.stackable,
-    startDate: promotion.startDate?.slice(0, 10) ?? '',
-    endDate: promotion.endDate?.slice(0, 10) ?? '',
+    startDate: promotion.startDate ?? '',
+    endDate: promotion.endDate ?? '',
     enabled: promotion.active,
   };
 }
 
 function promotionToBackend(promotion) {
   const kind = promotion.kind;
+  if (kind === 'type' && !['CARTA', 'SOBRE', 'LOOTBOX'].includes(promotion.productType)) {
+    throw new Error('Seleccioná un tipo de producto válido.');
+  }
 
   return {
     name: promotion.name.trim(),
@@ -68,7 +73,7 @@ function promotionToBackend(promotion) {
     minimumAmount: kind === 'minimum'
       ? Number(promotion.minimumAmount) : null,
 
-    productType: kind === 'type'
+    productType: ['type', 'quantity'].includes(kind)
       ? promotion.productType || null : null,
 
     paymentMethod: kind === 'payment'
@@ -82,10 +87,11 @@ function promotionToBackend(promotion) {
 
     stackable: promotion.stackable,
 
-    startDate: `${promotion.startDate}T00:00:00`,
+    startDate: promotion.startDate.includes('T')
+      ? promotion.startDate : `${promotion.startDate}T00:00:00`,
 
     endDate: promotion.endDate
-      ? `${promotion.endDate}T23:59:59`
+      ? (promotion.endDate.includes('T') ? promotion.endDate : `${promotion.endDate}T23:59:59`)
       : null,
   };
 }
@@ -337,58 +343,37 @@ function App() {
   const publications = ownPublications.userId === user?.id ? ownPublications.items : []
   const publicationsLoading = ownPublications.loading || (needsPublications && ownPublications.userId !== user?.id)
 
-useEffect(() => {
-  if (user?.role !== 'ADMIN') {
-    return;
-  }
+  useEffect(() => {
+    if (user?.role !== 'ADMIN' || !token) return;
+    let cancelled = false;
+    const version = sessionVersion.current;
 
-  let cancelled = false;
-
-  async function loadPromotions() {
-    setPromotionLoading(true);
-    setPromotionError('');
-
-    try {
-      const token = localStorage.getItem('token');
-
-      const response = await fetch(
-        'http://localhost:8080/promotions',
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+    async function loadPromotions() {
+      setPromotionLoading(true);
+      setPromotionError('');
+      try {
+        const response = await fetch(URL + '/promotions', {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        const data = await readResponse(response);
+        if (!cancelled && version === sessionVersion.current && token === localStorage.getItem('token')) {
+          setPromotions(data.map(promotionFromBackend));
         }
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          `No se pudieron cargar las promociones (${response.status})`
-        );
-      }
-
-      const data = await response.json();
-
-      if (!cancelled) {
-        setPromotions(data.map(promotionFromBackend));
-      }
-    } catch (error) {
-      if (!cancelled) {
-        setPromotionError(error.message);
-      }
-    } finally {
-      if (!cancelled) {
-        setPromotionLoading(false);
+      } catch (error) {
+        if (cancelled || version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
+        if (error.status === 401) {
+          logout();
+          setSessionError(error.message);
+        } else setPromotionError(error.message);
+      } finally {
+        if (!cancelled && version === sessionVersion.current && token === localStorage.getItem('token')) {
+          setPromotionLoading(false);
+        }
       }
     }
-  }
-
-  loadPromotions();
-
-  return () => {
-    cancelled = true;
-  };
-}, [user?.id, user?.role, token]);
+    loadPromotions();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.role, token, logout]);
 
   const [reviewsByProduct, setReviewsByProduct] = useState({})
   const [reviewErrors, setReviewErrors] = useState({})
@@ -696,88 +681,52 @@ useEffect(() => {
   }
 
   async function savePromotion(promotion) {
-  try {
-    const token = localStorage.getItem('token');
-
-    const editing = promotion.id != null;
-
-    const url = editing
-      ? `http://localhost:8080/promotions/${promotion.id}`
-      : 'http://localhost:8080/promotions';
-
-    const response = await fetch(url, {
-      method: editing ? 'PUT' : 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(promotionToBackend(promotion)),
-    });
-
-    if (!response.ok) {
-      const detail = await response.text();
-
-      throw new Error(
-        `No se pudo guardar la promoción (${response.status}). ${detail}`
-      );
-    }
-
-    const saved = promotionFromBackend(await response.json());
-
-    setPromotions((current) =>
-      editing
-        ? current.map((item) =>
-            item.id === saved.id ? saved : item
-          )
-        : [...current, saved]
-    );
-
-    navigate('/promociones');
-  } catch (error) {
-    console.error('Error al guardar la promoción:', error);
-    alert(error.message);
-  }
-}
-
-async function togglePromotion(promotion) {
-  try {
-    const token = localStorage.getItem('token');
-
-    const action = promotion.enabled
-      ? 'deactivate'
-      : 'activate';
-
-    const response = await fetch(
-      `http://localhost:8080/promotions/${promotion.id}/${action}`,
-      {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+    if (user?.role !== 'ADMIN' || !token) throw new Error('Ingresá con una cuenta administradora.');
+    const version = sessionVersion.current;
+    try {
+      const editing = promotion.id != null;
+      const response = await fetch(URL + '/promotions' + (editing ? '/' + promotion.id : ''), {
+        method: editing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify(promotionToBackend(promotion)),
+      });
+      const data = await readResponse(response);
+      if (version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
+      const saved = promotionFromBackend(data);
+      setPromotions((current) => editing
+        ? current.map((item) => item.id === saved.id ? saved : item)
+        : [...current, saved]);
+      navigate('/promociones');
+    } catch (error) {
+      if (version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
+      if (error.status === 401) {
+        logout();
+        setSessionError(error.message);
       }
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `No se pudo cambiar el estado (${response.status})`
-      );
+      throw error;
     }
-
-    const updated = promotionFromBackend(await response.json());
-
-    setPromotions((current) =>
-      current.map((item) =>
-        item.id === updated.id ? updated : item
-      )
-    );
-
-  } catch (error) {
-    console.error('Error al cambiar la promoción:', error);
-    alert(error.message);
   }
-}
 
-
+  async function togglePromotion(promotion) {
+    if (user?.role !== 'ADMIN' || !token) return;
+    const version = sessionVersion.current;
+    try {
+      const action = promotion.enabled ? 'deactivate' : 'activate';
+      const response = await fetch(URL + '/promotions/' + promotion.id + '/' + action, {
+        method: 'PATCH', headers: { Authorization: 'Bearer ' + token },
+      });
+      const data = await readResponse(response);
+      if (version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
+      const updated = promotionFromBackend(data);
+      setPromotions((current) => current.map((item) => item.id === updated.id ? updated : item));
+    } catch (error) {
+      if (version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
+      if (error.status === 401) {
+        logout();
+        setSessionError(error.message);
+      } else alert(error.message);
+    }
+  }
 
   async function deactivateAccount() {
     const confirmado = window.confirm("¿Estás seguro de que deseás desactivar tu cuenta?")
