@@ -279,7 +279,6 @@ function App() {
   const [collectionsLoading, setCollectionsLoading] = useState(true)
   const [productsError, setProductsError] = useState('')
   const [collectionsError, setCollectionsError] = useState('')
-  const [totalProducts, setTotalProducts] = useState(0)
   // Estas marcas evitan duplicar los GET incluso con StrictMode en desarrollo.
   const productsRequestVersion = useRef(0)
   const [productsAttempt, setProductsAttempt] = useState(0)
@@ -292,6 +291,7 @@ function App() {
     Promise.resolve().then(async () => {
       if (!active) return
       try {
+        setProductsLoading(true)
         const response = await fetch(URL + '/products?size=100', { signal: controller.signal })
         if (!response.ok) throw new Error('Error al cargar productos')
         const data = await response.json()
@@ -300,7 +300,6 @@ function App() {
         setShop((current) => ({ ...current, products: [
           ...data.content, ...current.products.filter((product) => !data.content.some((item) => item.id === product.id)),
         ] }))
-        setTotalProducts(data.totalElements)
         setProductsError('')
       } catch {
         if (active && version === productsRequestVersion.current) {
@@ -413,6 +412,47 @@ function App() {
     .slice().sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 4)
   const selectedProductId = location.state?.product?.id
   const selectedProduct = publicProducts.find((product) => product.id === selectedProductId)
+  const [detailRequest, setDetailRequest] = useState(null)
+  const detailKey = selectedProductId + ':' + location.key + ':' + productsAttempt
+  const needsDetail = location.pathname === '/producto' && selectedProductId !== undefined && !selectedProduct
+    && !(detailRequest?.key === detailKey && detailRequest.notFound)
+
+  useEffect(() => {
+    if (!needsDetail) return
+    let active = true
+    const controller = new AbortController()
+    const version = productsRequestVersion.current
+    Promise.resolve().then(async () => {
+      if (!active) return
+      try {
+        const response = await fetch(URL + '/products/' + selectedProductId, { signal: controller.signal })
+        if (!active || version !== productsRequestVersion.current) return
+        if (response.status === 404) {
+          setDetailRequest({ key: detailKey, notFound: true })
+          return
+        }
+        if (!response.ok) throw new Error('No pudimos cargar el producto (HTTP ' + response.status + ').')
+        const product = await response.json()
+        if (!active || version !== productsRequestVersion.current) return
+        if (product.id !== selectedProductId) throw new Error('El producto recibido no coincide con el seleccionado.')
+        if (!['ACTIVO', 'AGOTADO'].includes(product.status)) {
+          setDetailRequest({ key: detailKey, notFound: true })
+          return
+        }
+        if (productsLoading) {
+          productsRequestVersion.current += 1
+          setProductsAttempt((current) => current + 1)
+        }
+        setShop((current) => ({ ...current, products: [
+          ...current.products.filter((item) => item.id !== product.id), product,
+        ] }))
+      } catch (error) {
+        if (active && version === productsRequestVersion.current) setDetailRequest({ key: detailKey, error: error.message })
+      }
+    })
+    return () => { active = false; controller.abort() }
+  }, [needsDetail, selectedProductId, detailKey, productsLoading])
+
   const reviewProductId = location.pathname === '/producto' ? selectedProduct?.id : undefined
 
   useEffect(() => {
@@ -443,7 +483,14 @@ function App() {
 
   const editingPublication = publications.find((product) => product.id === location.state?.product?.id)
 
-  function openProduct(product) { navigate('/producto', { state: { product } }) }
+  function openProduct(product) {
+    // Una tarjeta puede venir de una página que no forma parte de la carga inicial.
+    refreshPendingCatalog()
+    setShop((current) => ({ ...current, products: [
+      ...current.products.filter((item) => item.id !== product.id), product,
+    ] }))
+    navigate('/producto', { state: { product } })
+  }
   // Solo ocultamos duplicados conocidos. Spring decide si hubo compra previa.
   function canReview(product) {
     return Boolean(user && reviewsByProduct[product.id]
@@ -529,6 +576,7 @@ function App() {
           throw new Error('La respuesta no contiene el detalle del pedido. Revisá tus pedidos antes de reintentar.')
         }
         setConfirmedOrder(order)
+        refreshPendingCatalog()
         // El service vacía el carrito. Ajustamos la copia local con las cantidades confirmadas.
         setCart((current) => ({ ...current, items: [], subtotal: 0 }))
         setShop((current) => ({ ...current, products: current.products.map((product) => {
@@ -769,8 +817,6 @@ function App() {
   }
   function syncPublication(saved) {
     refreshPendingCatalog()
-    const previous = publications.find((product) => product.id === saved.id)
-    const wasPublic = previous && ['ACTIVO', 'AGOTADO'].includes(previous.status)
     const isPublic = ['ACTIVO', 'AGOTADO'].includes(saved.status)
     setOwnPublications((current) => ({ ...current, userId: user.id,
       items: [saved, ...current.items.filter((product) => product.id !== saved.id)]
@@ -782,8 +828,6 @@ function App() {
           ? current.products.map((product) => product.id === saved.id ? saved : product)
           : [...current.products, saved],
     }))
-    const difference = Number(isPublic) - Number(Boolean(wasPublic))
-    if (difference) setTotalProducts((current) => current + difference)
   }
   function retryPublications() {
     setPublicationError('')
@@ -809,7 +853,6 @@ function App() {
         refreshPendingCatalog()
         setOwnPublications((current) => ({ ...current, items: current.items.filter((item) => item.id !== product.id) }))
         setShop((current) => ({ ...current, products: current.products.filter((item) => item.id !== product.id) }))
-        if (['ACTIVO', 'AGOTADO'].includes(product.status)) setTotalProducts((current) => current - 1)
       } else {
         const saved = await readResponse(response)
         if (version !== sessionVersion.current) return
@@ -852,13 +895,8 @@ function App() {
                                     {...shared}
                                     cartItems={items}
                                     onAddToCart={addToCart}
-                                    products={publicProducts}
                                     collections={catalogCollections}
-                                    loading={productsLoading}
-                                    error={productsError}
                                     collectionsError={collectionsError}
-                                    totalProducts={totalProducts}
-                                    loadedProducts={products.length}
                                     filters={catalogFilters}
                                     onFiltersChange={changeCatalogFilters}
                                     onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
@@ -875,10 +913,10 @@ function App() {
           reviewsError={reviewErrors[selectedProduct.id]} onRetryReviews={retryReviews}
           onOpenProduct={openProduct}
           onViewCollection={(collectionId) => navigate('/catalogo', { state: { collectionId } })} />
-      ) : productsLoading ? (
+      ) : (needsDetail && detailRequest?.key !== detailKey) || productsLoading ? (
         <p role="status" className="p-8 font-bold">Cargando producto…</p>
-      ) : productsError ? (
-        <p role="alert" className="p-8 font-bold text-rojo">{productsError}</p>
+      ) : (detailRequest?.key === detailKey && detailRequest.error) || productsError ? (
+        <p role="alert" className="p-8 font-bold text-rojo">{detailRequest?.key === detailKey && detailRequest.error || productsError}</p>
       ) : <Navigate to="/catalogo" replace />} />
       <Route path="/mis-publicaciones" element={<ProtectedRoute user={user}>
         <Publications {...account} products={publications} loading={publicationsLoading}

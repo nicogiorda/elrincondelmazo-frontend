@@ -5,7 +5,7 @@ function Pagination({ page, totalPages, onPageChange }) {
   return (
     <nav aria-label="Paginación de productos" className="flex flex-wrap items-center justify-between gap-4 leading-[normal] text-bordo">
       <p className="text-[0.875rem] font-semibold">Página {page + 1} de {totalPages}</p>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button type="button" aria-label="Página anterior" disabled={page === 0} onClick={() => onPageChange(page - 1)} className={`${buttonClass} bg-papel disabled:cursor-not-allowed`}>←</button>
         {pages.map((pageIndex) => (
           <button key={pageIndex} type="button" aria-label={`Página ${pageIndex + 1}`} aria-current={page === pageIndex ? 'page' : undefined} onClick={() => onPageChange(pageIndex)} className={`${buttonClass} ${page === pageIndex ? 'bg-bordo text-crema' : 'bg-papel'}`}>

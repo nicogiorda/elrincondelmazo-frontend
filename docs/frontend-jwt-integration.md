@@ -152,3 +152,14 @@ Checklist manual con Spring disponible:
 4. Volver al producto comprado y publicar reseña; verificar que aparece la respuesta real sin otro GET de reviews.
 5. Intentar reseñar sin compra previa y comprobar que se informa el rechazo conservando el formulario.
 6. Cerrar sesión y entrar con otra cuenta: no debe aparecer el carrito/confirmación de la anterior.
+
+
+## Catálogo: paginación y filtros HTTP — 16/10/2026
+
+Catalog consulta `GET /products` sin JWT con `page`, `size=9` y los filtros no vacíos `search`, `type`, `collectionId`, `minPrice` y `maxPrice`. Usa `content`, `number`, `totalElements` y `totalPages` de Spring. Su respuesta está separada del estado privado de Mis publicaciones y de la lista compartida de Home/Carrito/Checkout. App conserva filtros y página por entrada de navegación; al abrir una tarjeta incorpora ese producto a la lista compartida, aunque no esté entre los primeros 100. Al recargar, si el ID guardado en el estado de navegación no está en la lista compartida, App consulta GET /products/{id}; no confía en una copia antigua del producto ni introduce URLs compartibles.
+
+Las peticiones agrupan cambios durante 250 ms y se cancelan al cambiar filtros, página o salir de la vista. Una respuesta de una consulta anterior no se muestra en la nueva. Los errores permiten reintentar. Las actualizaciones locales conservan la invalidación existente de respuestas pendientes de productos compartidos.
+
+**Limitación del backend `rama-nico`:** `ProductsController.getProducts()` crea `PageRequest.of(page, size)` sin Sort y `ProductRepository.findProducts()` no tiene ORDER BY. Por tanto, el orden público no está garantizado entre páginas: pueden repetirse u omitirse registros si el motor cambia el plan o los datos cambian. El frontend no puede corregirlo ordenando cada página por separado.
+
+Corrección mínima propuesta, sin implementar en esta tarea: agregar `ORDER BY p.created_at DESC, p.id DESC` a la consulta JPQL de `findProducts`, como ya hace `findOwnPublications`. Esto da un desempate estable por ID; con paginación por offset, inserciones o bajas concurrentes todavía pueden desplazar las páginas. No se modificó Spring Boot.
