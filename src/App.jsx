@@ -130,6 +130,8 @@ function App() {
   const [cartAttempt, setCartAttempt] = useState(0)
   const cartRequested = useRef(null)
   const cartRequest = useRef(false)
+  const cartMetadataRequests = useRef(new Map())
+  const [cartMetadata, setCartMetadata] = useState({})
   const reviewRequest = useRef(false)
   const [confirmedOrder, setConfirmedOrder] = useState(null)
   const [orderDetails, setOrderDetails] = useState({})
@@ -147,6 +149,9 @@ function App() {
   // La misma función se usa desde botones y desde requests que reciben 401.
   const logout = useCallback(() => {
     sessionVersion.current += 1
+    cartMetadataRequests.current.forEach((request) => request.controller.abort())
+    cartMetadataRequests.current.clear()
+    setCartMetadata({})
     localStorage.removeItem('token')
     setToken(null)
     setUser(null)
@@ -339,6 +344,52 @@ function App() {
     })),
   ]
   const products = shop.products
+  // La metadata es pública; las requests y sus errores pertenecen a esta sesión.
+  // Esperamos la carga inicial para no pedir otra vez los productos que ya trae.
+  useEffect(() => {
+    if (!user?.id || !token || !cart || productsLoading) return
+    const version = sessionVersion.current
+    const productVersion = productsRequestVersion.current
+    const missingIds = new Set(cart.items.filter((item) => !products.some((product) => product.id === item.productId))
+      .map((item) => item.productId).filter((id) => location.pathname !== '/producto' || location.state?.product?.id !== id))
+    missingIds.forEach((id) => {
+      if (cartMetadataRequests.current.has(id)) return
+      const request = { controller: new AbortController() }
+      cartMetadataRequests.current.set(id, request)
+      const isCurrent = () => version === sessionVersion.current && cartMetadataRequests.current.get(id) === request
+      Promise.resolve().then(async () => {
+        if (!isCurrent()) return
+        setCartMetadata((current) => ({ ...current, [id]: { loading: true } }))
+        try {
+          request.promise = fetch(URL + '/products/' + id, { signal: request.controller.signal }).then(readResponse)
+          const product = await request.promise
+          if (product.id !== id) throw new Error('El producto recibido no coincide con el del carrito.')
+          if (!isCurrent()) return
+          if (productVersion !== productsRequestVersion.current) {
+            cartMetadataRequests.current.delete(id)
+            setCartMetadata((current) => ({ ...current, [id]: undefined }))
+            return
+          }
+          // Completar ausentes nunca reemplaza una publicación actualizada mientras esperábamos.
+          setShop((current) => !isCurrent() || current.products.some((item) => item.id === id)
+            ? current : { ...current, products: [...current.products, product] })
+          setCartMetadata((current) => ({ ...current, [id]: { loading: false } }))
+        } catch (error) {
+          if (!isCurrent()) return
+          request.failed = true
+          setCartMetadata((current) => ({ ...current, [id]: { loading: false, error: error.status === 404 || error.status === 403
+            ? 'Este producto ya no está disponible. Podés quitarlo del carrito.'
+            : 'No pudimos confirmar la disponibilidad de este producto.' } }))
+        }
+      })
+    })
+  }, [cart, products, productsLoading, user?.id, token, cartAttempt, cartMetadata, location.pathname, location.state?.product?.id])
+
+  useEffect(() => () => {
+    cartMetadataRequests.current.forEach((request) => request.controller.abort())
+    cartMetadataRequests.current.clear()
+  }, [])
+
   const publications = ownPublications.userId === user?.id ? ownPublications.items : []
   const publicationsLoading = ownPublications.loading || (needsPublications && ownPublications.userId !== user?.id)
 
@@ -425,14 +476,10 @@ function App() {
     Promise.resolve().then(async () => {
       if (!active) return
       try {
-        const response = await fetch(URL + '/products/' + selectedProductId, { signal: controller.signal })
-        if (!active || version !== productsRequestVersion.current) return
-        if (response.status === 404) {
-          setDetailRequest({ key: detailKey, notFound: true })
-          return
-        }
-        if (!response.ok) throw new Error('No pudimos cargar el producto (HTTP ' + response.status + ').')
-        const product = await response.json()
+        const pendingMetadata = cartMetadataRequests.current.get(selectedProductId)
+        const product = await (pendingMetadata && !pendingMetadata.failed && pendingMetadata.promise
+          ? pendingMetadata.promise
+          : fetch(URL + '/products/' + selectedProductId, { signal: controller.signal }).then(readResponse))
         if (!active || version !== productsRequestVersion.current) return
         if (product.id !== selectedProductId) throw new Error('El producto recibido no coincide con el seleccionado.')
         if (!['ACTIVO', 'AGOTADO'].includes(product.status)) {
@@ -447,7 +494,8 @@ function App() {
           ...current.products.filter((item) => item.id !== product.id), product,
         ] }))
       } catch (error) {
-        if (active && version === productsRequestVersion.current) setDetailRequest({ key: detailKey, error: error.message })
+        if (active && version === productsRequestVersion.current) setDetailRequest(error.status === 404
+          ? { key: detailKey, notFound: true } : { key: detailKey, error: error.message })
       }
     })
     return () => { active = false; controller.abort() }
@@ -537,6 +585,11 @@ function App() {
   }
 
   function addToCart(product, quantity = 1) {
+    if (user && token && cart && !cartRequest.current) {
+      refreshPendingCatalog()
+      setShop((current) => current.products.some((item) => item.id === product.id)
+        ? current : { ...current, products: [...current.products, product] })
+    }
     return changeCart('POST', '/carts/items', { productId: product.id, quantity })
   }
   function changeQuantity(id, quantity) {
@@ -552,7 +605,12 @@ function App() {
     })
   }
   function retryCart() {
-    if (!cartRequest.current) setCartAttempt((attempt) => attempt + 1)
+    if (cartRequest.current) return
+    cartMetadataRequests.current.forEach((request, id) => {
+      if (request.failed) cartMetadataRequests.current.delete(id)
+    })
+    setCartMetadata({})
+    setCartAttempt((attempt) => attempt + 1)
   }
 
   function confirmOrder({ paymentMethod }) {
@@ -705,6 +763,9 @@ function App() {
   }
   function startSession(usuario) {
     sessionVersion.current += 1
+    cartMetadataRequests.current.forEach((request) => request.controller.abort())
+    cartMetadataRequests.current.clear()
+    setCartMetadata({})
     cartRequested.current = null
     cartRequest.current = false
     reviewRequest.current = false
@@ -810,8 +871,8 @@ function App() {
   const account = { ...shared, user: currentUser, onLogout: logout }
   function refreshPendingCatalog() {
     // Una respuesta iniciada antes del PATCH/POST/DELETE no puede deshacer su resultado.
+    productsRequestVersion.current += 1
     if (productsLoading) {
-      productsRequestVersion.current += 1
       setProductsAttempt((current) => current + 1)
     }
   }
@@ -941,7 +1002,7 @@ function App() {
         <Profile {...account} onSave={saveProfile} onDeactivate={deactivateAccount} deactivateError={deactivateError} />
       </ProtectedRoute>} />
       <Route path="/carrito" element={<ProtectedRoute user={user}>
-        <Cart {...shared} cart={cart} products={products} loading={cartLoading} onRetry={retryCart}
+        <Cart {...shared} cart={cart} products={products} metadata={cartMetadata} loading={cartLoading} onRetry={retryCart}
           onQuantityChange={changeQuantity} onRemove={removeItem} onCheckout={() => navigate('/checkout')} />
       </ProtectedRoute>} />
       <Route path="/checkout" element={<ProtectedRoute user={user}>
