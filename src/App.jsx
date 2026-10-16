@@ -1,6 +1,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom'
 import Home from './views/Home.jsx'
 import Login from './views/Login.jsx'
 import Register from './views/Register.jsx'
@@ -16,6 +16,7 @@ import Cart from './views/Cart.jsx'
 import Checkout from './views/Checkout.jsx'
 import OrderConfirmation from './views/OrderConfirmation.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import PurchaseNotice from './components/PurchaseNotice.jsx'
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
 const URL = 'http://localhost:8080'
@@ -110,10 +111,18 @@ function readResponse(response) {
   })
 }
 
+function productIdFrom(value) {
+  const text = String(value ?? '')
+  return /^[1-9]\d*$/.test(text) && Number.isSafeInteger(Number(text)) ? Number(text) : null
+}
+
 function App() {
 
   const navigate = useNavigate()
   const location = useLocation()
+  const productRoute = useMatch('/producto/:id')
+  const selectedProductId = productIdFrom(productRoute?.params.id)
+  const legacyProductId = productIdFrom(location.state?.product?.id)
   // Reutiliza exactamente el token que guardan Login y Register del compañero.
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(() => localStorage.getItem('token'))
@@ -303,7 +312,9 @@ function App() {
         if (!active || version !== productsRequestVersion.current) return
         if (!Array.isArray(data.content)) throw new Error('La respuesta de productos no contiene una lista')
         setShop((current) => ({ ...current, products: [
-          ...data.content, ...current.products.filter((product) => !data.content.some((item) => item.id === product.id)),
+          // La carga general no pisa metadata obtenida o actualizada mientras esperaba.
+          ...data.content.map((product) => current.products.find((item) => item.id === product.id) ?? product),
+          ...current.products.filter((product) => !data.content.some((item) => item.id === product.id)),
         ] }))
         setProductsError('')
       } catch {
@@ -351,7 +362,7 @@ function App() {
     const version = sessionVersion.current
     const productVersion = productsRequestVersion.current
     const missingIds = new Set(cart.items.filter((item) => !products.some((product) => product.id === item.productId))
-      .map((item) => item.productId).filter((id) => location.pathname !== '/producto' || location.state?.product?.id !== id))
+      .map((item) => item.productId).filter((id) => !productRoute || selectedProductId !== id))
     missingIds.forEach((id) => {
       if (cartMetadataRequests.current.has(id)) return
       const request = { controller: new AbortController() }
@@ -383,7 +394,7 @@ function App() {
         }
       })
     })
-  }, [cart, products, productsLoading, user?.id, token, cartAttempt, cartMetadata, location.pathname, location.state?.product?.id])
+  }, [cart, products, productsLoading, user?.id, token, cartAttempt, cartMetadata, productRoute, selectedProductId])
 
   useEffect(() => () => {
     cartMetadataRequests.current.forEach((request) => request.controller.abort())
@@ -461,12 +472,14 @@ function App() {
   const publicProducts = products.filter((product) => ['ACTIVO', 'AGOTADO'].includes(product.status))
   const recentProducts = publicProducts.filter((product) => product.status === 'ACTIVO')
     .slice().sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 4)
-  const selectedProductId = location.state?.product?.id
-  const selectedProduct = publicProducts.find((product) => product.id === selectedProductId)
   const [detailRequest, setDetailRequest] = useState(null)
-  const detailKey = selectedProductId + ':' + location.key + ':' + productsAttempt
-  const needsDetail = location.pathname === '/producto' && selectedProductId !== undefined && !selectedProduct
-    && !(detailRequest?.key === detailKey && detailRequest.notFound)
+  const [detailAttempt, setDetailAttempt] = useState(0)
+  const detailKey = selectedProductId + ':' + detailAttempt
+  const currentDetailRequest = detailRequest?.key === detailKey ? detailRequest : null
+  const knownProduct = products.find((product) => product.id === selectedProductId)
+  const selectedProduct = !currentDetailRequest?.notFound && knownProduct && ['ACTIVO', 'AGOTADO'].includes(knownProduct.status)
+    ? knownProduct : undefined
+  const needsDetail = Boolean(productRoute && selectedProductId && !knownProduct && !currentDetailRequest)
 
   useEffect(() => {
     if (!needsDetail) return
@@ -480,28 +493,32 @@ function App() {
         const product = await (pendingMetadata && !pendingMetadata.failed && pendingMetadata.promise
           ? pendingMetadata.promise
           : fetch(URL + '/products/' + selectedProductId, { signal: controller.signal }).then(readResponse))
-        if (!active || version !== productsRequestVersion.current) return
+        if (!active) return
+        if (version !== productsRequestVersion.current) {
+          setDetailAttempt((current) => current + 1)
+          return
+        }
         if (product.id !== selectedProductId) throw new Error('El producto recibido no coincide con el seleccionado.')
         if (!['ACTIVO', 'AGOTADO'].includes(product.status)) {
           setDetailRequest({ key: detailKey, notFound: true })
           return
         }
-        if (productsLoading) {
-          productsRequestVersion.current += 1
-          setProductsAttempt((current) => current + 1)
-        }
-        setShop((current) => ({ ...current, products: [
-          ...current.products.filter((item) => item.id !== product.id), product,
-        ] }))
+        setShop((current) => current.products.some((item) => item.id === product.id)
+          ? current : { ...current, products: [...current.products, product] })
       } catch (error) {
-        if (active && version === productsRequestVersion.current) setDetailRequest(error.status === 404
+        if (!active) return
+        if (version !== productsRequestVersion.current) {
+          setDetailAttempt((current) => current + 1)
+          return
+        }
+        setDetailRequest(error.status === 404
           ? { key: detailKey, notFound: true } : { key: detailKey, error: error.message })
       }
     })
     return () => { active = false; controller.abort() }
-  }, [needsDetail, selectedProductId, detailKey, productsLoading])
+  }, [needsDetail, selectedProductId, detailKey])
 
-  const reviewProductId = location.pathname === '/producto' ? selectedProduct?.id : undefined
+  const reviewProductId = productRoute ? selectedProduct?.id : undefined
 
   useEffect(() => {
     if (reviewProductId === undefined || requestedReviews.current.has(reviewProductId)) return
@@ -534,10 +551,9 @@ function App() {
   function openProduct(product) {
     // Una tarjeta puede venir de una página que no forma parte de la carga inicial.
     refreshPendingCatalog()
-    setShop((current) => ({ ...current, products: [
-      ...current.products.filter((item) => item.id !== product.id), product,
-    ] }))
-    navigate('/producto', { state: { product } })
+    setShop((current) => current.products.some((item) => item.id === product.id)
+      ? current : { ...current, products: [...current.products, product] })
+    navigate('/producto/' + product.id)
   }
   // Solo ocultamos duplicados conocidos. Spring decide si hubo compra previa.
   function canReview(product) {
@@ -964,7 +980,10 @@ function App() {
                                     onOpenProduct={openProduct}
                                 />
                               } />
-      <Route path="/producto" element={selectedProduct ? (
+      <Route path="/producto" element={legacyProductId
+        ? <Navigate to={'/producto/' + legacyProductId} replace />
+        : <PurchaseNotice {...shared} title="Producto no disponible" message="La URL del producto no es válida." />} />
+      <Route path="/producto/:id" element={selectedProduct ? (
         <ProductDetail key={(user?.id ?? 'guest') + ':' + selectedProduct.id} {...shared}
           user={user} canReview={canReview} onPublishReview={publishReview}
           cartItems={items} cartQuantity={items.find((item) => item.productId === selectedProduct.id)?.quantity ?? 0}
@@ -974,11 +993,14 @@ function App() {
           reviewsError={reviewErrors[selectedProduct.id]} onRetryReviews={retryReviews}
           onOpenProduct={openProduct}
           onViewCollection={(collectionId) => navigate('/catalogo', { state: { collectionId } })} />
-      ) : (needsDetail && detailRequest?.key !== detailKey) || productsLoading ? (
-        <p role="status" className="p-8 font-bold">Cargando producto…</p>
-      ) : (detailRequest?.key === detailKey && detailRequest.error) || productsError ? (
-        <p role="alert" className="p-8 font-bold text-rojo">{detailRequest?.key === detailKey && detailRequest.error || productsError}</p>
-      ) : <Navigate to="/catalogo" replace />} />
+      ) : !selectedProductId ? (
+        <PurchaseNotice {...shared} title="Producto no disponible" message="La URL del producto no es válida." />
+      ) : !knownProduct && !currentDetailRequest && (productsLoading || needsDetail) ? (
+        <PurchaseNotice {...shared} title="Detalle del producto" message="Cargando producto…" />
+      ) : currentDetailRequest?.error ? (
+        <PurchaseNotice {...shared} title="Detalle del producto" message={currentDetailRequest.error}
+          onRetry={() => setDetailAttempt((current) => current + 1)} />
+      ) : <PurchaseNotice {...shared} title="Producto no disponible" message="El producto no existe o ya no está disponible." />} />
       <Route path="/mis-publicaciones" element={<ProtectedRoute user={user}>
         <Publications {...account} products={publications} loading={publicationsLoading}
           error={ownPublications.error || publicationError} busyId={publicationBusyId} onRetry={retryPublications}
