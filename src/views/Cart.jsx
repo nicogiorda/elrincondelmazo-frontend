@@ -5,7 +5,7 @@ import CartItem from '../components/CartItem.jsx'
 import PurchaseSummary from '../components/PurchaseSummary.jsx'
 import PurchaseNotice from '../components/PurchaseNotice.jsx'
 
-function Cart({ loading, cartBusy, cartError, cartMessage, onRetry, userId, cart, products = [], cartCount, onQuantityChange, onRemove, onCheckout }) {
+function Cart({ loading, cartBusy, cartError, cartMessage, onRetry, userId, cart, products = [], metadata = {}, cartCount, onQuantityChange, onRemove, onCheckout }) {
   if (!cart) return <PurchaseNotice title="Tu carrito" isLoggedIn
     message={cartError || 'Cargando carrito…'} onRetry={!loading && cartError ? onRetry : undefined} />
   const items = cart.items
@@ -23,7 +23,7 @@ function Cart({ loading, cartBusy, cartError, cartMessage, onRetry, userId, cart
         <div className="grid min-w-0 items-start gap-7 lg:grid-cols-[minmax(0,1fr)_21.25rem]">
           <div className="flex min-w-0 flex-col items-stretch gap-4.5">
             {!items.length && <p className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold">Tu carrito está vacío</p>}
-            {items.map((item) => <CartItem key={item.id} item={item} product={products.find((product) => product.id === item.productId)} userId={userId} busy={cartBusy} onQuantityChange={onQuantityChange} onRemove={onRemove} />)}<Link to="/catalogo" className="self-start text-[0.9375rem] font-bold underline">← Seguir comprando</Link>
+            {items.map((item) => <CartItem key={item.id} item={item} product={products.find((product) => product.id === item.productId)} userId={userId} busy={cartBusy} metadata={metadata[item.productId]} onRetry={onRetry} onQuantityChange={onQuantityChange} onRemove={onRemove} />)}<Link to="/catalogo" className="self-start text-[0.9375rem] font-bold underline">← Seguir comprando</Link>
           </div>
           <PurchaseSummary summary={summary} variant="cart">
             <button type="button" disabled={!items.length || cartBusy || !onCheckout} onClick={onCheckout} className="rounded-full bg-bordo px-6 py-4 text-[1.0625rem] font-extrabold text-crema disabled:opacity-50">Iniciar compra</button>

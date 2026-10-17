@@ -8,7 +8,7 @@ const statusLabels = { ACTIVO: 'Activo', INACTIVO: 'Pausado', AGOTADO: 'Agotado'
 const statusStyles = { ACTIVO: 'bg-amarillo', INACTIVO: 'bg-crema', AGOTADO: 'bg-bordo text-crema' }
 const columns = 'grid grid-cols-[3.25rem_minmax(0,1fr)_5.25rem_3rem_5.75rem_4rem] items-center gap-3 px-4 py-3'
 
-function Publications({ user, onLogout, products, cartCount, onEdit, onDelete, onToggleStatus }) {
+function Publications({ user, onLogout, products, cartCount, onEdit, onDelete, onToggleStatus, loading, error, busyId, onRetry }) {
   const stats = [{ label: 'Publicaciones', value: products.length, color: 'bg-papel' }, { label: 'Activas', value: products.filter((p) => p.status === 'ACTIVO').length, color: 'bg-amarillo' }, { label: 'Pausadas', value: products.filter((p) => p.status === 'INACTIVO').length, color: 'bg-crema' }, { label: 'Agotadas', value: products.filter((p) => p.status === 'AGOTADO').length, color: 'bg-rosa' }]
   return (
     <AccountLayout user={user} activeView="publications" cartCount={cartCount} onLogout={onLogout}>
@@ -20,7 +20,9 @@ function Publications({ user, onLogout, products, cartCount, onEdit, onDelete, o
           <strong className="font-display text-[2.625rem] leading-[2.625rem] font-black">{stat.value}</strong>
           <span className="text-[0.8125rem] font-extrabold uppercase">{stat.label}</span>
         </div>)}</div>
-      {!products.length ? (
+      {loading && <p role="status" className="font-bold">Cargando publicaciones…</p>}
+      {error && <div role="alert" className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold"><p>{error}</p><button type="button" onClick={onRetry} disabled={loading || busyId !== null} className="mt-3 font-bold underline">Actualizar listado</button></div>}
+      {!products.length ? !loading && !error && (
         <div className="flex flex-col items-start gap-4 rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6">
           <p className="font-bold">Todavía no tenés publicaciones</p>
           <Link to="/publicar" className="font-bold underline">Publicar un producto</Link>
@@ -35,7 +37,7 @@ function Publications({ user, onLogout, products, cartCount, onEdit, onDelete, o
             <span role="columnheader">Estado</span>
             <span role="columnheader" className="sr-only">Acciones</span>
           </div>
-          {products.map((product) => <div role="row" key={product.id} className={`${columns} border-t-[2.4px] border-bordo ${product.status === 'INACTIVO' ? 'opacity-70' : ''}`}>
+          {products.map((product) => <div role="row" key={product.id} aria-busy={busyId === product.id} className={`${columns} border-t-[2.4px] border-bordo ${product.status === 'INACTIVO' ? 'opacity-70' : ''}`}>
             <div role="cell">
               <ProductThumbnail product={product} variant="publication" />
             </div>
@@ -46,11 +48,11 @@ function Publications({ user, onLogout, products, cartCount, onEdit, onDelete, o
             <strong role="cell" className="text-[0.9375rem]">{formatPrice(product.price)}</strong>
             <span role="cell" className="text-[0.9375rem]">{product.stock}</span>
             <div role="cell">
-              <button type="button" disabled={product.status === 'AGOTADO'} onClick={() => onToggleStatus?.(product)} className={`rounded-full border-[1.6px] border-bordo px-3 py-1 text-[0.6875rem] font-extrabold uppercase ${statusStyles[product.status]}`}>{statusLabels[product.status]}</button>
+              <button type="button" disabled={loading || busyId !== null || product.status === 'AGOTADO'} onClick={() => onToggleStatus?.(product)} className={`rounded-full border-[1.6px] border-bordo px-3 py-1 text-[0.6875rem] font-extrabold uppercase ${statusStyles[product.status]}`}>{statusLabels[product.status]}</button>
             </div>
             <div role="cell" className="flex flex-col items-end gap-1 text-[0.8125rem] font-bold underline">
-              <button type="button" onClick={() => onEdit?.(product)}>Editar</button>
-              <button type="button" onClick={() => onDelete?.(product)} className="text-rojo">Eliminar</button>
+              <button type="button" disabled={loading || busyId !== null} onClick={() => onEdit?.(product)}>Editar</button>
+              <button type="button" disabled={loading || busyId !== null} onClick={() => onDelete?.(product)} className="text-rojo">Eliminar</button>
             </div>
           </div>)}
         </div>
