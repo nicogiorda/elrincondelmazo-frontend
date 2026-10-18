@@ -25,7 +25,7 @@ function Profile({ user, onLogout, cartCount, onSave, saving, onDeactivate, deac
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-[2.125rem] font-black uppercase">Datos personales</h2>
           <div className="flex gap-2 text-[0.8125rem] font-extrabold uppercase">
-            <span className="rounded-full border-[1.6px] border-bordo bg-amarillo px-3 py-1.25">Usuario</span>
+            <span className="rounded-full border-[1.6px] border-bordo bg-amarillo px-3 py-1.25">{user?.role === "ADMIN" ? "Administrador" : "Usuario"}</span>
           </div>
         </div>
         <div className="grid w-full gap-4.5 sm:grid-cols-2">

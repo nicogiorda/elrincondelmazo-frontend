@@ -116,6 +116,12 @@ function productIdFrom(value) {
   return /^[1-9]\d*$/.test(text) && Number.isSafeInteger(Number(text)) ? Number(text) : null
 }
 
+function updateCartQuantity(cart, itemId, quantity) {
+  const items = cart.items.map((item) => item.id === itemId? {...item, quantity, subtotal: item.unitPrice * quantity,} : item)
+  return {
+    ...cart, items, subtotal: items.reduce((total, item) => total + item.subtotal, 0),}
+}
+
 function App() {
 
   const navigate = useNavigate()
@@ -143,6 +149,8 @@ function App() {
   const [cartAttempt, setCartAttempt] = useState(0)
   const cartRequested = useRef(null)
   const cartRequest = useRef(false)
+  const quantitySync = useRef(null)
+  const [quantitySyncItemId, setQuantitySyncItemId] = useState(null)
   const cartMetadataRequests = useRef(new Map())
   const [cartMetadata, setCartMetadata] = useState({})
   const reviewRequest = useRef(false)
@@ -187,6 +195,8 @@ function App() {
     setPromotionLoading(false)
     cartRequested.current = null
     cartRequest.current = false
+    quantitySync.current = null
+    setQuantitySyncItemId(null)
     reviewRequest.current = false
     navigate('/ingresar', { replace: true })
   }, [navigate])
@@ -616,9 +626,103 @@ function App() {
     }
     return changeCart('POST', '/carts/items', { productId: product.id, quantity })
   }
-  function changeQuantity(id, quantity) {
-    return changeCart('PUT', '/carts/items/' + id, { quantity })
+
+  async function syncCartQuantity(sync) {
+    const version = sessionVersion.current
+    const savedToken = token
+    let confirmedCart = sync.originalCart
+
+    try {
+      while (version === sessionVersion.current) {
+        const quantity = sync.desiredQuantity
+
+        const response = await fetch(
+          URL + '/carts/items/' + sync.id,
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer ' + savedToken,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ quantity }),
+          })
+
+          const data = await readResponse(response)
+
+          if (version !== sessionVersion.current) return false
+          if (!Array.isArray(data.items)) {
+            throw new Error('El servidor devolvió un carrito inválido.')
+          }
+
+          confirmedCart = data
+
+          if (sync.desiredQuantity !== quantity) continue
+
+          setCart(data)
+          setCartMessage('Carrito actualizado.')
+          return true
+        }
+
+        return false
+      } catch (error) {
+        if (version !== sessionVersion.current) return false
+
+        setCart(confirmedCart)
+
+        if (error.status === 401) {
+          logout()
+          setSessionError(error.message)
+        } else {
+          setCartError(error instanceof TypeError ? 'No pudimos conectar con el servidor. Recuperamos la última cantidad guardada.' : error.message)
+        }
+
+        return false
+      } finally {
+        if (
+          version === sessionVersion.current &&
+          quantitySync.current === sync
+        ) {
+          quantitySync.current = null
+          cartRequest.current = false
+          setQuantitySyncItemId(null)
+          setCartBusy(false)
+        }
+      }
   }
+
+
+  function changeQuantity(id, quantity) {
+    if (!user || !token || !cart || quantity < 1) {return Promise.resolve(false)}
+
+    const sync = quantitySync.current
+
+    if (cartRequest.current && (!sync || sync.id !== id)) {return Promise.resolve(false)}
+
+    const item = cart.items.find((item) => item.id === id)
+    const product = products.find((product) => product.id === item?.productId)
+
+    if (!item || !product || (quantity > item.quantity && quantity > product.stock)) {return Promise.resolve(false)}
+
+    setCart(updateCartQuantity(cart, id, quantity))
+
+    if (sync) {
+      sync.desiredQuantity = quantity
+      return sync.promise
+    }
+
+    const request = {id, desiredQuantity: quantity, originalCart: cart, promise: null}
+
+    quantitySync.current = request
+    cartRequest.current = true
+    setCartBusy(true)
+    setQuantitySyncItemId(id)
+    setCartError('')
+    setCartMessage('')
+
+    request.promise = syncCartQuantity(request)
+    return request.promise
+  }
+
   function removeItem(id) {
     return changeCart('DELETE', '/carts/items/' + id)
   }
@@ -833,6 +937,8 @@ function App() {
     setCartMetadata({})
     cartRequested.current = null
     cartRequest.current = false
+    quantitySync.current = null
+    setQuantitySyncItemId(null)
     reviewRequest.current = false
     setCart(null)
     setConfirmedOrder(null)
@@ -1080,7 +1186,7 @@ function App() {
       </ProtectedRoute>} />
       <Route path="/carrito" element={<ProtectedRoute user={user}>
         <Cart {...shared} cart={cart} products={products} metadata={cartMetadata} loading={cartLoading} onRetry={retryCart}
-          onQuantityChange={changeQuantity} onRemove={removeItem} onCheckout={() => navigate('/checkout')} />
+          quantitySyncItemId={quantitySyncItemId} onQuantityChange={changeQuantity} onRemove={removeItem} onCheckout={() => navigate('/checkout')} />
       </ProtectedRoute>} />
       <Route path="/checkout" element={<ProtectedRoute user={user}>
         <Checkout {...shared} cart={cart} products={products} loading={cartLoading}
