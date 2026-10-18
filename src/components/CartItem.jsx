@@ -5,7 +5,7 @@ import { productTypeLabels } from '../data/accountMocks.js'
 import { formatPrice } from '../utils/formatPrice.js'
 
 // El item es CartItemResponse. Solo completamos metadata con un producto real ya cargado.
-function CartItem({ busy = false, item, product, userId, metadata, onRetry, onQuantityChange, onRemove }) {
+function CartItem({ busy = false, quantitySyncing = false, item, product, userId, metadata, onRetry, onQuantityChange, onRemove }) {
   const canChange = Boolean(!busy && product && onQuantityChange && canBuyProduct(product, userId))
   const thumbnail = { name: item.productName, imageUrls: item.productImages ?? [], collectionId: product?.collectionId }
   return (
@@ -21,8 +21,8 @@ function CartItem({ busy = false, item, product, userId, metadata, onRetry, onQu
         </p>}
         {product && !canBuyProduct(product, userId) && <p className="text-[0.875rem]">Este producto no está disponible para comprar. Podés quitarlo del carrito.</p>}
         <div className="flex flex-wrap items-center gap-4 pt-1.5">
-          <QuantitySelector quantity={item.quantity} maxQuantity={canChange ? product.stock : 0} onChange={(value) => onQuantityChange(item.id, value)} variant="cart" />
-          <button type="button" disabled={busy || !onRemove} onClick={() => onRemove?.(item.id)} className="text-[0.875rem] font-bold underline disabled:opacity-50">Quitar</button>
+          <QuantitySelector quantity={item.quantity} maxQuantity={product?.stock ?? 0} disabled={!canChange} onChange={(value) => onQuantityChange(item.id, value)} variant="cart" />
+          <button type="button" disabled={busy || quantitySyncing || !onRemove} onClick={() => onRemove?.(item.id)} className="text-[0.875rem] font-bold underline disabled:opacity-50">Quitar</button>
           <strong className="ml-auto text-[1.375rem]">{formatPrice(item.subtotal)}</strong>
         </div>
       </div>
