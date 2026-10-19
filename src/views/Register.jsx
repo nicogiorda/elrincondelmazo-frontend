@@ -1,11 +1,17 @@
 import AccountAccess from '../components/AccountAccess.jsx';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 function Register({ cartCount, onRegister }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const request = useRef(null)
+  useEffect(() => () => request.current?.abort(), [])
+
   async function handleRegister(form) {
+    if (request.current) return
+    const controller = new AbortController()
+    request.current = controller
     setError("");
     setLoading(true);
 
@@ -14,7 +20,7 @@ function Register({ cartCount, onRegister }) {
       const response = await fetch(
         "http://localhost:8080/api/v1/auth/register",
         {
-          method: "POST",
+          method: "POST", signal: controller.signal,
           headers: {
             "Content-Type": "application/json"
           },
@@ -37,11 +43,12 @@ function Register({ cartCount, onRegister }) {
 
       const data = await response.json();
       const token = data.access_token;
+      if (typeof token !== "string" || !token.trim()) throw new Error("El servidor no devolvió un token válido.");
 
       const responseUsuario = await fetch(
         "http://localhost:8080/users/me",
         {
-          method: "GET",
+          method: "GET", signal: controller.signal,
           headers: {
             Authorization: `Bearer ${token}`
           }
@@ -54,16 +61,19 @@ function Register({ cartCount, onRegister }) {
 
       const usuario = await responseUsuario.json();
 
+      if (controller.signal.aborted) return
       localStorage.setItem("token", token);
 
-      console.log("Registro exitoso");
+
       onRegister(usuario);
 
     } catch (error) {
+      if (controller.signal.aborted) return
       console.error("Error durante el registro:", error);
       setError(error.message);
 
     } finally {
+      request.current = null
       setLoading(false);
     }
 

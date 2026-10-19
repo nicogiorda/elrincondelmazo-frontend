@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import AccountLayout from '../components/AccountLayout.jsx'
 import ProductThumbnail from '../components/ProductThumbnail.jsx'
 import { productTypeLabels } from '../data/accountMocks.js'
-import { formatPrice } from '../data/purchaseMocks.js'
+import { formatPrice } from '../utils/formatPrice.js'
 
 const statusLabels = { ACTIVO: 'Activo', INACTIVO: 'Pausado', AGOTADO: 'Agotado' }
 const statusStyles = { ACTIVO: 'bg-amarillo', INACTIVO: 'bg-crema', AGOTADO: 'bg-bordo text-crema' }

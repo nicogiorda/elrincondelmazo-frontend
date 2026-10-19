@@ -21,6 +21,7 @@ import { invalidatePublicPromotions } from './services/publicPromotions.js'
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
 const URL = 'http://localhost:8080'
+const productCacheLifetime = 60_000
 
 const promotionTypes = {
   quantity: 'CANTIDAD',
@@ -128,6 +129,7 @@ function App() {
   const navigate = useNavigate()
   const location = useLocation()
   const productRoute = useMatch('/producto/:id')
+  const isProductRoute = Boolean(productRoute)
   const selectedProductId = productIdFrom(productRoute?.params.id)
   const legacyProductId = productIdFrom(location.state?.product?.id)
   // Reutiliza exactamente el token que guardan Login y Register del compañero.
@@ -142,6 +144,7 @@ function App() {
   const accountRequest = useRef(false)
   const sessionRequested = useRef(false)
   const sessionVersion = useRef(0)
+  const sessionAbort = useRef(new AbortController())
   const [cart, setCart] = useState(null)
   const [cartLoading, setCartLoading] = useState(false)
   const [cartBusy, setCartBusy] = useState(false)
@@ -158,6 +161,7 @@ function App() {
   const [confirmedOrder, setConfirmedOrder] = useState(null)
   const [orderDetails, setOrderDetails] = useState({})
   const [ownPublications, setOwnPublications] = useState({ userId: null, items: [], loading: false, error: '' })
+  const ownPublicationsStamp = useRef(null)
   const [publicationAttempt, setPublicationAttempt] = useState(0)
   const [publicationBusyId, setPublicationBusyId] = useState(null)
   const [publicationError, setPublicationError] = useState('')
@@ -174,6 +178,8 @@ function App() {
   // La misma función se usa desde botones y desde requests que reciben 401.
   const logout = useCallback(() => {
     sessionVersion.current += 1
+    sessionAbort.current.abort()
+    sessionAbort.current = new AbortController()
     accountRequest.current = false
     setProfileSaving(false)
     setDeactivating(false)
@@ -187,6 +193,7 @@ function App() {
     setCart(null)
     setConfirmedOrder(null)
     setOrderDetails({})
+    ownPublicationsStamp.current = null
     setOwnPublications({ userId: null, items: [], loading: false, error: '' })
     setPublicationBusyId(null)
     setPublicationError('')
@@ -211,7 +218,7 @@ function App() {
     const savedToken = localStorage.getItem('token')
     if (!savedToken) return
     const version = sessionVersion.current
-    fetch(URL + '/users/me', { headers: { Authorization: 'Bearer ' + savedToken } })
+    fetch(URL + '/users/me', { signal: sessionAbort.current.signal, headers: { Authorization: 'Bearer ' + savedToken } })
       .then(readResponse)
       .then((usuario) => {
         if (version === sessionVersion.current) setUser(usuario)
@@ -236,7 +243,7 @@ function App() {
     setCartLoading(true)
     setCartBusy(true)
     setCartError('')
-    fetch(URL + '/carts', { headers: { Authorization: 'Bearer ' + token } })
+    fetch(URL + '/carts', { signal: sessionAbort.current.signal, headers: { Authorization: 'Bearer ' + token } })
       .then(readResponse)
       .then((data) => {
         if (!Array.isArray(data.items)) throw new Error('El carrito recibido no tiene una lista de ítems.')
@@ -259,6 +266,8 @@ function App() {
 
   useEffect(() => {
     if (!needsPublications || !user?.id || !token) return
+    if (ownPublicationsStamp.current?.userId === user.id
+      && Date.now() - ownPublicationsStamp.current.time < productCacheLifetime) return
     let active = true
     const controller = new AbortController()
     const version = sessionVersion.current
@@ -286,6 +295,8 @@ function App() {
           page += 1
         } while (page < totalPages)
         if (active && version === sessionVersion.current) {
+          ownPublicationsStamp.current = { userId: user.id, time: Date.now() }
+          items.forEach((product) => productFreshness.current.set(product.id, { sequence: ++productSequence.current, time: Date.now() }))
           setOwnPublications({ userId: user.id, items, loading: false, error: '' })
           setShop((current) => ({ ...current, products: [
             ...current.products.filter((product) => product.sellerId !== user.id),
@@ -307,6 +318,12 @@ function App() {
   }, [needsPublications, user?.id, token, publicationAttempt, logout])
 
   // El catálogo público empieza vacío.
+  const productPages = useRef(new Map())
+  const productFreshness = useRef(new Map())
+  const productSequence = useRef(0)
+  const [freshnessTick, setFreshnessTick] = useState(0)
+  const [homeProductIds, setHomeProductIds] = useState([])
+  const [relatedProducts, setRelatedProducts] = useState([])
   const [shop, setShop] = useState(() => ({
     products: [],
   }))
@@ -320,35 +337,70 @@ function App() {
   const [productsAttempt, setProductsAttempt] = useState(0)
   const collectionsRequested = useRef(false)
 
-  useEffect(() => {
-    let active = true
-    const version = ++productsRequestVersion.current
+  // Cache acotada en App: sobrevive a las vistas, vence al minuto y se invalida al mutar.
+  const loadProductPage = useCallback((query) => {
+    const cache = productPages.current
+    const cached = cache.get(query)
+    if (cached && (cached.pending || Date.now() - cached.time < productCacheLifetime)) return cached.promise
     const controller = new AbortController()
+    const version = productsRequestVersion.current
+    const sequence = ++productSequence.current
+    const entry = { controller, pending: true, time: 0 }
+    entry.promise = fetch(URL + '/products?' + query, { signal: controller.signal })
+      .then(readResponse).then((data) => {
+        if (!Array.isArray(data.content) || !Number.isInteger(data.totalPages)
+          || !Number.isInteger(data.totalElements) || !Number.isInteger(data.number)) {
+          throw new Error('La respuesta de productos no contiene una página válida.')
+        }
+        if (version !== productsRequestVersion.current) throw new Error('El catálogo cambió. Volvé a consultarlo.')
+        const fresh = data.content.filter((product) => sequence >= (productFreshness.current.get(product.id)?.sequence ?? 0))
+        fresh.forEach((product) => productFreshness.current.set(product.id, { sequence, time: Date.now() }))
+        setShop((current) => ({ ...current, products: [
+          ...current.products.filter((product) => !fresh.some((item) => item.id === product.id)), ...fresh,
+        ] }))
+        entry.time = Date.now()
+        entry.pending = false
+        return data
+      }).catch((error) => { if (cache.get(query) === entry) cache.delete(query); throw error })
+    cache.set(query, entry)
+    if (cache.size > 20) {
+      const oldest = cache.keys().next().value
+      cache.get(oldest).controller.abort()
+      cache.delete(oldest)
+    }
+    return entry.promise
+  }, [])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now()
+      const expired = new Set([...productFreshness.current].filter(([, stamp]) => now - stamp.time >= productCacheLifetime).map(([id]) => id))
+      expired.forEach((id) => {
+        productFreshness.current.delete(id)
+        cartMetadataRequests.current.get(id)?.controller.abort()
+        cartMetadataRequests.current.delete(id)
+      })
+      setShop((current) => ({ ...current, products: current.products.filter((product) => !expired.has(product.id)) }))
+      setFreshnessTick((tick) => tick + 1)
+    }, productCacheLifetime)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (location.pathname !== '/') return
+    let active = true
     Promise.resolve().then(async () => {
       if (!active) return
+      setProductsLoading(true)
       try {
-        setProductsLoading(true)
-        const response = await fetch(URL + '/products?size=100', { signal: controller.signal })
-        if (!response.ok) throw new Error('Error al cargar productos')
-        const data = await response.json()
-        if (!active || version !== productsRequestVersion.current) return
-        if (!Array.isArray(data.content)) throw new Error('La respuesta de productos no contiene una lista')
-        setShop((current) => ({ ...current, products: [
-          // La carga general no pisa metadata obtenida o actualizada mientras esperaba.
-          ...data.content.map((product) => current.products.find((item) => item.id === product.id) ?? product),
-          ...current.products.filter((product) => !data.content.some((item) => item.id === product.id)),
-        ] }))
-        setProductsError('')
-      } catch {
-        if (active && version === productsRequestVersion.current) {
-          setProductsError('No pudimos cargar los productos. Recargá la página para reintentar.')
-        }
-      } finally {
-        if (active && version === productsRequestVersion.current) setProductsLoading(false)
-      }
+        const data = await loadProductPage('page=0&size=4')
+        if (active) { setHomeProductIds(data.content.map((product) => product.id)); setProductsError('') }
+      } catch (error) {
+        if (active) setProductsError(error.message)
+      } finally { if (active) setProductsLoading(false) }
     })
-    return () => { active = false; controller.abort() }
-  }, [productsAttempt])
+    return () => { active = false }
+  }, [location.pathname, productsAttempt, freshnessTick, loadProductPage])
 
   useEffect(() => {
     if (collectionsRequested.current) return
@@ -378,9 +430,8 @@ function App() {
   ]
   const products = shop.products
   // La metadata es pública; las requests y sus errores pertenecen a esta sesión.
-  // Esperamos la carga inicial para no pedir otra vez los productos que ya trae.
   useEffect(() => {
-    if (!user?.id || !token || !cart || productsLoading) return
+    if (!user?.id || !token || !cart) return
     const version = sessionVersion.current
     const productVersion = productsRequestVersion.current
     const missingIds = new Set(cart.items.filter((item) => !products.some((product) => product.id === item.productId))
@@ -403,6 +454,7 @@ function App() {
             setCartMetadata((current) => ({ ...current, [id]: undefined }))
             return
           }
+          productFreshness.current.set(id, { sequence: ++productSequence.current, time: Date.now() })
           // Completar ausentes nunca reemplaza una publicación actualizada mientras esperábamos.
           setShop((current) => !isCurrent() || current.products.some((item) => item.id === id)
             ? current : { ...current, products: [...current.products, product] })
@@ -437,6 +489,7 @@ function App() {
       let request = promotionRequest.current;
       if (request?.key !== key) {
         request = { key, applied: false, promise: fetch(URL + '/promotions', {
+          signal: sessionAbort.current.signal,
           headers: { Authorization: 'Bearer ' + token },
         }).then(readResponse) };
         promotionRequest.current = request;
@@ -510,23 +563,24 @@ function App() {
   const selectedPromotion = promotions.find((promotion) => promotion.id === location.state?.promotion?.id)
   const items = cart?.items ?? []
   const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
-  const publicProducts = products.filter((product) => ['ACTIVO', 'AGOTADO'].includes(product.status))
-  const recentProducts = publicProducts.filter((product) => product.status === 'ACTIVO')
+  const recentProducts = homeProductIds.map((id) => products.find((product) => product.id === id)).filter((product) => product?.status === 'ACTIVO')
     .slice().sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 4)
   const [detailRequest, setDetailRequest] = useState(null)
   const [detailAttempt, setDetailAttempt] = useState(0)
   const detailKey = selectedProductId + ':' + detailAttempt
   const currentDetailRequest = detailRequest?.key === detailKey ? detailRequest : null
   const knownProduct = products.find((product) => product.id === selectedProductId)
-  const selectedProduct = !currentDetailRequest?.notFound && knownProduct && ['ACTIVO', 'AGOTADO'].includes(knownProduct.status)
+  const selectedProduct = !currentDetailRequest?.error && !currentDetailRequest?.notFound && knownProduct && ['ACTIVO', 'AGOTADO'].includes(knownProduct.status)
     ? knownProduct : undefined
-  const needsDetail = Boolean(productRoute && selectedProductId && !knownProduct && !currentDetailRequest)
+  const detailFresh = knownProduct && Date.now() - (productFreshness.current.get(selectedProductId)?.time ?? 0) < productCacheLifetime
+  const needsDetail = Boolean(productRoute && selectedProductId && !detailFresh && !currentDetailRequest)
 
   useEffect(() => {
     if (!needsDetail) return
     let active = true
     const controller = new AbortController()
     const version = productsRequestVersion.current
+    const sequence = ++productSequence.current
     Promise.resolve().then(async () => {
       if (!active) return
       try {
@@ -544,8 +598,10 @@ function App() {
           setDetailRequest({ key: detailKey, notFound: true })
           return
         }
-        setShop((current) => current.products.some((item) => item.id === product.id)
-          ? current : { ...current, products: [...current.products, product] })
+        if (sequence >= (productFreshness.current.get(product.id)?.sequence ?? 0)) {
+          productFreshness.current.set(product.id, { sequence, time: Date.now() })
+          setShop((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== product.id), product] }))
+        }
       } catch (error) {
         if (!active) return
         if (version !== productsRequestVersion.current) {
@@ -557,7 +613,16 @@ function App() {
       }
     })
     return () => { active = false; controller.abort() }
-  }, [needsDetail, selectedProductId, detailKey])
+  }, [needsDetail, selectedProductId, detailKey, productsAttempt, freshnessTick])
+
+  useEffect(() => {
+    if (!isProductRoute || !selectedProduct?.collectionId) return
+    let active = true
+    loadProductPage('page=0&size=5&collectionId=' + selectedProduct.collectionId)
+      .then((data) => { if (active) setRelatedProducts(data.content) })
+      .catch(() => { if (active) setRelatedProducts([]) })
+    return () => { active = false }
+  }, [isProductRoute, selectedProduct?.collectionId, loadProductPage, productsAttempt, freshnessTick])
 
   const reviewProductId = productRoute ? selectedProduct?.id : undefined
 
@@ -591,9 +656,7 @@ function App() {
 
   function openProduct(product) {
     // Una tarjeta puede venir de una página que no forma parte de la carga inicial.
-    refreshPendingCatalog()
-    setShop((current) => current.products.some((item) => item.id === product.id)
-      ? current : { ...current, products: [...current.products, product] })
+    setShop((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== product.id), product] }))
     navigate('/producto/' + product.id)
   }
   // Solo ocultamos duplicados conocidos. Spring decide si hubo compra previa.
@@ -614,6 +677,7 @@ function App() {
     setCartError('')
     setCartMessage('')
     return fetch(URL + path, {
+      signal: sessionAbort.current.signal,
       method,
       headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -643,9 +707,7 @@ function App() {
 
   function addToCart(product, quantity = 1) {
     if (user && token && cart && !cartRequest.current) {
-      refreshPendingCatalog()
-      setShop((current) => current.products.some((item) => item.id === product.id)
-        ? current : { ...current, products: [...current.products, product] })
+      setShop((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== product.id), product] }))
     }
     return changeCart('POST', '/carts/items', { productId: product.id, quantity })
   }
@@ -662,6 +724,7 @@ function App() {
         const response = await fetch(
           URL + '/carts/items/' + sync.id,
           {
+            signal: sessionAbort.current.signal,
             method: 'PUT',
             headers: {
               Authorization: 'Bearer ' + savedToken,
@@ -764,7 +827,26 @@ function App() {
     setCartAttempt((attempt) => attempt + 1)
   }
 
-  function confirmOrder({ paymentMethod }) {
+  const previewOrder = useCallback(async (paymentMethod, signal) => {
+    if (!token || cartRequest.current) throw new Error('Esperá a que termine de actualizarse el carrito.')
+    const version = sessionVersion.current
+    try {
+      const response = await fetch(URL + '/orders/preview', {
+        method: 'POST', signal: AbortSignal.any([signal, sessionAbort.current.signal]),
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentMethod }),
+      })
+      const quote = await readResponse(response)
+      if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
+      if (!Number.isFinite(quote.total) || !Array.isArray(quote.promotions)) throw new Error('Cotización inválida.')
+      return quote
+    } catch (error) {
+      if (version === sessionVersion.current && error.status === 401) { logout(); setSessionError(error.message) }
+      throw error
+    }
+  }, [token, logout])
+
+  function confirmOrder({ paymentMethod, expectedTotal, requestKey }) {
     if (!user || !token || !cart?.items.length || cartRequest.current) {
       return Promise.reject(new Error('Revisá el carrito antes de confirmar.'))
     }
@@ -774,9 +856,10 @@ function App() {
     setCartError('')
     setCartMessage('')
     return fetch(URL + '/orders', {
+      signal: sessionAbort.current.signal,
       method: 'POST',
       headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentMethod }),
+      body: JSON.stringify({ paymentMethod, expectedTotal, requestKey }),
     })
       .then(readResponse)
       .then((order) => {
@@ -786,14 +869,10 @@ function App() {
         }
         setConfirmedOrder(order)
         refreshPendingCatalog()
-        // El service vacía el carrito. Ajustamos la copia local con las cantidades confirmadas.
+        // El service vacía el carrito; los productos se consultarán nuevamente.
         setCart((current) => ({ ...current, items: [], subtotal: 0 }))
-        setShop((current) => ({ ...current, products: current.products.map((product) => {
-          const purchased = order.items.find((item) => item.productId === product.id)
-          if (!purchased) return product
-          const stock = Math.max(0, product.stock - purchased.quantity)
-          return { ...product, stock, status: stock === 0 ? 'AGOTADO' : product.status }
-        }) }))
+        setShop((current) => ({ ...current, products: current.products.filter((product) =>
+          !order.items.some((item) => item.productId === product.id)) }))
         navigate('/pedido-confirmado')
         return order
       })
@@ -819,6 +898,7 @@ function App() {
     const version = sessionVersion.current
     reviewRequest.current = true
     return fetch(URL + '/products/' + product.id + '/reviews', {
+      signal: sessionAbort.current.signal,
       method: 'POST',
       headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ rating, comment: comment.trim() }),
@@ -848,7 +928,7 @@ function App() {
     if (!user || !token || orderDetails[orderId]?.data || orderDetails[orderId]?.loading) return
     const version = sessionVersion.current
     setOrderDetails((current) => ({ ...current, [orderId]: { loading: true, error: '', data: null } }))
-    fetch(URL + '/orders/' + orderId, { headers: { Authorization: 'Bearer ' + token } })
+    fetch(URL + '/orders/' + orderId, { signal: sessionAbort.current.signal, headers: { Authorization: 'Bearer ' + token } })
       .then(readResponse)
       .then((data) => {
         if (data.id !== orderId || !Array.isArray(data.items)) throw new Error('El detalle recibido no corresponde al pedido.')
@@ -873,6 +953,7 @@ function App() {
     body.append('file', file)
     try {
       const response = await fetch(URL + '/products/images', {
+      signal: sessionAbort.current.signal,
         method: 'POST', headers: { Authorization: 'Bearer ' + token }, body,
       })
       const data = await readResponse(response)
@@ -892,6 +973,7 @@ function App() {
     const version = sessionVersion.current
     try {
       const response = await fetch(URL + '/products' + (productId == null ? '' : '/' + productId), {
+      signal: sessionAbort.current.signal,
         method: productId == null ? 'POST' : 'PUT',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -921,6 +1003,7 @@ function App() {
     setProfileSaving(true)
     try {
       const response = await fetch(URL + '/users/me', {
+      signal: sessionAbort.current.signal,
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + savedToken },
         body: JSON.stringify({ firstName: form.firstName, lastName: form.lastName, email: form.email }),
@@ -951,6 +1034,8 @@ function App() {
   }
   function startSession(usuario) {
     sessionVersion.current += 1
+    sessionAbort.current.abort()
+    sessionAbort.current = new AbortController()
     accountRequest.current = false
     setProfileSaving(false)
     setDeactivating(false)
@@ -966,6 +1051,7 @@ function App() {
     setCart(null)
     setConfirmedOrder(null)
     setOrderDetails({})
+    ownPublicationsStamp.current = null
     setOwnPublications({ userId: null, items: [], loading: false, error: '' })
     setPublicationBusyId(null)
     setPublicationError('')
@@ -1043,6 +1129,7 @@ function App() {
     setDeactivateError('')
     try {
       const response = await fetch(URL + '/users/me/deactivate', {
+      signal: sessionAbort.current.signal,
         method: 'PUT', headers: { Authorization: 'Bearer ' + savedToken },
       })
       const updated = await readResponse(response)
@@ -1069,14 +1156,20 @@ function App() {
   }
   const account = { ...shared, user: currentUser, onLogout: logout }
   function refreshPendingCatalog() {
-    // Una respuesta iniciada antes del PATCH/POST/DELETE no puede deshacer su resultado.
     productsRequestVersion.current += 1
-    if (productsLoading) {
-      setProductsAttempt((current) => current + 1)
-    }
+    productPages.current.forEach((entry) => entry.controller.abort())
+    productPages.current.clear()
+    productFreshness.current.clear()
+    cartMetadataRequests.current.forEach((request) => request.controller.abort())
+    cartMetadataRequests.current.clear()
+    setCartMetadata({})
+    setShop((current) => ({ ...current, products: [] }))
+    setDetailRequest(null)
+    setProductsAttempt((current) => current + 1)
   }
   function syncPublication(saved) {
     refreshPendingCatalog()
+    productFreshness.current.set(saved.id, { sequence: ++productSequence.current, time: Date.now() })
     const isPublic = ['ACTIVO', 'AGOTADO'].includes(saved.status)
     setOwnPublications((current) => ({ ...current, userId: user.id,
       items: [saved, ...current.items.filter((product) => product.id !== saved.id)]
@@ -1090,6 +1183,7 @@ function App() {
     }))
   }
   function retryPublications() {
+    ownPublicationsStamp.current = null
     setPublicationError('')
     setPublicationAttempt((current) => current + 1)
   }
@@ -1101,6 +1195,7 @@ function App() {
     setPublicationError('')
     try {
       const response = await fetch(URL + '/products/' + product.id + (action === 'delete' ? '' : '/' + action), {
+      signal: sessionAbort.current.signal,
         method: action === 'delete' ? 'DELETE' : 'PATCH',
         headers: { Authorization: 'Bearer ' + token },
       })
@@ -1157,6 +1252,8 @@ function App() {
                                     onAddToCart={addToCart}
                                     collections={catalogCollections}
                                     collectionsError={collectionsError}
+                                    loadPage={loadProductPage}
+                                    cacheVersion={productsAttempt + ':' + freshnessTick}
                                     filters={catalogFilters}
                                     onFiltersChange={changeCatalogFilters}
                                     onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
@@ -1170,7 +1267,7 @@ function App() {
         <ProductDetail key={(user?.id ?? 'guest') + ':' + selectedProduct.id} {...shared}
           user={user} canReview={canReview} onPublishReview={publishReview}
           cartItems={items} cartQuantity={items.find((item) => item.productId === selectedProduct.id)?.quantity ?? 0}
-          onAddToCart={addToCart} onBuyNow={buyNow} product={selectedProduct} products={publicProducts}
+          onAddToCart={addToCart} onBuyNow={buyNow} product={selectedProduct} products={relatedProducts}
           reviews={reviewsByProduct[selectedProduct.id] ?? []}
           reviewsLoading={reviewsByProduct[selectedProduct.id] === undefined && !reviewErrors[selectedProduct.id]}
           reviewsError={reviewErrors[selectedProduct.id]} onRetryReviews={retryReviews}
@@ -1213,7 +1310,7 @@ function App() {
       </ProtectedRoute>} />
       <Route path="/checkout" element={<ProtectedRoute user={user}>
         <Checkout {...shared} cart={cart} products={products} loading={cartLoading}
-          error={cartError} onRetry={retryCart} onConfirm={confirmOrder} />
+          error={cartError} onRetry={retryCart} onPreview={previewOrder} onConfirm={confirmOrder} />
       </ProtectedRoute>} />
       <Route path="/pedido-confirmado" element={<ProtectedRoute user={user}>
         <OrderConfirmation order={confirmedOrder} cartCount={cartCount} />
@@ -1228,10 +1325,10 @@ function App() {
         : <Navigate to="/mi-perfil" replace />} />
 
       <Route path="/editar-promocion" element={loading || (isAdmin && promotionLoading) ? <p role="status">Cargando promociones…</p> : isAdmin ? selectedPromotion
-        ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} collections={collections} products={publicProducts} collectionsLoading={collectionsLoading} productsLoading={productsLoading} collectionsError={collectionsError} productsError={productsError} onSave={savePromotion} />
+        ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} collections={collections} loadProductsPage={loadProductPage} productCacheVersion={productsAttempt + ':' + freshnessTick} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} />
         : <Navigate to="/promociones" replace /> : <Navigate to="/mi-perfil" replace />} />
       <Route path="/nueva-promocion" element={loading || (isAdmin && promotionLoading) ? <p role="status">Cargando promociones…</p> : isAdmin
-        ? <PromotionEditor key="new-promotion" {...account} isNew collections={collections} products={publicProducts} collectionsLoading={collectionsLoading} productsLoading={productsLoading} collectionsError={collectionsError} productsError={productsError} onSave={savePromotion} />
+        ? <PromotionEditor key="new-promotion" {...account} isNew collections={collections} loadProductsPage={loadProductPage} productCacheVersion={productsAttempt + ':' + freshnessTick} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} />
         : <Navigate to="/mi-perfil" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
