@@ -2,12 +2,12 @@
 // The bridge permits testing an isolated backend port without changing App's URL.
 const assert = require('node:assert/strict')
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
-const base = process.env.BASE_URL || 'http://127.0.0.1:5176'
-const api = process.env.API_URL || 'http://127.0.0.1:8082'
+const base = process.env.BASE_URL || 'http://localhost:5173'
+const api = process.env.API_URL || 'http://localhost:8080'
 let browser
 
 ;(async () => {
-  browser = await chromium.launch({channel: 'chrome', headless: true})
+  browser = await chromium.launch({channel: 'msedge', headless: true})
   const page = await browser.newPage({ viewport: {width: 1440, height: 1000} })
   const records = []
   const errors = []

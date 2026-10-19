@@ -1,15 +1,16 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
 import PromotionCard from '../components/PromotionCard.jsx'
+import Pagination from '../components/Pagination.jsx'
 import ToggleSwitch from '../components/ToggleSwitch.jsx'
 import { promotionKinds, emptyPromotion, promotionStatus, promotionPeriod, promotionCondition } from '../data/promotionMocks.js'
 import { productTypeLabels } from '../data/accountMocks.js'
 import { paymentMethods } from '../data/paymentMethods.js'
 
 function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave,
-  collections = [], products = [], collectionsLoading, productsLoading, collectionsError, productsError }) {
+  collections = [], collectionsLoading, collectionsError, loadProductsPage, productCacheVersion }) {
     const [form, setForm] = useState(() => {
       const initial = isNew ? { ...emptyPromotion, collectionId: '', productId: '' } : promotion;
       return { ...initial, productType: initial.kind === 'type' && !productTypeLabels[initial.productType]
@@ -19,8 +20,54 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
     const [saveError, setSaveError] = useState('');
     const saveRequest = useRef(false);
 
-  // Se usan los mismos datos de App. Solo la condición elegida depende de ellos.
-  const dataLoading = form.kind === 'collection' ? collectionsLoading : form.kind === 'product' ? productsLoading : false;
+  const [productSearch, setProductSearch] = useState('');
+  const [productPage, setProductPage] = useState(0);
+  const [productAttempt, setProductAttempt] = useState(0);
+  const [productResult, setProductResult] = useState(null);
+  const [selection, setSelection] = useState(null);
+  const productParams = new URLSearchParams({ page: String(productPage), size: '9' });
+  if (productSearch.trim()) productParams.set('search', productSearch.trim());
+  const productQuery = productParams.toString();
+  const productKey = productQuery + ':' + productAttempt + ':' + productCacheVersion;
+  const selectedProductId = Number(form.productId);
+  const productsLoading = productResult?.key !== productKey;
+  const selectedLoading = Boolean(selectedProductId && selection?.id !== selectedProductId);
+  const productsError = (!productsLoading && productResult?.error) || (!selectedLoading && selection?.error) || '';
+  const pageProducts = productsLoading ? [] : productResult.content;
+  // La selección conserva su entidad real aunque el usuario navegue a otra página.
+  const selectedProduct = selection?.id === selectedProductId ? selection.data : null;
+  const products = selectedProduct && !pageProducts.some((item) => item.id === selectedProduct.id)
+    ? [selectedProduct, ...pageProducts] : pageProducts;
+
+  useEffect(() => {
+    if (form.kind !== 'product') return;
+    let active = true;
+    const timer = setTimeout(() => {
+      loadProductsPage(productQuery)
+        .then((data) => { if (active) setProductResult({ ...data, key: productKey, error: '' }); })
+        .catch((error) => { if (active) setProductResult({ key: productKey, content: [], totalPages: 0, error: error.message }); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [form.kind, productQuery, productKey, loadProductsPage]);
+
+  useEffect(() => {
+    if (form.kind !== 'product' || !selectedProductId || selection?.id === selectedProductId) return;
+    const controller = new AbortController();
+    Promise.resolve().then(async () => {
+        if (controller.signal.aborted) return;
+        const response = await fetch('http://localhost:8080/products/' + selectedProductId, { signal: controller.signal });
+        if (!response.ok) throw new Error('No pudimos consultar el producto seleccionado (HTTP ' + response.status + ').');
+        const data = await response.json();
+        if (data.id !== selectedProductId) throw new Error('El producto recibido no coincide con la selección.');
+        if (!controller.signal.aborted) setSelection({ id: selectedProductId, data, error: '' });
+      }).catch((error) => {
+        if (!controller.signal.aborted) setSelection({ id: selectedProductId, data: null, error: error.message });
+      });
+    return () => controller.abort();
+  }, [form.kind, selectedProductId, selection?.id]);
+
+  // Colecciones compartidas de App; productos cargados solo al elegir esa condición.
+  const dataLoading = form.kind === 'collection' ? collectionsLoading : form.kind === 'product' ? productsLoading || selectedLoading : false;
   const dataError = form.kind === 'collection' ? collectionsError : form.kind === 'product' ? productsError : '';
   const options = form.kind === 'collection' ? collections : products;
   const selectedId = form.kind === 'collection' ? form.collectionId : form.productId;
@@ -28,6 +75,9 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
   const missingSelection = needsSelection && !options.some((item) => item.id === Number(selectedId));
 
   function changeField(field, value) {
+    if (field === 'productId') setSelection(value === '' ? null : {
+      id: Number(value), data: products.find((item) => item.id === Number(value)), error: '',
+    });
     setForm((current) => {
       const next = { ...current, [field]: value };
       if (field === 'kind' && value === 'type' && !productTypeLabels[current.productType]) {
@@ -73,7 +123,11 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
           {['quantity', 'type'].includes(form.kind) && <fieldset><legend className="mb-2 text-[0.8125rem] font-extrabold tracking-[0.04875rem] uppercase">Aplica a</legend><div className="flex flex-wrap gap-2">{[...(form.kind === 'quantity' ? [['', 'Todos']] : []), ...Object.entries(productTypeLabels)].map(([value, label]) => <button key={value} type="button" aria-pressed={form.productType === value} onClick={() => changeField('productType', value)} className={`rounded-full border-[1.6px] border-bordo px-4 py-2.25 text-[0.875rem] font-bold ${form.productType === value ? 'bg-bordo text-crema' : 'bg-papel'}`}>{label}</button>)}</div></fieldset>}
           {form.kind === 'minimum' && <FormField id="promotion-minimum" label="Monto mínimo (ARS)" type="number" min="0.01" step="0.01" required value={form.minimumAmount} onChange={(event) => changeField('minimumAmount', Number(event.target.value))} />}
          
-{['collection', 'payment', 'product'].includes(form.kind) && (
+{form.kind === 'product' && <label className="flex flex-col gap-2 font-bold">
+            Buscar productos de la promoción
+            <input type="search" value={productSearch} onChange={(event) => { setProductSearch(event.target.value); setProductPage(0); }} className="rounded-xl border-2 border-bordo px-4 py-3" />
+          </label>}
+          {['collection', 'payment', 'product'].includes(form.kind) && (
   <label className="flex min-w-0 flex-col gap-2">
     <span className="text-[0.8125rem] font-extrabold tracking-[0.04875rem] uppercase">
       {form.kind === 'collection'
@@ -85,7 +139,7 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
 
     <select
       required
-      disabled={dataLoading || Boolean(dataError)}
+      disabled={dataLoading || Boolean(form.kind === 'product' ? productResult?.error : dataError)}
       value={
         form.kind === 'collection'
           ? form.collectionId
@@ -129,8 +183,10 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
   </label>
 )}
 
+          {form.kind === 'product' && !productsLoading && productResult.totalPages > 1 &&
+            <Pagination page={productPage} totalPages={productResult.totalPages} onPageChange={setProductPage} />}
           {dataLoading && <p role="status">Cargando {form.kind === 'collection' ? 'colecciones' : 'productos'}…</p>}
-          {dataError && <p role="alert">{dataError}</p>}
+          {dataError && <p role="alert">{dataError}{form.kind === 'product' && <button type="button" className="ml-2 underline" onClick={() => { setProductAttempt((value) => value + 1); setSelection(null); }}>Reintentar productos</button>}</p>}
           {needsSelection && !dataLoading && !dataError && !options.length && <p role="status">No hay {form.kind === 'collection' ? 'colecciones' : 'productos'} disponibles.</p>}
           {missingSelection && selectedId !== '' && !dataLoading && !dataError && <p role="alert">La selección anterior no está disponible en los datos cargados. Seleccioná otra opción.</p>}
 

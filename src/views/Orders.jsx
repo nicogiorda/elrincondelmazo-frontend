@@ -21,11 +21,12 @@ function Orders({ user, onLogout, token, details, onLoadDetail, onUnauthorized, 
 
   useEffect(() => {
     let active = true
+    const controller = new AbortController()
     // StrictMode limpia el primer efecto antes de iniciar esta petición.
     Promise.resolve().then(async () => {
       if (!active) return
       try {
-        const response = await fetch('http://localhost:8080/orders', { headers: { Authorization: 'Bearer ' + token } })
+        const response = await fetch('http://localhost:8080/orders', { signal: controller.signal, headers: { Authorization: 'Bearer ' + token } })
         if (!active) return
         if (response.status === 401) {
           onUnauthorized()
@@ -43,7 +44,7 @@ function Orders({ user, onLogout, token, details, onLoadDetail, onUnauthorized, 
         if (active) setLoading(false)
       }
     })
-    return () => { active = false }
+    return () => { active = false; controller.abort() }
   }, [token, attempt, onUnauthorized])
 
   function retry() {

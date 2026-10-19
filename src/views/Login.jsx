@@ -1,16 +1,22 @@
 import AccountAccess from '../components/AccountAccess.jsx'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 function Login({ cartCount, onLogin }) {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
 
+  const request = useRef(null)
+  useEffect(() => () => request.current?.abort(), [])
+
   async function handleLogin(form) {
+    if (request.current) return
+    const controller = new AbortController()
+    request.current = controller
     setError('')
     setLoading(true)
     try {
       const response = await fetch('http://localhost:8080/api/v1/auth/authenticate', {
-        method: 'POST',
+        method: 'POST', signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: form.email, password: form.password }),
       })
@@ -22,7 +28,7 @@ function Login({ cartCount, onLogin }) {
 
       // El token candidato no se guarda hasta verificar la cuenta completa.
       const responseUsuario = await fetch('http://localhost:8080/users/me', {
-        headers: { Authorization: 'Bearer ' + token },
+        headers: { Authorization: 'Bearer ' + token }, signal: controller.signal,
       })
       if (!responseUsuario.ok) throw new Error('No pudimos verificar tu cuenta (HTTP ' + responseUsuario.status + '). Volvé a ingresar.')
       const usuario = await responseUsuario.json().catch(() => { throw new Error('El servidor devolvió datos de usuario inválidos.') })
@@ -31,12 +37,15 @@ function Login({ cartCount, onLogin }) {
         || !['USUARIO', 'ADMIN'].includes(usuario.role) || usuario.active === false) {
         throw new Error('El servidor devolvió datos de usuario inválidos.')
       }
+      if (controller.signal.aborted) return
       localStorage.setItem('token', token)
       onLogin(usuario)
     } catch (error) {
+      if (controller.signal.aborted) return
       setError(error instanceof TypeError
         ? 'No pudimos conectar con el servidor. Revisá tu conexión y volvé a intentar.' : error.message)
     } finally {
+      request.current = null
       setLoading(false)
     }
   }

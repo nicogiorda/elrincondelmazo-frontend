@@ -2,7 +2,7 @@
 // no application dependency is added. HTTP fixtures are deliberately isolated.
 const assert = require('node:assert/strict')
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
-const base = process.env.BASE_URL || 'http://127.0.0.1:5175'
+const base = process.env.BASE_URL || 'http://localhost:5173'
 const active = { id: 87, name: 'Promo desde API', description: 'Descripción persistida', type: 'COLECCION', discountPercentage: 17.25, collectionId: 901, collectionName: 'Marvel', stackable: false, active: true, startDate: '2020-01-01T08:15:22', endDate: null }
 const collection = { id: 901, name: 'Marvel', description: 'Colección desde API' }
 const product = { id: 721, name: 'Producto desde API', price: 1200, stock: 5, type: 'CARTA', collectionId: 901, collectionName: 'Marvel', sellerId: 2, status: 'ACTIVO', imageUrls: [], createdAt: '2026-01-01T00:00:00' }
@@ -29,8 +29,14 @@ async function setup(options = {}) {
     else if (url.pathname === '/collections') { data = state.collections ?? [collection]; status = state.collectionsStatus ?? 200 }
     else if (url.pathname === '/products') {
       if (state.productsGate) await state.productsGate.promise
-      data = { content: state.products ?? [product], totalPages: 1, totalElements: 1 }
+      const query = url.searchParams.get('search') || ''
+      const list = (state.products ?? [product]).filter(p => p.name.includes(query))
+      const size = Number(url.searchParams.get('size') || 9), number = Number(url.searchParams.get('page') || 0)
+      data = { content: list.slice(number * size, (number + 1) * size), totalPages: Math.ceil(list.length / size), totalElements: list.length, number }
       status = state.productsStatus ?? 200
+    } else if (/^\/products\/\d+$/.test(url.pathname)) {
+      data = (state.products ?? [product]).find(p => p.id === Number(url.pathname.split('/').pop()))
+      if (!data) { status = 404; data = {message:'Producto no disponible'} }
     } else if (url.pathname === '/promotions/public') {
       if (state.publicGate) await state.publicGate.promise
       status = state.publicStatus
@@ -66,7 +72,7 @@ async function test(name, run) {
 }
 
 (async () => {
-  browser = await chromium.launch({ channel: 'chrome', headless: true })
+  browser = await chromium.launch({ channel: 'msedge', headless: true })
   await test('Home uses API amounts, conditions and real collection IDs without authentication', async () => {
     const {page, state, count, close} = await setup()
     await page.goto(base)
@@ -97,7 +103,7 @@ async function test(name, run) {
     await page.getByRole('button', {name: 'Reintentar', exact: true}).click()
     await page.getByRole('heading', {name: active.name}).waitFor()
     assert.equal(count('/promotions/public'), 2)
-    assert.equal(count('/products?size=100'), 1)
+    assert.equal(count('/products?size=100'), 0)
     assert.equal(count('/collections'), 1)
     await close()
   })
@@ -111,7 +117,7 @@ async function test(name, run) {
       await page.getByRole('link', {name: 'Cancelar', exact: true}).click()
     }
     assert.equal(count('/promotions'), 1)
-    assert.equal(count('/products?size=100'), 1)
+    assert.equal(count('/products?size=100'), 0)
     assert.equal(count('/collections'), 1)
     await page.getByRole('button', {name: 'Editar', exact: true}).click()
     await page.locator('#promotion-name').fill('Editada desde API')
@@ -146,7 +152,7 @@ async function test(name, run) {
     await page.getByRole('link', {name: 'Ir al inicio'}).click()
     await page.getByRole('heading', {name: 'Creada desde API'}).waitFor()
     assert.equal(count('/promotions/public'), 1)
-    assert.equal(count('/products?size=100'), 1)
+    assert.equal(count('/products?size=100'), 0)
     assert.equal(count('/collections'), 1)
     await close()
   })
@@ -163,7 +169,8 @@ async function test(name, run) {
     await page.locator('select option', {hasText: product.name}).waitFor({state:'attached'})
     await page.locator('select').selectOption(String(product.id))
     assert.ok(await page.getByRole('button', {name: 'Crear promoción', exact: true}).isEnabled())
-    assert.equal(count('/products?size=100'), 1)
+    assert.equal(count('/products?size=100'), 0)
+    assert.equal(count('/products?page=0&size=9'), 1)
     assert.equal(count('/collections'), 1)
     await close()
   })
@@ -226,7 +233,7 @@ async function test(name, run) {
     assert.equal(await page.locator('#promotion-name').inputValue(), active.name)
     assert.equal(count('/promotions'), 2, 'one request per full App mount')
     assert.equal(count('/collections'), 2)
-    assert.equal(count('/products?size=100'), 2)
+    assert.equal(count('/products?size=100'), 0)
     await close()
   })
   await test('An admin response arriving after logout cannot restore old-session data', async () => {
@@ -244,6 +251,54 @@ async function test(name, run) {
     await page.getByRole('heading', {name:'Nueva sesión'}).waitFor()
     assert.equal(await page.getByRole('heading', {name:active.name}).count(), 0)
     assert.equal(count('/promotions'), 2)
+    await close()
+  })
+  await test('Product selection survives pages and editing fetches the selected real product', async () => {
+    const choices = Array.from({length:13}, (_,i) => ({...product, id:721+i, name:'Producto paginado '+(i+1)}))
+    const {page, state, count, close} = await setup({admin:true, products:choices, promotions:[]})
+    await page.goto(base + '/nueva-promocion')
+    await page.getByRole('heading', {name:'Nueva promoción', exact:true}).waitFor()
+    assert.equal(count('/products?page=0&size=9'), 0, 'Only product condition should request products')
+    await page.getByRole('button', {name:/Producto puntual/}).click()
+    await page.locator('select option', {hasText:'Producto paginado 1', exact:true}).waitFor({state:'attached'})
+    await page.locator('select').selectOption('721')
+    await page.getByRole('button', {name:'Página siguiente', exact:true}).click()
+    await page.locator('select option', {hasText:'Producto paginado 13'}).waitFor({state:'attached'})
+    assert.equal(await page.locator('select').inputValue(), '721')
+    await page.locator('select').selectOption('733')
+    await page.getByRole('button', {name:'Página anterior', exact:true}).click()
+    await page.locator('select option', {hasText:'Producto paginado 2'}).waitFor({state:'attached'})
+    assert.equal(await page.locator('select').inputValue(), '733')
+    assert.equal(count('/products?page=0&size=9'), 1, 'Back reuses shared page cache')
+    await page.locator('#promotion-name').fill('Promo página dos')
+    await page.locator('#promotion-start').fill('2020-01-01')
+    await page.getByRole('button', {name:'Crear promoción', exact:true}).click()
+    await page.getByRole('heading', {name:'Promo página dos', exact:true}).waitFor()
+    assert.equal(state.calls.find(c=>c.method==='POST').body.productId, 733)
+    await page.getByRole('button', {name:'Editar', exact:true}).click()
+    await page.locator('select option', {hasText:'Producto paginado 13'}).waitFor({state:'attached'})
+    assert.equal(await page.locator('select').inputValue(), '733')
+    await page.getByText('Cargando productos…', {exact:true}).waitFor({state:'hidden'})
+    assert.ok(await page.getByRole('button', {name:'Guardar cambios', exact:true}).isEnabled())
+    assert.equal(count('/products/733'), 1, 'StrictMode must not duplicate selected-product fetch')
+    await page.getByLabel('Buscar productos de la promoción').fill('paginado 7')
+    await page.locator('select option', {hasText:'Producto paginado 7'}).waitFor({state:'attached'})
+    assert.equal(await page.locator('select').inputValue(), '733')
+    await close()
+  })
+  await test('Product page errors can be retried without losing the form', async () => {
+    const {page, state, count, close} = await setup({admin:true, productsStatus:503})
+    await page.goto(base + '/nueva-promocion')
+    await page.locator('#promotion-name').fill('Borrador productos')
+    await page.getByRole('button', {name:/Producto puntual/}).click()
+    await page.getByRole('button', {name:'Reintentar productos'}).waitFor()
+    assert.ok(await page.getByRole('button', {name:'Crear promoción', exact:true}).isDisabled())
+    state.productsStatus = 200
+    await page.getByRole('button', {name:'Reintentar productos'}).click()
+    await page.locator('select option', {hasText:product.name}).waitFor({state:'attached'})
+    await page.locator('select').selectOption(String(product.id))
+    assert.equal(await page.locator('#promotion-name').inputValue(), 'Borrador productos')
+    assert.equal(count('/products?page=0&size=9'), 2)
     await close()
   })
   await browser.close()
