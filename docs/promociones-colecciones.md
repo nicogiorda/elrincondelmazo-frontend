@@ -1,6 +1,6 @@
 # Auditoría de promociones y colecciones
 
-Fecha: 19/10/2026. Rama en ambos repositorios: `audit/promotions-collections`.
+Fecha: 19/10/2026. Rama en ambos repositorios: `audit/promotion-collections`.
 Bases remotas consultadas: frontend `50eb70a`; backend `14b1f24`.
 Trabajo realizado en worktrees separados; no se modificaron las ramas de trabajo del otro desarrollador ni se hizo push a main.
 
