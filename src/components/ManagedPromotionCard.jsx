@@ -1,8 +1,22 @@
+import { useRef, useState } from 'react'
 import ToggleSwitch from './ToggleSwitch.jsx'
 import { promotionKinds, promotionStatus, promotionPeriod, promotionCondition } from '../data/promotionMocks.js'
 import { paymentMethods } from '../data/paymentMethods.js'
 
 function ManagedPromotionCard({ promotion, onEdit, onToggle }) {
+  const request = useRef(false)
+  const [busy, setBusy] = useState(false)
+  async function toggle() {
+    if (request.current) return
+    request.current = true
+    setBusy(true)
+    try {
+      await onToggle(promotion)
+    } finally {
+      request.current = false
+      setBusy(false)
+    }
+  }
   const status = promotionStatus(promotion)
   const active = status === 'Activa'
   const background = active ? 'bg-amarillo' : status === 'Programada' ? 'bg-rosa' : 'bg-crema'
@@ -17,8 +31,8 @@ function ManagedPromotionCard({ promotion, onEdit, onToggle }) {
       <p className="text-[0.8125rem] font-semibold opacity-80">{promotionPeriod(promotion)}</p>
       <div className="flex flex-wrap gap-1.5 text-[0.75rem] font-bold"><span className="rounded-full border-[1.6px] border-bordo px-2.5 py-0.75">{promotionKinds.find((kind) => kind.value === promotion.kind)?.label}</span><span className="rounded-full border-[1.6px] border-bordo px-2.5 py-0.75">{promotion.stackable ? 'Acumulable' : 'No acumulable'}</span></div>
       <div className="mt-auto flex items-center justify-between gap-2 border-t-[1.6px] border-bordo/20 pt-3.5 text-[0.875rem] font-bold">
-        <div className="flex items-center gap-2.5"><ToggleSwitch checked={promotion.enabled} onChange={() => onToggle(promotion)} label={`${promotion.enabled ? 'Desactivar' : 'Activar'} ${promotion.name}`} /><span>{promotion.enabled ? 'Activada' : 'Desactivada'}</span></div>
-        <button type="button" onClick={() => onEdit(promotion)} className="underline">Editar</button>
+        <fieldset disabled={busy} aria-busy={busy} className="flex items-center gap-2.5"><ToggleSwitch checked={promotion.enabled} onChange={toggle} label={`${promotion.enabled ? 'Desactivar' : 'Activar'} ${promotion.name}`} /><span>{busy ? 'Guardando…' : promotion.enabled ? 'Activada' : 'Desactivada'}</span></fieldset>
+        <button type="button" disabled={busy} onClick={() => onEdit(promotion)} className="underline">Editar</button>
       </div>
     </div>
   </article>

@@ -17,6 +17,7 @@ import Checkout from './views/Checkout.jsx'
 import OrderConfirmation from './views/OrderConfirmation.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import PurchaseNotice from './components/PurchaseNotice.jsx'
+import { invalidatePublicPromotions } from './services/publicPromotions.js'
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
 const URL = 'http://localhost:8080'
@@ -164,8 +165,11 @@ function App() {
     || (location.pathname === '/publicar' && Boolean(location.state?.product?.id))
 
   const [promotions, setPromotions] = useState([])
-  const [promotionLoading, setPromotionLoading] = useState(false)
+  const [promotionLoading, setPromotionLoading] = useState(true)
   const [promotionError, setPromotionError] = useState('')
+  const promotionRequest = useRef(null)
+  const [promotionAttempt, setPromotionAttempt] = useState(0)
+  const needsPromotions = ['/promociones', '/editar-promocion', '/nueva-promocion'].includes(location.pathname)
 
   // La misma función se usa desde botones y desde requests que reciben 401.
   const logout = useCallback(() => {
@@ -423,19 +427,30 @@ function App() {
   const publicationsLoading = ownPublications.loading || (needsPublications && ownPublications.userId !== user?.id)
 
   useEffect(() => {
-    if (user?.role !== 'ADMIN' || !token) return;
+    if (user?.role !== 'ADMIN' || !token || !needsPromotions) return;
     let cancelled = false;
     const version = sessionVersion.current;
 
     async function loadPromotions() {
+      if (cancelled) return;
+      const key = `${version}:${user.id}:${token}:${promotionAttempt}`;
+      let request = promotionRequest.current;
+      if (request?.key !== key) {
+        request = { key, applied: false, promise: fetch(URL + '/promotions', {
+          headers: { Authorization: 'Bearer ' + token },
+        }).then(readResponse) };
+        promotionRequest.current = request;
+      }
+      // Un cambio de ruta puede cambiar logout. Reutilizamos la solicitud en curso
+      // y nunca sobrescribimos con su resultado antiguo una edición ya guardada.
+      if (request.applied) return;
       setPromotionLoading(true);
       setPromotionError('');
       try {
-        const response = await fetch(URL + '/promotions', {
-          headers: { Authorization: 'Bearer ' + token },
-        });
-        const data = await readResponse(response);
+        const data = await request.promise;
+        if (!Array.isArray(data)) throw new Error('La respuesta de promociones no es una lista.');
         if (!cancelled && version === sessionVersion.current && token === localStorage.getItem('token')) {
+          request.applied = true;
           setPromotions(data.map(promotionFromBackend));
         }
       } catch (error) {
@@ -443,16 +458,24 @@ function App() {
         if (error.status === 401) {
           logout();
           setSessionError(error.message);
-        } else setPromotionError(error.message);
+        } else {
+          request.applied = true;
+          setPromotionError(error.message);
+        }
       } finally {
         if (!cancelled && version === sessionVersion.current && token === localStorage.getItem('token')) {
           setPromotionLoading(false);
         }
       }
     }
-    loadPromotions();
+    Promise.resolve().then(loadPromotions);
     return () => { cancelled = true; };
-  }, [user?.id, user?.role, token, logout]);
+  }, [user?.id, user?.role, token, logout, needsPromotions, promotionAttempt]);
+
+  useEffect(() => {
+    // Una respuesta pública anterior a un guardado no se reutiliza al volver a Home.
+    invalidatePublicPromotions()
+  }, [promotions])
 
   const [reviewsByProduct, setReviewsByProduct] = useState({})
   const [reviewErrors, setReviewErrors] = useState({})
@@ -1197,28 +1220,18 @@ function App() {
       </ProtectedRoute>} />
       <Route path="/ingresar" element={<Login {...shared} onLogin={startSession} />} />
       <Route path="/crear-cuenta" element={<Register {...shared} onRegister={startSession} />} />
-      <Route path="/promociones" element={isAdmin ? (
-        promotionLoading
-          ? <p>Cargando promociones...</p>
-          : promotionError
-            ? <p role="alert">{promotionError}</p>
-            : <Promotions
-                {...account}
-                promotions={promotions}
-                onEdit={(promotion) =>
-                  navigate('/editar-promocion', {
-                    state: { promotion }
-                  })
-                }
-                onToggle={togglePromotion}
-              />
-      ) : <Navigate to="/mi-perfil" replace />} />
+      <Route path="/promociones" element={loading ? <p role="status">Cargando sesión…</p> : isAdmin
+        ? <Promotions {...account} promotions={promotions} loading={promotionLoading} error={promotionError}
+            onRefresh={() => setPromotionAttempt((current) => current + 1)}
+            onEdit={(promotion) => navigate('/editar-promocion', { state: { promotion } })}
+            onToggle={togglePromotion} />
+        : <Navigate to="/mi-perfil" replace />} />
 
-      <Route path="/editar-promocion" element={isAdmin ? selectedPromotion
-        ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} onSave={savePromotion} />
+      <Route path="/editar-promocion" element={loading || (isAdmin && promotionLoading) ? <p role="status">Cargando promociones…</p> : isAdmin ? selectedPromotion
+        ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} collections={collections} products={publicProducts} collectionsLoading={collectionsLoading} productsLoading={productsLoading} collectionsError={collectionsError} productsError={productsError} onSave={savePromotion} />
         : <Navigate to="/promociones" replace /> : <Navigate to="/mi-perfil" replace />} />
-      <Route path="/nueva-promocion" element={isAdmin
-        ? <PromotionEditor key="new-promotion" {...account} isNew onSave={savePromotion} />
+      <Route path="/nueva-promocion" element={loading || (isAdmin && promotionLoading) ? <p role="status">Cargando promociones…</p> : isAdmin
+        ? <PromotionEditor key="new-promotion" {...account} isNew collections={collections} products={publicProducts} collectionsLoading={collectionsLoading} productsLoading={productsLoading} collectionsError={collectionsError} productsError={productsError} onSave={savePromotion} />
         : <Navigate to="/mi-perfil" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

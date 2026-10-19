@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
@@ -8,69 +8,24 @@ import { promotionKinds, emptyPromotion, promotionStatus, promotionPeriod, promo
 import { productTypeLabels } from '../data/accountMocks.js'
 import { paymentMethods } from '../data/paymentMethods.js'
 
-function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave }) {
+function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave,
+  collections = [], products = [], collectionsLoading, productsLoading, collectionsError, productsError }) {
     const [form, setForm] = useState(() => {
       const initial = isNew ? { ...emptyPromotion, collectionId: '', productId: '' } : promotion;
       return { ...initial, productType: initial.kind === 'type' && !productTypeLabels[initial.productType]
         ? 'CARTA' : initial.productType };
     })
-    const [collections, setCollections] = useState([]);
-    const [products, setProducts] = useState([]);
-    const [dataLoading, setDataLoading] = useState(true);
-    const [dataError, setDataError] = useState('');
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState('');
     const saveRequest = useRef(false);
 
-useEffect(() => {
-  let cancelled = false;
-
-  async function loadData() {
-    try {
-      setDataLoading(true);
-      setDataError('');
-
-      const [collectionsResponse, productsResponse] =
-        await Promise.all([
-          fetch('http://localhost:8080/collections'),
-          fetch('http://localhost:8080/products?size=100')
-        ]);
-
-      if (!collectionsResponse.ok || !productsResponse.ok) {
-        throw new Error('No se pudieron cargar colecciones y productos');
-      }
-
-      const collectionsData = await collectionsResponse.json();
-      const productsData = await productsResponse.json();
-
-      if (!cancelled) {
-        setCollections(collectionsData);
-        setProducts(productsData.content);
-        if (isNew) {
-          setForm((current) => ({
-            ...current,
-            collectionId: current.collectionId === '' ? collectionsData[0]?.id ?? '' : current.collectionId,
-            productId: current.productId === '' ? productsData.content[0]?.id ?? '' : current.productId,
-          }));
-        }
-      }
-    } catch (error) {
-      if (!cancelled) {
-        setDataError(error.message);
-      }
-    } finally {
-      if (!cancelled) {
-        setDataLoading(false);
-      }
-    }
-  }
-
-  loadData();
-
-  return () => {
-    cancelled = true;
-  };
-}, [isNew]);
+  // Se usan los mismos datos de App. Solo la condición elegida depende de ellos.
+  const dataLoading = form.kind === 'collection' ? collectionsLoading : form.kind === 'product' ? productsLoading : false;
+  const dataError = form.kind === 'collection' ? collectionsError : form.kind === 'product' ? productsError : '';
+  const options = form.kind === 'collection' ? collections : products;
+  const selectedId = form.kind === 'collection' ? form.collectionId : form.productId;
+  const needsSelection = ['collection', 'product'].includes(form.kind);
+  const missingSelection = needsSelection && !options.some((item) => item.id === Number(selectedId));
 
   function changeField(field, value) {
     setForm((current) => {
@@ -89,7 +44,7 @@ useEffect(() => {
   async function submitPromotion(event) {
     event.preventDefault();
     // La referencia bloquea incluso dos eventos antes del siguiente render.
-    if (saveRequest.current) return;
+    if (saveRequest.current || dataLoading || dataError || missingSelection) return;
     saveRequest.current = true;
     setSaving(true);
     setSaveError('');
@@ -104,14 +59,6 @@ useEffect(() => {
   }
   const condition = promotionCondition(form, collections, products, paymentMethods)
   
-    if (dataLoading) {
-      return <p>Cargando datos de promociones...</p>;
-    }
-
-    if (dataError) {
-      return <p role="alert">{dataError}</p>;
-    }
-
   return <AccountLayout user={user} cartCount={cartCount} onLogout={onLogout} activeView="promotions">
     <div className="flex flex-col items-start gap-2.5"><Link to="/promociones" className="text-[0.9375rem] font-bold underline">← Promociones</Link><h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">{isNew ? 'Nueva promoción' : 'Editar promoción'}</h1></div>
     <div className="grid min-w-0 items-start gap-7 xl:grid-cols-[minmax(0,1fr)_17rem]">
@@ -137,6 +84,8 @@ useEffect(() => {
     </span>
 
     <select
+      required
+      disabled={dataLoading || Boolean(dataError)}
       value={
         form.kind === 'collection'
           ? form.collectionId
@@ -153,11 +102,13 @@ useEffect(() => {
               : 'productId',
           form.kind === 'payment'
             ? event.target.value
-            : Number(event.target.value)
+            : event.target.value === '' ? '' : Number(event.target.value)
         )
       }
       className="min-w-0 rounded-[0.875rem] border-[2.4px] border-bordo bg-papel px-4 py-3.5 text-[1.0625rem] font-semibold"
     >
+      <option value="">Seleccioná una opción</option>
+      {missingSelection && selectedId !== '' && <option value={selectedId} disabled>Selección anterior no disponible ({selectedId})</option>}
       {(form.kind === 'collection'
         ? collections.map((item) => ({
             value: item.id,
@@ -178,11 +129,16 @@ useEffect(() => {
   </label>
 )}
 
+          {dataLoading && <p role="status">Cargando {form.kind === 'collection' ? 'colecciones' : 'productos'}…</p>}
+          {dataError && <p role="alert">{dataError}</p>}
+          {needsSelection && !dataLoading && !dataError && !options.length && <p role="status">No hay {form.kind === 'collection' ? 'colecciones' : 'productos'} disponibles.</p>}
+          {missingSelection && selectedId !== '' && !dataLoading && !dataError && <p role="alert">La selección anterior no está disponible en los datos cargados. Seleccioná otra opción.</p>}
+
         </section>
         <div className="flex items-center gap-3.5"><ToggleSwitch large checked={form.stackable} onChange={(value) => changeField('stackable', value)} label="Acumulable" /><div><p className="font-extrabold">Acumulable</p><p className="text-[0.8125rem] leading-[1.096875rem] opacity-85">Se suma a las demás promociones que apliquen.</p></div></div>
         <div className="grid max-w-[40.2rem] grid-cols-1 gap-4.5 sm:grid-cols-2"><FormField id="promotion-start" label="Inicio" type="date" required value={form.startDate.slice(0, 10)} onChange={(event) => changeField('startDate', event.target.value)} /><FormField id="promotion-end" label={<>Fin<span className="mt-2 block font-semibold tracking-normal normal-case opacity-70">(opcional)</span></>} type="date" min={form.startDate.slice(0, 10) || undefined} value={form.endDate.slice(0, 10)} onChange={(event) => changeField('endDate', event.target.value)} /></div>
         {saveError && <p role="alert" className="font-bold text-rojo">{saveError}</p>}
-        <div className="flex flex-wrap justify-end gap-3"><Link to="/promociones" className="rounded-full border-[2.4px] border-bordo px-6 py-3.5 text-base font-extrabold">Cancelar</Link><button type="submit" disabled={saving} className="rounded-full border-[2.4px] border-bordo bg-bordo px-7 py-3.5 text-base font-extrabold text-crema">{saving ? 'Guardando…' : isNew ? 'Crear promoción' : 'Guardar cambios'}</button></div>
+        <div className="flex flex-wrap justify-end gap-3"><Link to="/promociones" className="rounded-full border-[2.4px] border-bordo px-6 py-3.5 text-base font-extrabold">Cancelar</Link><button type="submit" disabled={saving || dataLoading || Boolean(dataError) || missingSelection} className="rounded-full border-[2.4px] border-bordo bg-bordo px-7 py-3.5 text-base font-extrabold text-crema">{saving ? 'Guardando…' : isNew ? 'Crear promoción' : 'Guardar cambios'}</button></div>
       </form>
       <aside aria-label="Vista previa de promoción" className="flex min-w-0 flex-col gap-3 wrap-anywhere">
         <h2 className="text-[0.8125rem] font-extrabold tracking-[0.065rem] uppercase">Así se ve en la home</h2>

@@ -1,3 +1,6 @@
+import usePublicPromotions from '../hooks/usePublicPromotions.js'
+import { promotionCondition, promotionPeriod } from '../data/promotionMocks.js'
+import { paymentMethods } from '../data/paymentMethods.js'
 import { Link } from 'react-router-dom'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
@@ -5,9 +8,10 @@ import ProductCard from '../components/ProductCard.jsx'
 import CollectionCard from '../components/CollectionCard.jsx'
 import PromotionCard from '../components/PromotionCard.jsx'
 import hero from '../assets/home-hero.png'
-import { homeCollectionVisuals, homePromotions, homeProductBackgrounds } from '../data/homeMocks.js'
+import { homeCollectionVisuals, homeProductBackgrounds } from '../data/homeMocks.js'
 
 function Home({ isLoggedIn, cartBusy, cartError, cartMessage, collections, productsLoading, productsError, collectionsLoading, collectionsError, cartItems = [], products, userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
+  const publicPromotions = usePublicPromotions()
   const homeCollections = collections.map((collection) => ({
     ...collection,
     ...homeCollectionVisuals[collection.name],
@@ -30,6 +34,7 @@ function Home({ isLoggedIn, cartBusy, cartError, cartMessage, collections, produ
               <h1 id="collections-heading" className="font-display text-[4rem] leading-[3.6rem] font-black uppercase">Colecciones</h1>
               <Link to="/catalogo" state={{ resetFilters: true }} className="rounded-full bg-rojo px-5 py-2.5 text-[0.875rem] leading-[normal] font-extrabold tracking-[0.035rem] text-crema uppercase">Ver todo</Link>
             </div>
+            {!collectionsLoading && !collectionsError && !homeCollections.length && <p role="status">No hay colecciones disponibles.</p>}
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
               {homeCollections.map((collection) => (
                 <CollectionCard key={collection.id} collection={collection} onSelectCollection={onSelectCollection} />
@@ -46,16 +51,19 @@ function Home({ isLoggedIn, cartBusy, cartError, cartMessage, collections, produ
             </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
               {products.map((product) => (
-                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="home" imageBackground={homeProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
+                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="home" imageBackground={homeProductBackgrounds[collections.find((collection) => collection.id === product.collectionId)?.name]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
               ))}
             </div>
           </section>
 
           <section aria-labelledby="promotions-heading" className="grid items-center gap-10 rounded-[2.25rem] bg-amarillo px-6 py-11 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,2fr)] lg:px-12 2xl:grid-cols-[22.0732421875rem_minmax(0,1fr)]">
-            <h2 id="promotions-heading" className="max-w-[22.125rem] font-display text-[4.5rem] leading-[3.87rem] font-black text-crema uppercase text-shadow-product">Ejemplos de promos</h2>
+            <h2 id="promotions-heading" className="min-w-0 max-w-[22.125rem] font-display text-[3rem] leading-[0.95] font-black text-crema uppercase text-shadow-product xl:text-[3.75rem]">Promos vigentes</h2>
             <div className="grid min-w-0 gap-4.5 md:grid-cols-3 2xl:pr-1.5">
-              {homePromotions.map((promotion) => (
-                <PromotionCard key={promotion.id} promotion={promotion} />
+              {publicPromotions.loading && <p role="status">Cargando promociones…</p>}
+              {publicPromotions.error && <div role="alert"><p>{publicPromotions.error}</p><button type="button" onClick={publicPromotions.retry} className="font-bold underline">Reintentar</button></div>}
+              {!publicPromotions.loading && !publicPromotions.error && !publicPromotions.items.length && <p role="status">No hay promociones vigentes por el momento.</p>}
+              {publicPromotions.items.map((promotion) => (
+                <PromotionCard key={promotion.id} promotion={{ ...promotion, title: promotion.name, discount: `${promotion.discount}%`, condition: promotionCondition(promotion, collections, products, paymentMethods), period: promotionPeriod(promotion) }} />
               ))}
             </div>
           </section>
