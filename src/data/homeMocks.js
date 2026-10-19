@@ -11,12 +11,5 @@ export const homeCollectionVisuals = {
   Marvel: { imageUrl: marvelImage, color: 'amarillo' },
 }
 
-// Configuración visual separada de ProductResponse, indexada por collectionId.
-export const homeProductBackgrounds = { 1: 'rojo', 2: 'rosa', 4: 'amarillo' }
-
-// Ejemplos de presentación pendientes de integración; no intervienen en los totales.
-export const homePromotions = [
-  { id: 1, discount: '10%', title: 'Pagando con transferencia', description: 'Se aplica sobre el total del pedido.' },
-  { id: 2, discount: '15%', title: 'Llevando 3 sobres o más', description: 'Válido para sobres de cualquier colección.' },
-  { id: 3, discount: '5%', title: 'Compras desde $ 50.000', description: 'Acumulable con otras promociones.' },
-]
+// Colores por nombre, independientes de los IDs asignados por PostgreSQL.
+export const homeProductBackgrounds = { NBA: 'rojo', 'My Little Pony': 'rosa', Marvel: 'amarillo' }
