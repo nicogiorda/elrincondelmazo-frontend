@@ -11,47 +11,18 @@ const statusLabels = { PENDIENTE: 'Pendiente', PAGO: 'Pagado', ENVIADO: 'Enviado
 const statusStyles = { PENDIENTE: 'bg-crema', PAGO: 'bg-amarillo', ENVIADO: 'bg-rosa', ENTREGADO: 'bg-bordo text-crema', CANCELADO: 'bg-papel' }
 const progress = { PENDIENTE: 1, PAGO: 2, ENVIADO: 3, ENTREGADO: 4 }
 
-function Orders({ user, onLogout, token, details, onLoadDetail, onUnauthorized, cartCount }) {
-  const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [attempt, setAttempt] = useState(0)
+function Orders({ user, onLogout, orders, loading, error, onRefresh, details, onLoadDetail, cartCount }) {
   const [filter, setFilter] = useState('Todos')
   const [openOrderId, setOpenOrderId] = useState(null)
 
   useEffect(() => {
+    if (openOrderId === null || details[openOrderId] || !orders.some((order) => order.id === openOrderId)) return
+    // Si el listado actualizado invalida un detalle abierto, lo recuperamos bajo demanda.
     let active = true
-    const controller = new AbortController()
-    // StrictMode limpia el primer efecto antes de iniciar esta petición.
-    Promise.resolve().then(async () => {
-      if (!active) return
-      try {
-        const response = await fetch('http://localhost:8080/orders', { signal: controller.signal, headers: { Authorization: 'Bearer ' + token } })
-        if (!active) return
-        if (response.status === 401) {
-          onUnauthorized()
-          return
-        }
-        if (!response.ok) throw new Error(response.status === 403
-          ? 'No tenés permiso para consultar estos pedidos.'
-          : 'No pudimos cargar tus pedidos (HTTP ' + response.status + ').')
-        const data = await response.json()
-        if (!Array.isArray(data)) throw new Error('La respuesta de pedidos no contiene una lista.')
-        if (active) setOrders(data)
-      } catch (error) {
-        if (active) setError(error.message)
-      } finally {
-        if (active) setLoading(false)
-      }
-    })
-    return () => { active = false; controller.abort() }
-  }, [token, attempt, onUnauthorized])
+    Promise.resolve().then(() => { if (active) onLoadDetail(openOrderId) })
+    return () => { active = false }
+  }, [openOrderId, details, orders, onLoadDetail])
 
-  function retry() {
-    setLoading(true)
-    setError('')
-    setAttempt((current) => current + 1)
-  }
   function toggleOrder(orderId) {
     if (openOrderId === orderId) setOpenOrderId(null)
     else {
@@ -69,10 +40,11 @@ function Orders({ user, onLogout, token, details, onLoadDetail, onUnauthorized, 
         <h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">Mis pedidos</h1>
         <div className="flex flex-wrap gap-2" aria-label="Filtrar pedidos">{filters.map((label) => <button key={label} type="button" aria-pressed={filter === label} onClick={() => setFilter(label)} className={`rounded-full border-[1.6px] border-bordo px-3.5 py-1.75 text-[0.875rem] font-bold ${filter === label ? 'bg-bordo text-crema' : ''}`}>{label}</button>)}</div>
       </div>
+      <button type="button" onClick={onRefresh} disabled={loading} className="self-start rounded-full border-[1.6px] border-bordo px-4 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-50">Actualizar pedidos</button>
       {loading && <p role="status" className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold">Cargando pedidos…</p>}
-      {error && <div role="alert" className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold"><p>{error}</p><button type="button" onClick={retry} className="mt-3 rounded-full border-[1.6px] border-bordo px-3.5 py-1.75 text-[0.875rem] font-bold">Reintentar</button></div>}
+      {error && <div role="alert" className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold"><p>{error}</p><button type="button" onClick={onRefresh} disabled={loading} className="mt-3 rounded-full border-[1.6px] border-bordo px-3.5 py-1.75 text-[0.875rem] font-bold">Reintentar</button></div>}
       {!loading && !error && !visibleOrders.length && <p className="rounded-[1.375rem] border-[2.4px] border-bordo bg-papel p-6 font-bold">{orders.length ? 'No hay pedidos con ese filtro' : 'Todavía no tenés pedidos'}</p>}
-      {!loading && !error && visibleOrders.map((order) => {
+      {visibleOrders.map((order) => {
         const isOpen = openOrderId === order.id
         const detail = details[order.id]
         const data = detail?.data
