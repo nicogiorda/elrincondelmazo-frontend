@@ -18,9 +18,10 @@ import OrderConfirmation from './views/OrderConfirmation.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import PurchaseNotice from './components/PurchaseNotice.jsx'
 import { invalidatePublicPromotions } from './services/publicPromotions.js'
+import { API_BASE_URL as URL, readResponse } from './services/httpClient.js'
+import { getCart, addCartItem, updateCartItemQuantity, removeCartItem } from './services/cartApi.js'
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
-const URL = 'http://localhost:8080'
 const productCacheLifetime = 60_000
 const ordersCacheLifetime = 60_000
 const emptyOrderHistory = () => ({ items: [], updatedAt: 0, loading: false, error: '' })
@@ -100,20 +101,6 @@ function promotionToBackend(promotion) {
       ? (promotion.endDate.includes('T') ? promotion.endDate : `${promotion.endDate}T23:59:59`)
       : null,
   };
-}
-
-// Solo interpreta respuestas; las requests y su estado siguen en App.
-function readResponse(response) {
-  return response.json().catch(() => ({})).then((data) => {
-    if (!response.ok) {
-      const error = new Error(response.status === 401
-        ? 'Tu sesión venció. Volvé a ingresar.'
-        : data.message || data.detail || 'No se pudo completar la operación (HTTP ' + response.status + ').')
-      error.status = response.status
-      throw error
-    }
-    return data
-  })
 }
 
 function productIdFrom(value) {
@@ -264,8 +251,7 @@ function App() {
     setCartLoading(true)
     setCartBusy(true)
     setCartError('')
-    fetch(URL + '/carts', { signal: sessionAbort.current.signal, headers: { Authorization: 'Bearer ' + token } })
-      .then(readResponse)
+    getCart({ token, signal: sessionAbort.current.signal })
       .then((data) => {
         if (!Array.isArray(data.items)) throw new Error('El carrito recibido no tiene una lista de ítems.')
         if (version === sessionVersion.current) setCart(data)
@@ -686,7 +672,7 @@ function App() {
       && !reviewsByProduct[product.id].some((review) => review.userId === user.id))
   }
 
-  function changeCart(method, path, body) {
+  function changeCart(operation) {
     if (!user || !token) {
       navigate('/ingresar')
       return Promise.resolve(false)
@@ -697,13 +683,7 @@ function App() {
     setCartBusy(true)
     setCartError('')
     setCartMessage('')
-    return fetch(URL + path, {
-      signal: sessionAbort.current.signal,
-      method,
-      headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    })
-      .then(readResponse)
+    return operation({ token, signal: sessionAbort.current.signal })
       .then((data) => {
         if (version !== sessionVersion.current) return false
         if (!Array.isArray(data.items)) throw new Error('El carrito recibido no tiene una lista de ítems.')
@@ -730,7 +710,7 @@ function App() {
     if (user && token && cart && !cartRequest.current) {
       setShop((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== product.id), product] }))
     }
-    return changeCart('POST', '/carts/items', { productId: product.id, quantity })
+    return changeCart((options) => addCartItem({ productId: product.id, quantity }, options))
   }
 
   async function syncCartQuantity(sync) {
@@ -742,19 +722,9 @@ function App() {
       while (version === sessionVersion.current) {
         const quantity = sync.desiredQuantity
 
-        const response = await fetch(
-          URL + '/carts/items/' + sync.id,
-          {
-            signal: sessionAbort.current.signal,
-            method: 'PUT',
-            headers: {
-              Authorization: 'Bearer ' + savedToken,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ quantity }),
-          })
-
-          const data = await readResponse(response)
+        const data = await updateCartItemQuantity(sync.id, quantity, {
+          token: savedToken, signal: sessionAbort.current.signal,
+        })
 
           if (version !== sessionVersion.current) return false
           if (!Array.isArray(data.items)) {
@@ -831,7 +801,7 @@ function App() {
   }
 
   function removeItem(id) {
-    return changeCart('DELETE', '/carts/items/' + id)
+    return changeCart((options) => removeCartItem(id, options))
   }
   function buyNow(product, quantity) {
     return addToCart(product, quantity).then((saved) => {
