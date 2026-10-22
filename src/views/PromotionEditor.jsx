@@ -10,7 +10,7 @@ import { productTypeLabels } from '../data/accountMocks.js'
 import { paymentMethods } from '../data/paymentMethods.js'
 
 function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave,
-  collections = [], collectionsLoading, collectionsError, loadProductsPage, productCacheVersion }) {
+  collections = [], collectionsLoading, collectionsError, loadProductsPage, loadProduct, productCacheVersion }) {
     const [form, setForm] = useState(() => {
       const initial = isNew ? { ...emptyPromotion, collectionId: '', productId: '' } : promotion;
       return { ...initial, productType: initial.kind === 'type' && !productTypeLabels[initial.productType]
@@ -55,16 +55,14 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
     const controller = new AbortController();
     Promise.resolve().then(async () => {
         if (controller.signal.aborted) return;
-        const response = await fetch('http://localhost:8080/products/' + selectedProductId, { signal: controller.signal });
-        if (!response.ok) throw new Error('No pudimos consultar el producto seleccionado (HTTP ' + response.status + ').');
-        const data = await response.json();
-        if (data.id !== selectedProductId) throw new Error('El producto recibido no coincide con la selección.');
+        // La selección guardada se verifica al abrir el editor, como antes.
+        const data = await loadProduct(selectedProductId, { signal: controller.signal, context: 'selection', revalidate: true });
         if (!controller.signal.aborted) setSelection({ id: selectedProductId, data, error: '' });
       }).catch((error) => {
         if (!controller.signal.aborted) setSelection({ id: selectedProductId, data: null, error: error.message });
       });
     return () => controller.abort();
-  }, [form.kind, selectedProductId, selection?.id]);
+  }, [form.kind, selectedProductId, selection?.id, loadProduct]);
 
   // Colecciones compartidas de App; productos cargados solo al elegir esa condición.
   const dataLoading = form.kind === 'collection' ? collectionsLoading : form.kind === 'product' ? productsLoading || selectedLoading : false;

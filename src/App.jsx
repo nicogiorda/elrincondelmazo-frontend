@@ -22,9 +22,10 @@ import { API_BASE_URL as URL, readResponse } from './services/httpClient.js'
 import useCart from './hooks/useCart.js'
 import useCartMetadata from './hooks/useCartMetadata.js'
 import useSession from './hooks/useSession.js'
+import useCatalog from './hooks/useCatalog.js'
+import { productIdFrom } from './utils/productId.js'
 
-const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
-const productCacheLifetime = 60_000
+const publicationsCacheLifetime = 60_000
 const ordersCacheLifetime = 60_000
 const emptyOrderHistory = () => ({ items: [], updatedAt: 0, loading: false, error: '' })
 const orderSummaryFields = ['state', 'orderDate', 'paymentMethod', 'subtotal', 'totalDiscount', 'total']
@@ -105,11 +106,6 @@ function promotionToBackend(promotion) {
   };
 }
 
-function productIdFrom(value) {
-  const text = String(value ?? '')
-  return /^[1-9]\d*$/.test(text) && Number.isSafeInteger(Number(text)) ? Number(text) : null
-}
-
 function App() {
 
   const navigate = useNavigate()
@@ -180,10 +176,16 @@ function App() {
   const { user, token, loading, sessionError, setSessionError, setUser,
     login, register, logout, sessionVersion, sessionAbort, subscribeSessionChange } = useSession({ onSessionChange: resetPrivateData })
 
+  const { products, cacheVersion, loadProductPage, loadProduct, recentProducts, productsLoading, productsError,
+    collections, collectionsLoading, collectionsError, catalogCollections, catalogFilters, changeCatalogFilters,
+    clearCatalogFilters, selectedProduct, knownProduct, needsDetail, currentDetailRequest, relatedProducts, retryDetail,
+    refreshPendingCatalog, rememberProduct, upsertProduct, removeProduct, syncPublicProducts, subscribeInvalidation,
+  } = useCatalog({ location, productId: selectedProductId, isProductRoute })
+
   useEffect(() => {
     if (!needsPublications || !user?.id || !token) return
     if (ownPublicationsStamp.current?.userId === user.id
-      && Date.now() - ownPublicationsStamp.current.time < productCacheLifetime) return
+      && Date.now() - ownPublicationsStamp.current.time < publicationsCacheLifetime) return
     let active = true
     const controller = new AbortController()
     const version = sessionVersion.current
@@ -212,12 +214,8 @@ function App() {
         } while (page < totalPages)
         if (active && version === sessionVersion.current) {
           ownPublicationsStamp.current = { userId: user.id, time: Date.now() }
-          items.forEach((product) => productFreshness.current.set(product.id, { sequence: ++productSequence.current, time: Date.now() }))
           setOwnPublications({ userId: user.id, items, loading: false, error: '' })
-          setShop((current) => ({ ...current, products: [
-            ...current.products.filter((product) => product.sellerId !== user.id),
-            ...items.filter((product) => ['ACTIVO', 'AGOTADO'].includes(product.status)),
-          ] }))
+          syncPublicProducts(user.id, items)
         }
       } catch (error) {
         if (!active || version !== sessionVersion.current) return
@@ -231,138 +229,18 @@ function App() {
       }
     })
     return () => { active = false; controller.abort() }
-  }, [needsPublications, user?.id, token, publicationAttempt, logout, sessionVersion, setSessionError])
+  }, [needsPublications, user?.id, token, publicationAttempt, logout, sessionVersion, setSessionError, syncPublicProducts])
 
-  // El catálogo público empieza vacío.
-  const productPages = useRef(new Map())
-  const productFreshness = useRef(new Map())
-  const productSequence = useRef(0)
-  const [freshnessTick, setFreshnessTick] = useState(0)
-  const [homeProductIds, setHomeProductIds] = useState([])
-  const [relatedProducts, setRelatedProducts] = useState([])
-  const [shop, setShop] = useState(() => ({
-    products: [],
-  }))
-  const [collections, setCollections] = useState([])
-  const [productsLoading, setProductsLoading] = useState(true)
-  const [collectionsLoading, setCollectionsLoading] = useState(true)
-  const [productsError, setProductsError] = useState('')
-  const [collectionsError, setCollectionsError] = useState('')
-  // Estas marcas evitan duplicar los GET incluso con StrictMode en desarrollo.
-  const productsRequestVersion = useRef(0)
-  const [productsAttempt, setProductsAttempt] = useState(0)
-  const collectionsRequested = useRef(false)
-
-  const products = shop.products
-  const rememberCartProduct = useCallback((product) => {
-    setShop((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== product.id), product] }))
-  }, [])
-  const cacheCartMetadata = useCallback((product, isCurrent) => {
-    productFreshness.current.set(product.id, { sequence: ++productSequence.current, time: Date.now() })
-    // Completar ausentes no reemplaza publicaciones actualizadas mientras esperábamos.
-    setShop((current) => !isCurrent() || current.products.some((item) => item.id === product.id)
-      ? current : { ...current, products: [...current.products, product] })
-  }, [])
   const { cart, items, cartCount, cartLoading, cartBusy, cartError, cartMessage,
     quantitySyncItemId, addToCart, changeQuantity, removeItem, retryCart: reloadCart,
     isCartPending, beginCheckout } = useCart({ user, token, sessionVersion, sessionAbort,
-    subscribeSessionChange, logout, setSessionError, products, onProductAdded: rememberCartProduct,
+    subscribeSessionChange, logout, setSessionError, products, onProductAdded: rememberProduct,
     onLoginRequired: () => navigate('/ingresar') })
-  const { metadata: cartMetadata, invalidateMetadata, retryMetadata, getPendingProduct } = useCartMetadata({
+  const { metadata: cartMetadata, retryMetadata } = useCartMetadata({
     cart, products, userId: user?.id, token, sessionVersion, subscribeSessionChange,
-    catalogVersion: productsRequestVersion, selectedProductId, onProductLoaded: cacheCartMetadata,
+    selectedProductId, loadProduct, subscribeInvalidation,
   })
 
-  // Cache acotada en App: sobrevive a las vistas, vence al minuto y se invalida al mutar.
-  const loadProductPage = useCallback((query) => {
-    const cache = productPages.current
-    const cached = cache.get(query)
-    if (cached && (cached.pending || Date.now() - cached.time < productCacheLifetime)) return cached.promise
-    const controller = new AbortController()
-    const version = productsRequestVersion.current
-    const sequence = ++productSequence.current
-    const entry = { controller, pending: true, time: 0 }
-    entry.promise = fetch(URL + '/products?' + query, { signal: controller.signal })
-      .then(readResponse).then((data) => {
-        if (!Array.isArray(data.content) || !Number.isInteger(data.totalPages)
-          || !Number.isInteger(data.totalElements) || !Number.isInteger(data.number)) {
-          throw new Error('La respuesta de productos no contiene una página válida.')
-        }
-        if (version !== productsRequestVersion.current) throw new Error('El catálogo cambió. Volvé a consultarlo.')
-        const fresh = data.content.filter((product) => sequence >= (productFreshness.current.get(product.id)?.sequence ?? 0))
-        fresh.forEach((product) => productFreshness.current.set(product.id, { sequence, time: Date.now() }))
-        setShop((current) => ({ ...current, products: [
-          ...current.products.filter((product) => !fresh.some((item) => item.id === product.id)), ...fresh,
-        ] }))
-        entry.time = Date.now()
-        entry.pending = false
-        return data
-      }).catch((error) => { if (cache.get(query) === entry) cache.delete(query); throw error })
-    cache.set(query, entry)
-    if (cache.size > 20) {
-      const oldest = cache.keys().next().value
-      cache.get(oldest).controller.abort()
-      cache.delete(oldest)
-    }
-    return entry.promise
-  }, [])
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const now = Date.now()
-      const expired = new Set([...productFreshness.current].filter(([, stamp]) => now - stamp.time >= productCacheLifetime).map(([id]) => id))
-      expired.forEach((id) => {
-        productFreshness.current.delete(id)
-      })
-      invalidateMetadata(expired)
-      setShop((current) => ({ ...current, products: current.products.filter((product) => !expired.has(product.id)) }))
-      setFreshnessTick((tick) => tick + 1)
-    }, productCacheLifetime)
-    return () => clearInterval(timer)
-  }, [invalidateMetadata])
-
-  useEffect(() => {
-    if (location.pathname !== '/') return
-    let active = true
-    Promise.resolve().then(async () => {
-      if (!active) return
-      setProductsLoading(true)
-      try {
-        const data = await loadProductPage('page=0&size=4')
-        if (active) { setHomeProductIds(data.content.map((product) => product.id)); setProductsError('') }
-      } catch (error) {
-        if (active) setProductsError(error.message)
-      } finally { if (active) setProductsLoading(false) }
-    })
-    return () => { active = false }
-  }, [location.pathname, productsAttempt, freshnessTick, loadProductPage])
-
-  useEffect(() => {
-    if (collectionsRequested.current) return
-    collectionsRequested.current = true
-    fetch(`${URL}/collections`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`Error ${response.status} al cargar colecciones`)
-        return response.json()
-      })
-      .then((data) => {
-        if (!Array.isArray(data)) throw new Error('La respuesta de colecciones no es una lista')
-        setCollections(data)
-      })
-      .catch((error) => {
-        console.log(error)
-        setCollectionsError('No pudimos cargar las colecciones. Recargá la página para reintentar.')
-      })
-      .finally(() => setCollectionsLoading(false))
-  }, [])
-
-  const catalogCollections = [
-    { value: '', label: 'Todas' },
-    ...collections.map((collection) => ({
-      value: String(collection.id),
-      label: collection.name,
-    })),
-  ]
   const publications = ownPublications.userId === user?.id ? ownPublications.items : []
   const publicationsLoading = ownPublications.loading || (needsPublications && ownPublications.userId !== user?.id)
 
@@ -422,94 +300,9 @@ function App() {
   const [reviewErrors, setReviewErrors] = useState({})
   const [reviewAttempt, setReviewAttempt] = useState(0)
   const requestedReviews = useRef(new Set())
-  const [catalogFilters, setCatalogFilters] = useState(emptyCatalogFilters)
-  const [catalogFiltersByLocation, setCatalogFiltersByLocation] = useState({})
-  const [catalogLocationKey, setCatalogLocationKey] = useState(null)
-
-  // Una entrada existente recupera su propia copia; una nueva parte de su selección o de los últimos filtros.
-  if (location.pathname === '/catalogo' && catalogLocationKey !== location.key) {
-    const selection = location.state
-    const hasSelection = selection?.type !== undefined || selection?.collectionId !== undefined
-    const initialFilters = selection?.resetFilters ? emptyCatalogFilters : hasSelection ? {
-      ...emptyCatalogFilters,
-      type: selection.type ?? '',
-      collection: String(selection.collectionId ?? ''),
-    } : catalogFilters
-    const restoredFilters = catalogFiltersByLocation[location.key] ?? initialFilters
-
-    setCatalogLocationKey(location.key)
-    setCatalogFilters(restoredFilters)
-    setCatalogFiltersByLocation({ ...catalogFiltersByLocation, [location.key]: restoredFilters })
-  }
-
-  function changeCatalogFilters(filters) {
-    setCatalogFilters(filters)
-    setCatalogFiltersByLocation((current) => ({ ...current, [location.key]: filters }))
-  }
   const currentUser = user
   const isAdmin = user?.role === 'ADMIN'
   const selectedPromotion = promotions.find((promotion) => promotion.id === location.state?.promotion?.id)
-  const recentProducts = homeProductIds.map((id) => products.find((product) => product.id === id)).filter((product) => product?.status === 'ACTIVO')
-    .slice().sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 4)
-  const [detailRequest, setDetailRequest] = useState(null)
-  const [detailAttempt, setDetailAttempt] = useState(0)
-  const detailKey = selectedProductId + ':' + detailAttempt
-  const currentDetailRequest = detailRequest?.key === detailKey ? detailRequest : null
-  const knownProduct = products.find((product) => product.id === selectedProductId)
-  const selectedProduct = !currentDetailRequest?.error && !currentDetailRequest?.notFound && knownProduct && ['ACTIVO', 'AGOTADO'].includes(knownProduct.status)
-    ? knownProduct : undefined
-  const detailFresh = knownProduct && Date.now() - (productFreshness.current.get(selectedProductId)?.time ?? 0) < productCacheLifetime
-  const needsDetail = Boolean(productRoute && selectedProductId && !detailFresh && !currentDetailRequest)
-
-  useEffect(() => {
-    if (!needsDetail) return
-    let active = true
-    const controller = new AbortController()
-    const version = productsRequestVersion.current
-    const sequence = ++productSequence.current
-    Promise.resolve().then(async () => {
-      if (!active) return
-      try {
-        const pendingMetadata = getPendingProduct(selectedProductId)
-        const product = await (pendingMetadata
-          ? pendingMetadata
-          : fetch(URL + '/products/' + selectedProductId, { signal: controller.signal }).then(readResponse))
-        if (!active) return
-        if (version !== productsRequestVersion.current) {
-          setDetailAttempt((current) => current + 1)
-          return
-        }
-        if (product.id !== selectedProductId) throw new Error('El producto recibido no coincide con el seleccionado.')
-        if (!['ACTIVO', 'AGOTADO'].includes(product.status)) {
-          setDetailRequest({ key: detailKey, notFound: true })
-          return
-        }
-        if (sequence >= (productFreshness.current.get(product.id)?.sequence ?? 0)) {
-          productFreshness.current.set(product.id, { sequence, time: Date.now() })
-          setShop((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== product.id), product] }))
-        }
-      } catch (error) {
-        if (!active) return
-        if (version !== productsRequestVersion.current) {
-          setDetailAttempt((current) => current + 1)
-          return
-        }
-        setDetailRequest(error.status === 404
-          ? { key: detailKey, notFound: true } : { key: detailKey, error: error.message })
-      }
-    })
-    return () => { active = false; controller.abort() }
-  }, [needsDetail, selectedProductId, detailKey, productsAttempt, freshnessTick, getPendingProduct])
-
-  useEffect(() => {
-    if (!isProductRoute || !selectedProduct?.collectionId) return
-    let active = true
-    loadProductPage('page=0&size=5&collectionId=' + selectedProduct.collectionId)
-      .then((data) => { if (active) setRelatedProducts(data.content) })
-      .catch(() => { if (active) setRelatedProducts([]) })
-    return () => { active = false }
-  }, [isProductRoute, selectedProduct?.collectionId, loadProductPage, productsAttempt, freshnessTick])
-
   const reviewProductId = productRoute ? selectedProduct?.id : undefined
 
   useEffect(() => {
@@ -542,7 +335,7 @@ function App() {
 
   function openProduct(product) {
     // Una tarjeta puede venir de una página que no forma parte de la carga inicial.
-    setShop((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== product.id), product] }))
+    rememberProduct(product)
     navigate('/producto/' + product.id)
   }
   // Solo ocultamos duplicados conocidos. Spring decide si hubo compra previa.
@@ -604,8 +397,6 @@ function App() {
         refreshPendingCatalog()
         // El service vacía el carrito; los productos se consultarán nuevamente.
         checkout.complete()
-        setShop((current) => ({ ...current, products: current.products.filter((product) =>
-          !order.items.some((item) => item.productId === product.id)) }))
         navigate('/pedido-confirmado')
         return order
       })
@@ -918,30 +709,13 @@ function App() {
     cartBusy: cartBusy || Boolean(user && !cart), cartError, cartMessage,
   }
   const account = { ...shared, user: currentUser, onLogout: logout }
-  function refreshPendingCatalog() {
-    productsRequestVersion.current += 1
-    productPages.current.forEach((entry) => entry.controller.abort())
-    productPages.current.clear()
-    productFreshness.current.clear()
-    invalidateMetadata()
-    setShop((current) => ({ ...current, products: [] }))
-    setDetailRequest(null)
-    setProductsAttempt((current) => current + 1)
-  }
   function syncPublication(saved) {
     refreshPendingCatalog()
-    productFreshness.current.set(saved.id, { sequence: ++productSequence.current, time: Date.now() })
-    const isPublic = ['ACTIVO', 'AGOTADO'].includes(saved.status)
     setOwnPublications((current) => ({ ...current, userId: user.id,
       items: [saved, ...current.items.filter((product) => product.id !== saved.id)]
         .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id - a.id),
     }))
-    setShop((current) => ({ ...current,
-      products: !isPublic ? current.products.filter((product) => product.id !== saved.id)
-        : current.products.some((product) => product.id === saved.id)
-          ? current.products.map((product) => product.id === saved.id ? saved : product)
-          : [...current.products, saved],
-    }))
+    upsertProduct(saved)
   }
   function retryPublications() {
     ownPublicationsStamp.current = null
@@ -968,7 +742,7 @@ function App() {
         if (version !== sessionVersion.current) return
         refreshPendingCatalog()
         setOwnPublications((current) => ({ ...current, items: current.items.filter((item) => item.id !== product.id) }))
-        setShop((current) => ({ ...current, products: current.products.filter((item) => item.id !== product.id) }))
+        removeProduct(product.id)
       } else {
         const saved = await readResponse(response)
         if (version !== sessionVersion.current) return
@@ -1014,10 +788,10 @@ function App() {
                                     collections={catalogCollections}
                                     collectionsError={collectionsError}
                                     loadPage={loadProductPage}
-                                    cacheVersion={productsAttempt + ':' + freshnessTick}
+                                    cacheVersion={cacheVersion}
                                     filters={catalogFilters}
                                     onFiltersChange={changeCatalogFilters}
-                                    onClearFilters={() => changeCatalogFilters(emptyCatalogFilters)}
+                                    onClearFilters={clearCatalogFilters}
                                     onOpenProduct={openProduct}
                                 />
                               } />
@@ -1040,7 +814,7 @@ function App() {
         <PurchaseNotice {...shared} title="Detalle del producto" message="Cargando producto…" />
       ) : currentDetailRequest?.error ? (
         <PurchaseNotice {...shared} title="Detalle del producto" message={currentDetailRequest.error}
-          onRetry={() => setDetailAttempt((current) => current + 1)} />
+          onRetry={retryDetail} />
       ) : <PurchaseNotice {...shared} title="Producto no disponible" message="El producto no existe o ya no está disponible." />} />
       <Route path="/mis-publicaciones" element={<ProtectedRoute user={user}>
         <Publications {...account} products={publications} loading={publicationsLoading}
@@ -1087,10 +861,10 @@ function App() {
         : <Navigate to="/mi-perfil" replace />} />
 
       <Route path="/editar-promocion" element={loading || (isAdmin && promotionLoading) ? <p role="status">Cargando promociones…</p> : isAdmin ? selectedPromotion
-        ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} collections={collections} loadProductsPage={loadProductPage} productCacheVersion={productsAttempt + ':' + freshnessTick} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} />
+        ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} collections={collections} loadProductsPage={loadProductPage} loadProduct={loadProduct} productCacheVersion={cacheVersion} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} />
         : <Navigate to="/promociones" replace /> : <Navigate to="/mi-perfil" replace />} />
       <Route path="/nueva-promocion" element={loading || (isAdmin && promotionLoading) ? <p role="status">Cargando promociones…</p> : isAdmin
-        ? <PromotionEditor key="new-promotion" {...account} isNew collections={collections} loadProductsPage={loadProductPage} productCacheVersion={productsAttempt + ':' + freshnessTick} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} />
+        ? <PromotionEditor key="new-promotion" {...account} isNew collections={collections} loadProductsPage={loadProductPage} loadProduct={loadProduct} productCacheVersion={cacheVersion} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} />
         : <Navigate to="/mi-perfil" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

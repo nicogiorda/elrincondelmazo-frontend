@@ -30,13 +30,20 @@ test('Los módulos de src no contienen dependencias circulares', () => {
   assert.equal(checked.size, modules.size)
 })
 
-test('App compone una única instancia de sesión y de carrito compartida por las rutas', () => {
-  for (const hook of ['useCart', 'useSession']) {
+test('App compone una única instancia de sesión, carrito y catálogo compartida por las rutas', () => {
+  for (const hook of ['useCart', 'useSession', 'useCatalog']) {
     const sites = [...modules].filter(([, source]) => new RegExp('=\\s*' + hook + '\\(').test(source))
     assert.equal(sites.length, 1)
     assert.equal(sites[0][0], resolve(root, 'App.jsx'))
     assert.equal([...sites[0][1].matchAll(new RegExp('=\\s*' + hook + '\\(', 'g'))].length, 1)
   }
+})
+
+test('Los hooks de catálogo y metadatos delegan HTTP y el servicio no depende de React', () => {
+  for (const name of ['useCatalog', 'useProductCache', 'useProductDetail', 'useCatalogFilters', 'useCollections', 'useCartMetadata']) {
+    assert.doesNotMatch(modules.get(resolve(root, 'hooks/' + name + '.js')), /\bfetch\s*\(/)
+  }
+  assert.doesNotMatch(modules.get(resolve(root, 'services/productsApi.js')), /from\s*['"]react['"]|\buseState\(/)
 })
 
 test('Los endpoints del carrito pertenecen a cartApi y useCart no hace HTTP directo', () => {
