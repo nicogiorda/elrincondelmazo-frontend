@@ -18,8 +18,8 @@ async function setup(options = {}) {
     const original = window.fetch.bind(window)
     window.cartRequests = []
     window.fetch = (url, init = {}) => {
-      if (!String(url).includes('/carts')) return original(url, init)
-      const record = { aborted: false, settled: false }
+      if (!/\/(carts|orders|products\/7)/.test(String(url))) return original(url, init)
+      const record = { path: new URL(url).pathname, aborted: false, settled: false }
       window.cartRequests.push(record)
       init.signal?.addEventListener('abort', () => { record.aborted = true }, { once: true })
       // Deliberately let a stale transport complete, so session guards are tested
@@ -31,7 +31,8 @@ async function setup(options = {}) {
   const page = await context.newPage()
   page.setDefaultTimeout(10000)
   await page.clock.install()
-  const state = { cart: makeCart(), status: 200, getStatus: 200, calls: [], errors: [], ...options }
+  const state = { cart: makeCart(), cartB: makeCart(5, 'Carrito nueva sesión'), status: 200,
+    getStatus: 200, productStatus: 200, orderStatus: 200, calls: [], errors: [], ...options }
   page.on('pageerror', e => state.errors.push(e.message))
   await page.route('http://localhost:8080/**', async route => {
     const req = route.request(), path = new URL(req.url()).pathname, method = req.method()
@@ -42,18 +43,33 @@ async function setup(options = {}) {
     else if (path === '/users/me') data = { id: token === 'Bearer account-b' ? 2 : 1,
       firstName: 'QA', lastName: 'Cart', email: 'qa@example.invalid', role: 'USUARIO' }
     else if (path === '/collections') data = [{ id: 1, name: 'NBA' }]
-    else if (path === '/products') data = { content: [product], totalElements: 1, totalPages: 1, number: 0 }
-    else if (path === '/products/7') data = product
+    else if (path === '/products') data = { content: state.catalogProducts ?? [product], totalElements: 1, totalPages: 1, number: 0 }
+    else if (path === '/products/7') {
+      data = state.product ?? product
+      status = state.productStatus
+      gate = state.productGate
+    }
     else if (path === '/carts') {
-      data = token === 'Bearer account-b' ? makeCart(5, 'Carrito nueva sesión') : structuredClone(state.cart)
+      data = structuredClone(token === 'Bearer account-b' ? state.cartB : state.cart)
       status = token === 'Bearer account-b' ? 200 : state.getStatus
       gate = token === 'Bearer account-b' ? null : state.getGate
     } else if (path.startsWith('/carts/items')) {
       status = state.status
-      gate = state.writeGate
+      gate = token === 'Bearer account-b' ? state.bWriteGate : state.writeGate
       if (state.networkFailure) return route.abort('connectionreset')
-      if (status === 200) state.cart = method === 'DELETE' ? makeCart(0) : makeCart(body.quantity)
-      data = structuredClone(state.cart)
+      const key = token === 'Bearer account-b' ? 'cartB' : 'cart'
+      if (status === 200) state[key] = method === 'DELETE' ? makeCart(0)
+        : makeCart(body.quantity, key === 'cartB' ? 'Carrito nueva sesión' : product.name)
+      data = structuredClone(state[key])
+    } else if (path === '/orders/preview') {
+      data = { subtotal: state.cart.subtotal, total: state.cart.subtotal, totalDiscount: 0, promotions: [] }
+    } else if (path === '/orders' && method === 'POST') {
+      status = state.orderStatus
+      gate = state.orderGate
+      data = { id: 42, state: 'PENDIENTE', orderDate: '2026-10-21T10:00:00',
+        paymentMethod: body.paymentMethod, subtotal: state.cart.subtotal, total: body.expectedTotal,
+        totalDiscount: 0, promotions: [], items: state.cart.items.map(item => ({ ...item, price: item.unitPrice })) }
+      if (status === 200) state.cart = makeCart(0)
     }
     if (status !== 200) data = { message: 'Stock insuficiente QA' }
     if (gate) await gate.promise
@@ -84,6 +100,13 @@ async function switchSession(page) {
   await page.getByRole('heading', { name: 'Mi perfil', exact: true }).waitFor()
   await page.getByRole('link', { name: /^Carrito/ }).first().click()
   await page.getByRole('heading', { name: 'Carrito nueva sesión', exact: true }).waitFor()
+}
+
+async function checkout(page) {
+  await page.getByRole('button', { name: 'Iniciar compra' }).click()
+  await page.getByRole('button', { name: 'Continuar al pago' }).click()
+  await page.getByRole('button', { name: 'Revisar y confirmar' }).click()
+  await page.getByRole('button', { name: 'Confirmar pedido', exact: true }).click()
 }
 
 try {
@@ -222,5 +245,120 @@ try {
       await s.close()
     })
   }
+  await test('Disminuir la cantidad confirma el PUT y conserva el carrito al recorrer las vistas', async () => {
+    const s = await setup({ cart: makeCart(3) }); await s.ready()
+    await s.page.getByRole('button', { name: 'Disminuir cantidad' }).click()
+    await s.page.getByText('Carrito actualizado.', { exact: true }).waitFor()
+    await expectQuantity(s.page, 2)
+    await s.page.getByRole('link', { name: 'Ir al inicio' }).click()
+    await s.page.getByRole('button', { name: 'Ver ' + product.name, exact: true }).waitFor()
+    await s.page.getByRole('link', { name: 'Cartas', exact: true }).first().click()
+    await s.page.getByRole('button', { name: 'Ver ' + product.name, exact: true }).click()
+    await s.page.getByRole('heading', { name: product.name, exact: true }).waitFor()
+    assert.match(await s.page.getByRole('link', { name: /^Carrito/ }).first().textContent(), /2/)
+    await s.page.getByRole('link', { name: /^Carrito/ }).first().click()
+    await expectQuantity(s.page, 2)
+    assert.equal(s.count('GET'), 1)
+    assert.deepEqual(s.state.calls.find(c => c.method === 'PUT').body, { quantity: 2 })
+    await s.close()
+  })
+
+  await test('Metadatos ausentes se consultan una vez y el detalle reutiliza la solicitud pendiente', async () => {
+    const gate = deferred()
+    const s = await setup({ catalogProducts: [], productGate: gate })
+    await s.page.getByText('Consultando disponibilidad…', { exact: true }).waitFor()
+    assert.ok(await s.page.getByRole('button', { name: 'Aumentar cantidad' }).isDisabled())
+    await s.page.evaluate(() => { history.pushState({}, '', '/producto/7'); dispatchEvent(new PopStateEvent('popstate')) })
+    await s.page.getByText('Cargando producto…', { exact: true }).waitFor()
+    gate.resolve()
+    await s.page.getByRole('heading', { name: product.name, exact: true }).waitFor()
+    assert.equal(s.count('GET', '/products/7'), 1)
+    await s.page.getByRole('link', { name: /^Carrito/ }).first().click()
+    await s.ready()
+    assert.equal(s.count('GET'), 1)
+    await s.close()
+  })
+
+  await test('Metadatos fallidos permiten reintentar disponibilidad sin duplicar consultas', async () => {
+    const s = await setup({ productStatus: 404 })
+    await s.page.getByRole('alert').filter({ hasText: 'Este producto ya no está disponible.' }).waitFor()
+    s.state.productStatus = 200
+    await s.page.getByRole('button', { name: 'Reintentar', exact: true }).click()
+    await s.ready()
+    assert.equal(s.count('GET', '/products/7'), 2)
+    assert.equal(s.count('GET'), 2)
+    await s.close()
+  })
+
+  await test('Metadatos tardíos de A no reemplazan la disponibilidad de B aunque se ignore el aborto', async () => {
+    const gate = deferred()
+    const s = await setup({ productGate: gate, ignoreAbort: true })
+    await s.page.getByText('Consultando disponibilidad…', { exact: true }).waitFor()
+    s.state.productGate = null
+    s.state.product = { ...product, stock: 5 }
+    await switchSession(s.page)
+    await s.page.waitForFunction(() => !document.body.textContent.includes('Consultando disponibilidad…'))
+    assert.ok(await s.page.getByRole('button', { name: 'Aumentar cantidad' }).isDisabled())
+    gate.resolve()
+    await s.page.waitForFunction(() => window.cartRequests.every(r => r.settled))
+    await s.page.clock.runFor(50)
+    assert.ok(await s.page.getByRole('button', { name: 'Aumentar cantidad' }).isDisabled())
+    await expectQuantity(s.page, 5)
+    assert.equal(s.count('GET', '/products/7'), 2)
+    await s.close()
+  })
+
+  await test('Confirmación pendiente bloquea mutaciones entre pantallas; el éxito vacía sin GET', async () => {
+    const gate = deferred()
+    const s = await setup({ orderGate: gate }); await s.ready()
+    await checkout(s.page)
+    await s.page.getByRole('button', { name: 'Confirmando…' }).waitFor()
+    await s.page.getByRole('link', { name: /^Carrito/ }).first().click()
+    for (const name of ['Aumentar cantidad', 'Disminuir cantidad', 'Quitar', 'Iniciar compra']) {
+      assert.ok(await s.page.getByRole('button', { name, exact: true }).isDisabled())
+    }
+    gate.resolve()
+    await s.page.waitForURL('**/pedido-confirmado')
+    await s.page.getByRole('link', { name: /^Carrito/ }).first().click()
+    await s.page.getByText('Tu carrito está vacío', { exact: true }).waitFor()
+    assert.equal(s.count('GET'), 1)
+    assert.equal(s.count('POST', '/orders'), 1)
+    assert.equal(s.count('PUT', '/carts/items/11'), 0)
+    await s.close()
+  })
+
+  await test('Confirmación fallida conserva carrito y libera el bloqueo para editar cantidades', async () => {
+    const s = await setup({ orderStatus: 503 }); await s.ready()
+    await checkout(s.page)
+    await s.page.getByRole('alert').filter({ hasText: 'Stock insuficiente QA' }).waitFor()
+    await s.page.getByRole('link', { name: /^Carrito/ }).first().click()
+    await s.ready(); await expectQuantity(s.page, 1)
+    await s.page.getByRole('button', { name: 'Aumentar cantidad' }).click()
+    await s.page.getByText('Carrito actualizado.', { exact: true }).waitFor()
+    await expectQuantity(s.page, 2)
+    assert.equal(s.count('GET'), 1)
+    await s.close()
+  })
+
+  await test('Confirmación tardía de A no vacía ni desbloquea una mutación pendiente de B', async () => {
+    const orderGate = deferred(), bWriteGate = deferred()
+    const s = await setup({ orderGate, bWriteGate, ignoreAbort: true }); await s.ready()
+    await checkout(s.page)
+    await s.page.getByRole('button', { name: 'Confirmando…' }).waitFor()
+    await switchSession(s.page); await s.ready()
+    await s.page.getByRole('button', { name: 'Aumentar cantidad' }).click()
+    await expectQuantity(s.page, 6)
+    orderGate.resolve()
+    await s.page.waitForFunction(() => window.cartRequests.filter(r => r.path === '/orders').every(r => r.settled))
+    await s.page.clock.runFor(50)
+    assert.ok(await s.page.getByRole('button', { name: 'Quitar', exact: true }).isDisabled())
+    await expectQuantity(s.page, 6)
+    assert.match(s.page.url(), /\/carrito$/)
+    bWriteGate.resolve()
+    await s.page.getByText('Carrito actualizado.', { exact: true }).waitFor()
+    await expectQuantity(s.page, 6)
+    assert.ok(await s.page.getByRole('button', { name: 'Quitar', exact: true }).isEnabled())
+    await s.close()
+  })
   console.log(`Cart browser scenarios passed: ${passed}`)
 } finally { await browser.close() }
