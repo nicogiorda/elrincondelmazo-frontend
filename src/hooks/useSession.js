@@ -14,6 +14,12 @@ export default function useSession({ onSessionChange }) {
   const sessionAbort = useRef(new AbortController())
   const sessionRequested = useRef(false)
   const mounted = useRef(false)
+  const sessionListeners = useRef(new Set())
+  // Cada dominio registra su limpieza sin que la sesión importe sus hooks.
+  const subscribeSessionChange = useCallback((listener) => {
+    sessionListeners.current.add(listener)
+    return () => sessionListeners.current.delete(listener)
+  }, [])
 
   useEffect(() => {
     mounted.current = true
@@ -34,6 +40,7 @@ export default function useSession({ onSessionChange }) {
     sessionVersion.current += 1
     sessionAbort.current.abort()
     sessionAbort.current = new AbortController()
+    sessionListeners.current.forEach((listener) => listener())
     onSessionChange()
   }, [onSessionChange])
 
@@ -92,5 +99,5 @@ export default function useSession({ onSessionChange }) {
   // La versión y el controlador se modifican exclusivamente dentro del hook.
   // setUser permite aplicar el perfil confirmado sin iniciar otra sesión.
   return { user, token, loading, sessionError, setSessionError, setUser,
-    login, register, logout, sessionVersion, sessionAbort }
+    login, register, logout, sessionVersion, sessionAbort, subscribeSessionChange }
 }
