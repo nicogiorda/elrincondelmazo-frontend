@@ -20,6 +20,7 @@ import PurchaseNotice from './components/PurchaseNotice.jsx'
 import { invalidatePublicPromotions } from './services/publicPromotions.js'
 import { API_BASE_URL as URL, readResponse } from './services/httpClient.js'
 import { getCart, addCartItem, updateCartItemQuantity, removeCartItem } from './services/cartApi.js'
+import useSession from './hooks/useSession.js'
 
 const emptyCatalogFilters = { search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0 }
 const productCacheLifetime = 60_000
@@ -122,19 +123,11 @@ function App() {
   const isProductRoute = Boolean(productRoute)
   const selectedProductId = productIdFrom(productRoute?.params.id)
   const legacyProductId = productIdFrom(location.state?.product?.id)
-  // Reutiliza exactamente el token que guardan Login y Register del compañero.
-  const [user, setUser] = useState(null)
-  const [token, setToken] = useState(() => localStorage.getItem('token'))
-  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem('token')))
-  const [sessionError, setSessionError] = useState('')
   const [deactivateError, setDeactivateError] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
   const [deactivating, setDeactivating] = useState(false)
   // Perfil y desactivación no pueden enviar operaciones simultáneas sobre la cuenta.
   const accountRequest = useRef(false)
-  const sessionRequested = useRef(false)
-  const sessionVersion = useRef(0)
-  const sessionAbort = useRef(new AbortController())
   const [cart, setCart] = useState(null)
   const [cartLoading, setCartLoading] = useState(false)
   const [cartBusy, setCartBusy] = useState(false)
@@ -183,11 +176,8 @@ function App() {
   const [promotionAttempt, setPromotionAttempt] = useState(0)
   const needsPromotions = ['/promociones', '/editar-promocion', '/nueva-promocion'].includes(location.pathname)
 
-  // La misma función se usa desde botones y desde requests que reciben 401.
-  const logout = useCallback(() => {
-    sessionVersion.current += 1
-    sessionAbort.current.abort()
-    sessionAbort.current = new AbortController()
+  // Coordinación temporal de los dominios que todavía viven en App.
+  const resetPrivateData = useCallback(() => {
     accountRequest.current = false
     setProfileSaving(false)
     setDeactivating(false)
@@ -195,9 +185,6 @@ function App() {
     cartMetadataRequests.current.forEach((request) => request.controller.abort())
     cartMetadataRequests.current.clear()
     setCartMetadata({})
-    localStorage.removeItem('token')
-    setToken(null)
-    setUser(null)
     setCart(null)
     setConfirmedOrder(null)
     resetOrderData()
@@ -217,29 +204,10 @@ function App() {
     quantitySync.current = null
     setQuantitySyncItemId(null)
     reviewRequest.current = false
-    navigate('/ingresar', { replace: true })
-  }, [navigate, resetOrderData])
+  }, [resetOrderData])
 
-  useEffect(() => {
-    if (sessionRequested.current) return
-    sessionRequested.current = true
-    const savedToken = localStorage.getItem('token')
-    if (!savedToken) return
-    const version = sessionVersion.current
-    fetch(URL + '/users/me', { signal: sessionAbort.current.signal, headers: { Authorization: 'Bearer ' + savedToken } })
-      .then(readResponse)
-      .then((usuario) => {
-        if (version === sessionVersion.current) setUser(usuario)
-      })
-      .catch((error) => {
-        if (version !== sessionVersion.current) return
-        if (error.status === 401 || error.status === 403) logout()
-        setSessionError(error.message)
-      })
-      .finally(() => {
-        if (version === sessionVersion.current || !localStorage.getItem('token')) setLoading(false)
-      })
-  }, [logout])
+  const { user, token, loading, sessionError, setSessionError, setUser,
+    login, register, logout, sessionVersion, sessionAbort } = useSession({ onSessionChange: resetPrivateData })
 
   useEffect(() => {
     if (!user?.id || !token) return
@@ -269,7 +237,7 @@ function App() {
         setCartLoading(false)
         setCartBusy(false)
       })
-  }, [user?.id, token, cartAttempt, logout])
+  }, [user?.id, token, cartAttempt, logout, sessionAbort, sessionVersion, setSessionError])
 
   useEffect(() => {
     if (!needsPublications || !user?.id || !token) return
@@ -322,7 +290,7 @@ function App() {
       }
     })
     return () => { active = false; controller.abort() }
-  }, [needsPublications, user?.id, token, publicationAttempt, logout])
+  }, [needsPublications, user?.id, token, publicationAttempt, logout, sessionVersion, setSessionError])
 
   // El catálogo público empieza vacío.
   const productPages = useRef(new Map())
@@ -475,7 +443,7 @@ function App() {
         }
       })
     })
-  }, [cart, products, productsLoading, user?.id, token, cartAttempt, cartMetadata, productRoute, selectedProductId])
+  }, [cart, products, productsLoading, user?.id, token, cartAttempt, cartMetadata, productRoute, selectedProductId, sessionVersion])
 
   useEffect(() => () => {
     cartMetadataRequests.current.forEach((request) => request.controller.abort())
@@ -530,7 +498,7 @@ function App() {
     }
     Promise.resolve().then(loadPromotions);
     return () => { cancelled = true; };
-  }, [user?.id, user?.role, token, logout, needsPromotions, promotionAttempt]);
+  }, [user?.id, user?.role, token, logout, needsPromotions, promotionAttempt, sessionAbort, sessionVersion, setSessionError]);
 
   useEffect(() => {
     // Una respuesta pública anterior a un guardado no se reutiliza al volver a Home.
@@ -835,7 +803,7 @@ function App() {
       if (version === sessionVersion.current && error.status === 401) { logout(); setSessionError(error.message) }
       throw error
     }
-  }, [token, logout])
+  }, [token, logout, sessionAbort, sessionVersion, setSessionError])
 
   function confirmOrder({ paymentMethod, expectedTotal, requestKey }) {
     if (!user || !token || !cart?.items.length || cartRequest.current) {
@@ -966,7 +934,7 @@ function App() {
       setOrderHistory((current) => ({ ...current, loading: false }))
     })
     return request.promise
-  }, [user?.id, token, logout, publishOrderDetails])
+  }, [user?.id, token, logout, publishOrderDetails, sessionAbort, sessionVersion, setSessionError])
 
   const needsOrders = location.pathname === '/mis-pedidos'
   useEffect(() => {
@@ -1008,7 +976,7 @@ function App() {
       if (isCurrent()) orderDetailRequests.current.delete(orderId)
     })
     return request.promise
-  }, [user?.id, token, logout, publishOrderDetails])
+  }, [user?.id, token, logout, publishOrderDetails, sessionAbort, sessionVersion, setSessionError])
   async function uploadProductPhoto(file) {
     if (!user || !token) throw new Error('Ingresá para subir fotografías.')
     const version = sessionVersion.current
@@ -1095,42 +1063,6 @@ function App() {
       }
     }
   }
-  function startSession(usuario) {
-    sessionVersion.current += 1
-    sessionAbort.current.abort()
-    sessionAbort.current = new AbortController()
-    accountRequest.current = false
-    setProfileSaving(false)
-    setDeactivating(false)
-    setDeactivateError('')
-    cartMetadataRequests.current.forEach((request) => request.controller.abort())
-    cartMetadataRequests.current.clear()
-    setCartMetadata({})
-    cartRequested.current = null
-    cartRequest.current = false
-    quantitySync.current = null
-    setQuantitySyncItemId(null)
-    reviewRequest.current = false
-    setCart(null)
-    setConfirmedOrder(null)
-    resetOrderData()
-    ownPublicationsStamp.current = null
-    setOwnPublications({ userId: null, items: [], loading: false, error: '' })
-    setPublicationBusyId(null)
-    setPublicationError('')
-    setCartError('')
-    setCartMessage('')
-    setCartBusy(false)
-    setCartLoading(false)
-    setSessionError('')
-    setPromotions([])
-    setPromotionError('')
-    setPromotionLoading(false)
-    setToken(localStorage.getItem('token'))
-    setUser(usuario)
-    navigate('/mi-perfil', { replace: true })
-  }
-
   async function savePromotion(promotion) {
     if (user?.role !== 'ADMIN' || !token) throw new Error('Ingresá con una cuenta administradora.');
     const version = sessionVersion.current;
@@ -1379,8 +1311,8 @@ function App() {
       <Route path="/pedido-confirmado" element={<ProtectedRoute user={user}>
         <OrderConfirmation order={confirmedOrder} cartCount={cartCount} />
       </ProtectedRoute>} />
-      <Route path="/ingresar" element={<Login {...shared} onLogin={startSession} />} />
-      <Route path="/crear-cuenta" element={<Register {...shared} onRegister={startSession} />} />
+      <Route path="/ingresar" element={<Login {...shared} onLogin={login} />} />
+      <Route path="/crear-cuenta" element={<Register {...shared} onRegister={register} />} />
       <Route path="/promociones" element={loading ? <p role="status">Cargando sesión…</p> : isAdmin
         ? <Promotions {...account} promotions={promotions} loading={promotionLoading} error={promotionError}
             onRefresh={() => setPromotionAttempt((current) => current + 1)}
