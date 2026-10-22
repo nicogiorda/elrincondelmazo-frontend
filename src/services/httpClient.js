@@ -15,7 +15,7 @@ export function readResponse(response) {
 }
 
 // El token y la cancelación pertenecen al llamador; el cliente no guarda sesión.
-export function requestJson(path, { method = 'GET', token, body, signal } = {}) {
+export function request(path, { method = 'GET', token, body, signal } = {}) {
   return fetch(API_BASE_URL + path, {
     method,
     signal,
@@ -24,5 +24,9 @@ export function requestJson(path, { method = 'GET', token, body, signal } = {}) 
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  }).then(readResponse)
+  })
+}
+
+export function requestJson(path, options) {
+  return request(path, options).then(readResponse)
 }
