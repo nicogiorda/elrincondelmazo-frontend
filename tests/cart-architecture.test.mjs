@@ -30,8 +30,8 @@ test('Los módulos de src no contienen dependencias circulares', () => {
   assert.equal(checked.size, modules.size)
 })
 
-test('App compone una única instancia de sesión, carrito, catálogo, checkout y pedidos', () => {
-  for (const hook of ['useCart', 'useSession', 'useCatalog', 'useCheckout', 'useOrders']) {
+test('App compone una única instancia de sesión, carrito, catálogo, checkout, pedidos y publicaciones', () => {
+  for (const hook of ['useCart', 'useSession', 'useCatalog', 'useCheckout', 'useOrders', 'usePublications']) {
     const sites = [...modules].filter(([, source]) => new RegExp('=\\s*' + hook + '\\(').test(source))
     assert.equal(sites.length, 1)
     assert.equal(sites[0][0], resolve(root, 'App.jsx'))
@@ -60,4 +60,10 @@ test('Los endpoints del carrito pertenecen a cartApi y useCart no hace HTTP dire
   const owners = [...modules].filter(([, source]) => /['"`]\/carts(?:\/|['"`])/.test(source))
   assert.deepEqual(owners.map(([path]) => relative(root, path).replaceAll('\\', '/')), ['services/cartApi.js'])
   assert.doesNotMatch(modules.get(resolve(root, 'hooks/useCart.js')), /\bfetch\s*\(/)
+})
+
+test('Publicaciones delega HTTP y App solo compone su interfaz', () => {
+  assert.doesNotMatch(modules.get(resolve(root, 'hooks/usePublications.js')), /\bfetch\s*\(/)
+  assert.doesNotMatch(modules.get(resolve(root, 'services/publicationsApi.js')), /from\s*['"]react['"]|\buseState\(/)
+  assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /ownPublications|products\/mine|products\/images/)
 })
