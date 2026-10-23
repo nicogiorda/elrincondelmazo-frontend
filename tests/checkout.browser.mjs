@@ -125,6 +125,21 @@ let passed = 0
 async function test(name, run) { await run(); passed++; console.log('PASS ' + name) }
 
 try {
+  await test('Reingresar sin cambiar carrito ni pago renueva precio y promociones una sola vez', async () => {
+    const s = await setup(); await quoteReady(s.page)
+    assert.equal(await total(s.page).textContent(), '$ 90')
+    await s.page.getByRole('link', { name: /Editar carrito/ }).click(); await readyCart(s.page, 1)
+    s.state.quotes.push({ data: { subtotal: 120, totalDiscount: 40, total: 80,
+      promotions: [{ promotionId: 2, promotionName: 'Promoción nueva QA', discountApplied: 40 }] } })
+    await s.page.getByRole('button', { name: 'Iniciar compra' }).click(); await quoteReady(s.page)
+    assert.equal(s.calls('/orders/preview').length, 2, 'Cada entrada debe consultar una sola vez bajo StrictMode')
+    assert.equal(await total(s.page).textContent(), '$ 80')
+    await s.page.getByText('Promoción nueva QA', { exact: true }).waitFor()
+    assert.deepEqual(s.calls('/orders/preview')[1].body, s.calls('/orders/preview')[0].body)
+    assert.equal(s.calls('/orders').length, 0)
+    assert.equal(s.calls('/carts', 'GET').length, 1)
+    await s.close()
+  })
   await test('Cotización inicial única bajo StrictMode y cambio de medio de pago con importes del servidor', async () => {
     const s = await setup(); await quoteReady(s.page)
     assert.equal(s.calls('/orders/preview').length, 1)
@@ -215,7 +230,8 @@ try {
     assert.equal(s.state.orders.size, 1)
     await s.close()
   })
-  for (const [name, plan, navigate] of [['red', { network: true }, false], ['respuesta inválida', { invalid: true }, true]]) {
+  for (const [name, plan, navigate] of [['red', { network: true }, false],
+    ['respuesta inválida sin salir', { invalid: true }, false], ['respuesta inválida al reingresar', { invalid: true }, true]]) {
     await test('Resultado ambiguo por ' + name + ' conserva intento y clave incluso si el servidor creó la orden', async () => {
       const s = await setup({ confirmations: [plan] }); await confirmStep(s.page)
       await confirmButton(s.page).click()
@@ -226,6 +242,15 @@ try {
         await s.page.getByRole('link', { name: /^Carrito/ }).first().click(); await readyCart(s.page, 1)
         await s.page.getByRole('button', { name: 'Iniciar compra' }).click()
         await confirmStep(s.page)
+        // La orden ya consumió el carrito del servidor. La recotización ya no
+        // coincide con el intento ambiguo: no debe reutilizar el importe viejo.
+        assert.equal(s.calls('/orders/preview').length, 2)
+        assert.ok(await confirmButton(s.page).isDisabled())
+        await s.page.getByRole('alert').filter({ hasText: /confirmación sin resolver con otros datos/ }).waitFor()
+        assert.equal(s.calls('/orders').length, 1)
+        assert.equal(s.state.orders.size, 1)
+        await s.close()
+        return
       }
       await confirmButton(s.page).click(); await s.page.waitForURL('**/pedido-confirmado')
       assert.deepEqual(s.calls('/orders')[1].body, s.calls('/orders')[0].body)
@@ -365,5 +390,67 @@ try {
     assert.equal(s.calls('/orders').length, 1)
     await s.close()
   })
+  await test('Reentrada pendiente o fallida no habilita la cotización de la visita anterior', async () => {
+    const s = await setup(); await quoteReady(s.page)
+    await s.page.getByRole('link', { name: /Editar carrito/ }).click(); await readyCart(s.page, 1)
+    const gate = deferred()
+    s.state.quotes.push({ gate, status: 503 })
+    await s.page.getByRole('button', { name: 'Iniciar compra' }).click()
+    await s.page.getByText('Calculando el total…', { exact: true }).waitFor()
+    await s.page.getByRole('button', { name: 'Continuar al pago' }).click()
+    await s.page.getByRole('button', { name: 'Revisar y confirmar' }).click()
+    assert.ok(await confirmButton(s.page).isDisabled())
+    gate.resolve()
+    await s.page.getByRole('button', { name: 'Volver a cotizar' }).waitFor()
+    assert.ok(await confirmButton(s.page).isDisabled())
+    assert.equal(s.calls('/orders').length, 0)
+    s.state.quoteTotal = 80
+    await s.page.getByRole('button', { name: 'Volver a cotizar' }).click(); await quoteReady(s.page)
+    assert.equal(await total(s.page).textContent(), '$ 80')
+    assert.equal(s.calls('/orders/preview').length, 3)
+    assert.ok(await confirmButton(s.page).isEnabled())
+    await s.close()
+  })
+  await test('Una cotización de otra entrada no se publica aunque el transporte ignore el aborto', async () => {
+    const gate = deferred()
+    const s = await setup({ ignoreAbort: true, quotes: [{ gate }] })
+    await s.page.waitForFunction(() => window.checkoutRequests.some(r => r.path === '/orders/preview'))
+    await s.page.getByRole('link', { name: /Editar carrito/ }).click(); await readyCart(s.page, 1)
+    s.state.quoteTotal = 80
+    await s.page.getByRole('button', { name: 'Iniciar compra' }).click(); await quoteReady(s.page)
+    gate.resolve(); await settleOrders(s.page)
+    assert.equal(await total(s.page).textContent(), '$ 80')
+    assert.equal(s.calls('/orders/preview').length, 2)
+    assert.ok(await s.page.evaluate(() => window.checkoutRequests.find(r => r.path === '/orders/preview').aborted))
+    assert.equal(s.calls('/orders').length, 0)
+    await s.close()
+  })
+  for (const changedTotal of [false, true]) {
+    await test('Reentrada con intento ambiguo y total ' + (changedTotal ? 'distinto bloquea hasta restaurarlo' : 'igual conserva el UUID'), async () => {
+      const s = await setup({ confirmations: [{ status: 503, network: true }] }); await confirmStep(s.page)
+      await confirmButton(s.page).click()
+      await s.page.getByRole('alert').filter({ hasText: /pedidos/i }).waitFor()
+      const original = s.calls('/orders')[0].body
+      await s.page.getByRole('link', { name: /^Carrito/ }).first().click(); await readyCart(s.page, 1)
+      if (changedTotal) s.state.quoteTotal = 80
+      await s.page.getByRole('button', { name: 'Iniciar compra' }).click(); await confirmStep(s.page)
+      assert.equal(s.calls('/orders/preview').length, 2)
+      assert.equal(s.calls('/orders').length, 1, 'La recotización nunca confirma automáticamente')
+      if (changedTotal) {
+        assert.equal(await total(s.page).textContent(), '$ 80')
+        assert.ok(await confirmButton(s.page).isDisabled())
+        await s.page.getByRole('alert').filter({ hasText: /confirmación sin resolver con otros datos/ }).waitFor()
+        await s.page.getByRole('link', { name: /^Carrito/ }).first().click(); await readyCart(s.page, 1)
+        s.state.quoteTotal = original.expectedTotal
+        await s.page.getByRole('button', { name: 'Iniciar compra' }).click(); await confirmStep(s.page)
+        assert.equal(s.calls('/orders/preview').length, 3)
+      }
+      await confirmButton(s.page).click(); await s.page.waitForURL('**/pedido-confirmado')
+      assert.deepEqual(s.calls('/orders')[1].body, original, 'Se conserva UUID, importe y medio originales')
+      assert.equal(s.state.orders.size, 1)
+      assert.equal(s.calls('/carts', 'GET').length, 1)
+      await s.close()
+    })
+  }
   console.log('Escenarios de checkout aprobados: ' + passed)
 } finally { await browser.close() }

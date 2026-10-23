@@ -16,9 +16,11 @@ export default function useCheckoutQuote({ active, cart, blocked, paymentMethod,
   const [result, setResult] = useState(null)
   const [attempt, setAttempt] = useState(0)
   const request = useRef(null)
-  const input = JSON.stringify([userId, cart, paymentMethod])
+  const input = JSON.stringify([active, userId, cart, paymentMethod])
   const [revision, setRevision] = useState({ input, number: 0 })
-  // Incluso volver al medio/carrito anterior requiere una cotización nueva.
+  // Cada entrada a checkout y cada cambio de medio/carrito requiere cotizar.
+  // La activación de ruta no cambia durante el remonte de efectos de StrictMode.
+  // El intento de confirmación (incluido su UUID ambiguo) vive en useCheckout.
   // Ajustar durante render impide confirmar con el resultado de otra revisión.
   if (revision.input !== input) {
     setRevision({ input, number: revision.number + 1 })

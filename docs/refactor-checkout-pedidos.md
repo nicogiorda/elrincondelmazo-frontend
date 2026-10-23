@@ -1,6 +1,6 @@
 # Bloque 5: checkout, confirmación e historial de pedidos
 
-Fecha de verificación: 22 de octubre de 2026.
+Verificación inicial: 22 de octubre de 2026. Revisión de reentrada al checkout: 23 de octubre de 2026.
 
 ## Alcance y preparación
 
@@ -109,11 +109,11 @@ Todos reutilizan httpClient. El JWT y la señal se reciben por solicitud, sin va
 
 ## Cotizaciones
 
-La cotización está asociada a usuario, contenido del carrito, medio de pago, revisión e intento explícito. Cambiar carrito o medio invalida el resultado, incluso si luego se vuelve al valor anterior. Mientras hay una actualización incompatible del carrito no se cotiza ni se confirma.
+La cotización está asociada a la activación de la ruta, usuario, contenido del carrito, medio de pago, revisión e intento explícito. Salir y volver a /checkout invalida el resultado aunque no cambien carrito ni pago; cada entrada vuelve a consultar precios y promociones. Cambiar carrito o medio también invalida el resultado, incluso si luego se vuelve al valor anterior. Mientras hay una actualización incompatible del carrito no se cotiza ni se confirma.
 
 Cada efecto posee AbortController y combina su señal con la de sesión. También comprueba montaje y versión de sesión: ignorar AbortSignal en el transporte no permite publicar una cotización antigua. La microtarea previa al envío evita el POST del montaje descartado por StrictMode.
 
-Se validan importes finitos y no negativos, promociones y sus datos de presentación. Se conservan exactamente los importes del servidor. Un error requiere reintento explícito. La navegación sin cambios conserva el estado del mismo intento, especialmente si hay una confirmación ambigua.
+Se validan importes finitos y no negativos, promociones y sus datos de presentación. Se conservan exactamente los importes del servidor. Un error requiere reintento explícito. La navegación conserva el intento de confirmación, incluido su UUID ambiguo, pero nunca reutiliza la cotización de una entrada anterior. Si el total nuevo no coincide con el intento ambiguo, se informa la confirmación pendiente y se bloquea otro POST; no se descarta ni se reemplaza su clave.
 
 ## Idempotencia y recuperación
 
@@ -199,7 +199,7 @@ Modificados:
 | orders-api.test.mjs | 32 PASS |
 | checkout-quote.test.mjs | 10 PASS |
 | Total Node | **124 PASS**, 0 fallos y 0 omitidas |
-| checkout.browser.mjs | **20 escenarios PASS** |
+| checkout.browser.mjs | **26 escenarios PASS** (revisión del 23/10) |
 | orders-cache.browser.mjs | **10 grupos PASS** |
 | cart-api.browser.mjs | **22 escenarios PASS** |
 | auth-session.browser.mjs | **27 escenarios PASS** |
@@ -250,3 +250,37 @@ Pendiente para la comprobación integral del usuario: confirmar que se persiste 
 La recuperación ambigua tras recarga/cierre tiene el límite de memoria indicado arriba. El frontend tampoco resuelve cambios desde otra pestaña: el backend continúa siendo la autoridad sobre carrito, stock, importes e idempotencia.
 
 El bloque entrega separación de responsabilidades y validación automatizada del frontend; no modifica el protocolo ni amplía el alcance a publicaciones, promociones administrativas o perfil.
+
+## Revisión del PR #22: cotización al reingresar (23/10/2026)
+
+Se reprodujo la regresión en la rama existente antes de cambiar el hook. La prueba salió de /checkout hacia el carrito, cambió únicamente precio/promociones del servidor simulado y volvió sin cambiar carrito ni medio. Falló con **1 POST observado frente a 2 esperados**: se reutilizaba el resultado de la primera visita.
+
+Corrección acotada: se incorporó active a la identidad de las entradas de useCheckoutQuote. Salir invalida el resultado y volver crea una revisión que solicita otra cotización. La transición real de ruta no ocurre durante el remonte de efectos de StrictMode; se mantiene la microtarea y el aborto existentes, con un POST por entrada elegible. Si hay una operación incompatible del carrito, la consulta espera a que termine.
+
+El estado de useCheckout no se modificó. Su UUID y payload ambiguos sobreviven a la recotización. Una cotización pendiente o fallida no habilita confirmar con el importe anterior. Si el total nuevo difiere del intento ambiguo, el aviso existente informa la confirmación sin resolver y bloquea el envío. Si una entrada posterior vuelve a recibir el total original, el reintento explícito conserva exactamente UUID, importe y medio originales.
+
+Solo se modificaron tres archivos:
+
+- src/hooks/useCheckoutQuote.js: identidad de la cotización y comentarios del ciclo de ruta.
+- tests/checkout.browser.mjs: reproducción y cobertura de reentrada, error, cancelación y conservación de intentos.
+- docs/refactor-checkout-pedidos.md: explicación y resultados de esta revisión.
+
+La suite conserva el replay inmediato tras respuesta perdida o inválida. El escenario que vuelve después de que la orden ya consumió el carrito del servidor ahora verifica que la cotización diferente bloquee otro pedido; ya no presupone reutilizar el importe viejo. Se añadió un caso independiente para conservar el replay inmediato de respuesta inválida, además de los casos de reentrada con total igual/distinto y verificación exacta del payload original.
+
+Resultados ejecutados después de la corrección, todos con salida 0:
+
+| Comando | Resultado |
+| --- | --- |
+| npm run lint | PASS |
+| npm run build | PASS; 97 módulos |
+| node --test tests/*.test.mjs | 124 PASS; 0 fallos/omitidas |
+| node tests/checkout.browser.mjs | 26 escenarios PASS |
+| node tests/orders-cache.browser.mjs | 10 grupos PASS |
+| node tests/cart-api.browser.mjs | 22 escenarios PASS |
+| node tests/auth-session.browser.mjs | 27 escenarios PASS |
+| node tests/catalog.browser.mjs | 13 escenarios PASS |
+| node tests/promotions.browser.cjs | 12 escenarios PASS |
+| node tests/frontend-audit.mjs | 18 escenarios PASS; 37 solicitudes |
+| git diff --check | PASS |
+
+Se utilizó el mismo Vite/Edge/Playwright con HTTP simulado descrito arriba. No se ejecutó ni modificó el backend. App sigue en 713 líneas; el límite de persistencia en memoria de los intentos ambiguos no cambió. La revisión se entrega como commit adicional en refactor/05-checkout-pedidos y actualiza el PR #22 existente.
