@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { paymentMethods, paymentMethodLabel } from '../data/paymentMethods.js'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import ProgressSteps from '../components/ProgressSteps.jsx'
@@ -10,35 +10,10 @@ import PurchaseNotice from '../components/PurchaseNotice.jsx'
 
 const headings = ['Revisá tu pedido', '¿Cómo querés pagar?', 'Confirmá tu pedido']
 
-function Checkout({ loading, cartBusy, onRetry, cart, products = [], cartCount, error, onPreview, onConfirm }) {
+function Checkout({ loading, cartBusy, onRetry, cart, products = [], cartCount, error, checkout }) {
   const [step, setStep] = useState(1)
-  const [isConfirmed, setIsConfirmed] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('TRANSFERENCIA')
-  const [quote, setQuote] = useState(null)
-  const [quoteError, setQuoteError] = useState('')
-  const [quoteAttempt, setQuoteAttempt] = useState(0)
-  const confirmation = useRef(null)
-  const quoteKey = JSON.stringify([cart, paymentMethod, quoteAttempt])
-  const currentQuote = quote?.key === quoteKey ? quote : null
-  useEffect(() => {
-    if (!cart?.items.length) return
-    let active = true
-    const controller = new AbortController()
-    Promise.resolve().then(async () => {
-      if (!active) return
-      setQuoteError('')
-      try {
-        const data = await onPreview(paymentMethod, controller.signal)
-        if (active) {
-          setQuote({ ...data, key: quoteKey })
-          confirmation.current = { paymentMethod, expectedTotal: data.total, requestKey: crypto.randomUUID() }
-        }
-      } catch (error) { if (active) setQuoteError(error.message) }
-    })
-    return () => { active = false; controller.abort() }
-  }, [cart, paymentMethod, quoteKey, onPreview])
+  const { paymentMethod, changePaymentMethod, quote: currentQuote, quoteError, retryQuote,
+    submitting, submitError, confirmationBlocked, confirmOrder } = checkout
   if (!cart) return <PurchaseNotice title="Finalizar compra" isLoggedIn
     message={error || 'Cargando carrito…'} onRetry={!loading && error ? onRetry : undefined} />
   const items = cart.items
@@ -47,22 +22,9 @@ function Checkout({ loading, cartBusy, onRetry, cart, products = [], cartCount, 
       label: promotion.promotionName, amount: promotion.discountApplied,
     })) } : { subtotal: cart.subtotal, discounts: [] }
   function advance() {
-    if (submitting || cartBusy || isConfirmed || !items.length || !onConfirm) return
+    if (submitting || cartBusy || !items.length) return
     if (step < 3) setStep(step + 1)
-    else {
-      if (!currentQuote) return
-      setSubmitting(true)
-      setSubmitError('')
-      // Solo una respuesta exitosa del POST permite confirmar.
-      Promise.resolve().then(() => onConfirm(confirmation.current))
-        .then((order) => { if (order?.id) setIsConfirmed(true) })
-        .catch((error) => {
-          setSubmitError(error.status === 409 ? 'El total cambió. Revisá el nuevo importe y confirmá otra vez.'
-            : error.message || 'No pudimos confirmar el pedido.')
-          if (error.status === 409) setQuoteAttempt((attempt) => attempt + 1)
-        })
-        .finally(() => setSubmitting(false))
-    }
+    else confirmOrder()
   }
   return (
     <>
@@ -81,7 +43,7 @@ function Checkout({ loading, cartBusy, onRetry, cart, products = [], cartCount, 
               <h2 className="font-display text-[3rem] leading-[2.85rem] font-black uppercase">{headings[step - 1]}</h2>
             </div>
             {step === 1 && <PurchaseItems items={items} products={products} />}
-            {step === 2 && <div role="group" aria-label="Medio de pago" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{paymentMethods.map((method) => <button key={method.value} type="button" aria-pressed={paymentMethod === method.value} onClick={() => setPaymentMethod(method.value)} className={`relative flex min-w-0 items-center gap-4 rounded-[1.375rem] border-[2.4px] border-bordo p-5.5 text-left text-[1.1875rem] font-extrabold ${paymentMethod === method.value ? 'bg-amarillo shadow-[0.3125rem_0.3125rem_0_var(--color-bordo)]' : 'bg-crema'}`}>
+            {step === 2 && <div role="group" aria-label="Medio de pago" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{paymentMethods.map((method) => <button key={method.value} type="button" aria-pressed={paymentMethod === method.value} onClick={() => changePaymentMethod(method.value)} className={`relative flex min-w-0 items-center gap-4 rounded-[1.375rem] border-[2.4px] border-bordo p-5.5 text-left text-[1.1875rem] font-extrabold ${paymentMethod === method.value ? 'bg-amarillo shadow-[0.3125rem_0.3125rem_0_var(--color-bordo)]' : 'bg-crema'}`}>
                 <span aria-hidden="true" className={`size-[1.925rem] shrink-0 rounded-full border-[2.4px] border-bordo ${paymentMethod === method.value ? 'bg-bordo' : ''}`} />
                 <span>{method.label}</span></button>)}</div>}
             {step === 3 && <>
@@ -95,12 +57,12 @@ function Checkout({ loading, cartBusy, onRetry, cart, products = [], cartCount, 
             {(error || submitError) && <p role="alert" className="text-[0.875rem] font-bold text-rojo">{error || submitError}</p>}
             <div className="flex flex-wrap items-center justify-between gap-4">
               {step === 1 ? <Link to="/carrito" className="text-[0.9375rem] font-bold underline">← Editar carrito</Link> : <button type="button" disabled={submitting || cartBusy} onClick={() => setStep(step - 1)} className="text-[0.9375rem] font-bold underline">← Volver</button>}
-              <button type="button" disabled={!items.length || isConfirmed || submitting || cartBusy || !onConfirm || (step === 3 && !currentQuote)} onClick={advance} className={`rounded-full px-7.5 py-4 text-[1.0625rem] font-extrabold disabled:opacity-50 ${step === 3 ? 'border-[2.4px] border-bordo bg-rosa shadow-[0.25rem_0.25rem_0_var(--color-bordo)]' : 'bg-bordo text-crema'}`}>{step === 1 ? 'Continuar al pago' : step === 2 ? 'Revisar y confirmar' : submitting ? 'Confirmando…' : 'Confirmar pedido'}</button>
+              <button type="button" disabled={!items.length || submitting || cartBusy || (step === 3 && (!currentQuote || confirmationBlocked))} onClick={advance} className={`rounded-full px-7.5 py-4 text-[1.0625rem] font-extrabold disabled:opacity-50 ${step === 3 ? 'border-[2.4px] border-bordo bg-rosa shadow-[0.25rem_0.25rem_0_var(--color-bordo)]' : 'bg-bordo text-crema'}`}>{step === 1 ? 'Continuar al pago' : step === 2 ? 'Revisar y confirmar' : submitting ? 'Confirmando…' : 'Confirmar pedido'}</button>
             </div>
           </section>
           <PurchaseSummary summary={summary}>
             {!currentQuote && !quoteError && <p role="status">Calculando el total…</p>}
-            {quoteError && <p role="alert">{quoteError} <button type="button" className="underline" onClick={() => setQuoteAttempt((attempt) => attempt + 1)}>Volver a cotizar</button></p>}
+            {quoteError && <p role="alert">{quoteError} <button type="button" className="underline" onClick={retryQuote}>Volver a cotizar</button></p>}
             {currentQuote && <p className="text-[0.875rem]">La tienda verificará este importe y el stock nuevamente al confirmar.</p>}
           </PurchaseSummary>
         </div>

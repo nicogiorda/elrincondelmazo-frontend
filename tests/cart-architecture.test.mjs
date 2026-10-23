@@ -30,13 +30,23 @@ test('Los módulos de src no contienen dependencias circulares', () => {
   assert.equal(checked.size, modules.size)
 })
 
-test('App compone una única instancia de sesión, carrito y catálogo compartida por las rutas', () => {
-  for (const hook of ['useCart', 'useSession', 'useCatalog']) {
+test('App compone una única instancia de sesión, carrito, catálogo, checkout y pedidos', () => {
+  for (const hook of ['useCart', 'useSession', 'useCatalog', 'useCheckout', 'useOrders']) {
     const sites = [...modules].filter(([, source]) => new RegExp('=\\s*' + hook + '\\(').test(source))
     assert.equal(sites.length, 1)
     assert.equal(sites[0][0], resolve(root, 'App.jsx'))
     assert.equal([...sites[0][1].matchAll(new RegExp('=\\s*' + hook + '\\(', 'g'))].length, 1)
   }
+})
+
+test('Pedidos delega HTTP en ordersApi y Checkout no duplica cotizaciones ni confirmaciones', () => {
+  const owners = [...modules].filter(([, source]) => /['"`]\/orders(?:\/|['"`])/.test(source))
+  assert.deepEqual(owners.map(([path]) => relative(root, path).replaceAll('\\', '/')), ['services/ordersApi.js'])
+  for (const name of ['useCheckout', 'useCheckoutQuote', 'useOrders']) {
+    assert.doesNotMatch(modules.get(resolve(root, 'hooks/' + name + '.js')), /\bfetch\s*\(/)
+  }
+  assert.doesNotMatch(modules.get(resolve(root, 'services/ordersApi.js')), /from\s*['"]react['"]|\buseState\(/)
+  assert.doesNotMatch(modules.get(resolve(root, 'views/Checkout.jsx')), /randomUUID|\buseEffect\s*\(|\buseRef\s*\(/)
 })
 
 test('Los hooks de catálogo y metadatos delegan HTTP y el servicio no depende de React', () => {

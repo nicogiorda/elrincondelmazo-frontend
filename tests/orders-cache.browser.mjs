@@ -25,7 +25,7 @@ async function setup(options = {}) {
     if (path === '/users/me') data = { id: token === 'Bearer account-b' ? 2 : 1, firstName: 'QA', lastName: 'Orders', email: 'qa@example.invalid', role: 'USUARIO' }
     if (path === '/carts') data = { id: 1, items: [], subtotal: 0 }
     if (path === '/orders') { data = structuredClone(token === 'Bearer account-b' ? [order(202)] : state.lists); status = state.status; gate = state.listGate }
-    if (/^\/orders\/\d+$/.test(path)) { data = full(state.lists.find(o => o.id === Number(path.split('/').pop())) || order(202)); status = state.detailStatus; gate = state.detailGate }
+    if (/^\/orders\/\d+$/.test(path)) { data = Object.hasOwn(state, 'detailData') ? state.detailData : full(state.lists.find(o => o.id === Number(path.split('/').pop())) || order(202)); status = state.detailStatus; gate = state.detailGate }
     if (status !== 200) data = { message: 'Fallo controlado' }
     if (gate) await gate.promise
     await route.fulfill({ json: data, status }).catch(() => {}) // A logout may have aborted the connection.
@@ -122,6 +122,48 @@ try {
     await s.page.getByText('Producto privado 101', { exact: true }).waitFor(); assert.equal(s.count('/orders/101'), 0); await s.close()
     const empty = await setup({ lists: [] }); await empty.ready(); await empty.navigateBack(); await empty.ready()
     assert.equal(empty.count('/orders'), 1); await empty.close()
+  })
+  await test('Lista inválida conserva el historial anterior y permite reintentar', async () => {
+    const s = await setup(); await s.ready(); await s.row(101).waitFor()
+    s.state.lists = { content: [] }
+    await s.page.getByRole('button', { name: 'Actualizar pedidos' }).click()
+    await s.page.getByRole('alert').filter({ hasText: 'La respuesta de pedidos no contiene una lista válida.' }).waitFor()
+    assert.equal(await s.row(101).count(), 1)
+    s.state.lists = [order(104)]
+    await s.page.getByRole('button', { name: 'Reintentar', exact: true }).click()
+    await s.ready(); await s.row(104).waitFor()
+    assert.equal(await s.row(101).count(), 0)
+    assert.equal(s.count('/orders'), 3)
+    await s.close()
+  })
+  await test('Detalle de otro pedido o inválido no se publica y permite reintentar', async () => {
+    for (const detailData of [full(order(999)), null, { ...order(), items: null }]) {
+      const s = await setup({ detailData }); await s.ready(); await s.row(101).click()
+      await s.page.getByText('El detalle recibido no corresponde al pedido.', { exact: true }).waitFor()
+      assert.equal(await s.page.getByText('Producto privado 999', { exact: true }).count(), 0)
+      delete s.state.detailData
+      await s.page.getByRole('button', { name: 'Reintentar detalle' }).click()
+      await s.page.getByText('Producto privado 101', { exact: true }).waitFor()
+      assert.equal(s.count('/orders/101'), 2)
+      await s.close()
+    }
+  })
+  await test('Actualizar un resumen idéntico conserva el detalle completo vigente', async () => {
+    const s = await setup(); await s.ready(); await s.row(101).click()
+    await s.page.getByText('Producto privado 101', { exact: true }).waitFor()
+    await s.page.getByRole('button', { name: 'Actualizar pedidos' }).click(); await s.ready()
+    await s.page.getByText('Producto privado 101', { exact: true }).waitFor()
+    assert.equal(s.count('/orders'), 2)
+    assert.equal(s.count('/orders/101'), 1)
+    await s.close()
+  })
+  await test('HTTP 401 del detalle cierra sesión y limpia el historial privado', async () => {
+    const s = await setup({ detailStatus: 401 }); await s.ready(); await s.row(101).click()
+    await s.page.waitForURL('**/ingresar')
+    assert.equal(await s.page.evaluate(() => localStorage.getItem('token')), null)
+    assert.equal(await s.row(101).count(), 0)
+    await s.page.getByText('Tu sesión venció. Volvé a ingresar.', { exact: true }).waitFor()
+    await s.close()
   })
   console.log(JSON.stringify({ result: 'PASS', groups: results }, null, 2))
 } finally { await browser.close() }
