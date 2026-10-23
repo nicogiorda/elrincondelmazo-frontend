@@ -68,7 +68,7 @@ await page.route('http://localhost:8080/**', async (route) => {
 const count = (path) => requests.filter((r) => r.path === path && r.method === 'GET').length
 try {
   await page.clock.install()
-  await page.goto('http://localhost:5173/')
+  await page.goto((process.env.BASE_URL || 'http://localhost:5173') + '/')
   await page.getByRole('button', { name: 'Ver Carta QA 1', exact: true }).waitFor()
   assert.equal(requests.filter((r) => r.path === '/products' && r.query.includes('size=4')).length, 1)
   assert.equal(requests.some((r) => r.query.includes('size=100')), false)
