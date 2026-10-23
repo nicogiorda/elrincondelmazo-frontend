@@ -32,7 +32,7 @@ async function setup(options = {}) {
   page.setDefaultTimeout(10000)
   await page.clock.install()
   const state = { cart: makeCart(), cartB: makeCart(5, 'Carrito nueva sesión'), status: 200,
-    getStatus: 200, productStatus: 200, orderStatus: 200, calls: [], errors: [], ...options }
+    getStatus: 200, productStatus: 200, orderStatus: 201, calls: [], errors: [], ...options }
   page.on('pageerror', e => state.errors.push(e.message))
   await page.route('http://localhost:8080/**', async route => {
     const req = route.request(), path = new URL(req.url()).pathname, method = req.method()
@@ -69,9 +69,9 @@ async function setup(options = {}) {
       data = { id: 42, state: 'PENDIENTE', orderDate: '2026-10-21T10:00:00',
         paymentMethod: body.paymentMethod, subtotal: state.cart.subtotal, total: body.expectedTotal,
         totalDiscount: 0, promotions: [], items: state.cart.items.map(item => ({ ...item, price: item.unitPrice })) }
-      if (status === 200) state.cart = makeCart(0)
+      if (status === 201) state.cart = makeCart(0)
     }
-    if (status !== 200) data = { message: 'Stock insuficiente QA' }
+    if (status >= 400) data = { message: 'Stock insuficiente QA' }
     if (gate) await gate.promise
     await route.fulfill({ status, json: data }).catch(() => {}) // Logout may abort transport.
   })

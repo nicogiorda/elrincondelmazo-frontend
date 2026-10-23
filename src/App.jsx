@@ -23,12 +23,11 @@ import useCart from './hooks/useCart.js'
 import useCartMetadata from './hooks/useCartMetadata.js'
 import useSession from './hooks/useSession.js'
 import useCatalog from './hooks/useCatalog.js'
+import useCheckout from './hooks/useCheckout.js'
+import useOrders from './hooks/useOrders.js'
 import { productIdFrom } from './utils/productId.js'
 
 const publicationsCacheLifetime = 60_000
-const ordersCacheLifetime = 60_000
-const emptyOrderHistory = () => ({ items: [], updatedAt: 0, loading: false, error: '' })
-const orderSummaryFields = ['state', 'orderDate', 'paymentMethod', 'subtotal', 'totalDiscount', 'total']
 
 const promotionTypes = {
   quantity: 'CANTIDAD',
@@ -120,26 +119,6 @@ function App() {
   // Perfil y desactivación no pueden enviar operaciones simultáneas sobre la cuenta.
   const accountRequest = useRef(false)
   const reviewRequest = useRef(false)
-  const [confirmedOrder, setConfirmedOrder] = useState(null)
-  const [orderDetails, setOrderDetails] = useState({})
-  const [orderHistory, setOrderHistory] = useState(emptyOrderHistory)
-  const ordersCache = useRef({ items: null, updatedAt: 0 })
-  const ordersRequest = useRef(null)
-  const orderDetailRequests = useRef(new Map())
-  const orderDetailsCache = useRef({})
-  const publishOrderDetails = useCallback((details) => {
-    orderDetailsCache.current = details
-    setOrderDetails(details)
-  }, [])
-  const resetOrderData = useCallback(() => {
-    ordersRequest.current?.controller.abort()
-    ordersRequest.current = null
-    orderDetailRequests.current.forEach((request) => request.controller.abort())
-    orderDetailRequests.current.clear()
-    ordersCache.current = { items: null, updatedAt: 0 }
-    setOrderHistory(emptyOrderHistory())
-    publishOrderDetails({})
-  }, [publishOrderDetails])
   const [ownPublications, setOwnPublications] = useState({ userId: null, items: [], loading: false, error: '' })
   const ownPublicationsStamp = useRef(null)
   const [publicationAttempt, setPublicationAttempt] = useState(0)
@@ -161,8 +140,6 @@ function App() {
     setProfileSaving(false)
     setDeactivating(false)
     setDeactivateError('')
-    setConfirmedOrder(null)
-    resetOrderData()
     ownPublicationsStamp.current = null
     setOwnPublications({ userId: null, items: [], loading: false, error: '' })
     setPublicationBusyId(null)
@@ -171,7 +148,7 @@ function App() {
     setPromotionError('')
     setPromotionLoading(false)
     reviewRequest.current = false
-  }, [resetOrderData])
+  }, [])
 
   const { user, token, loading, sessionError, setSessionError, setUser,
     login, register, logout, sessionVersion, sessionAbort, subscribeSessionChange } = useSession({ onSessionChange: resetPrivateData })
@@ -239,6 +216,16 @@ function App() {
   const { metadata: cartMetadata, retryMetadata } = useCartMetadata({
     cart, products, userId: user?.id, token, sessionVersion, subscribeSessionChange,
     selectedProductId, loadProduct, subscribeInvalidation,
+  })
+
+  const { orderHistory, orderDetails, loadOrders, loadOrderDetail, recordConfirmedOrder } = useOrders({
+    user, token, sessionVersion, sessionAbort, subscribeSessionChange, logout, setSessionError,
+    active: location.pathname === '/mis-pedidos',
+  })
+  const checkout = useCheckout({ active: location.pathname === '/checkout', user, token, cart, cartBusy,
+    isCartPending, beginCheckout, sessionVersion, sessionAbort, subscribeSessionChange, logout, setSessionError,
+    onOrderConfirmed: recordConfirmedOrder, onCatalogInvalidated: refreshPendingCatalog,
+    onConfirmed: () => navigate('/pedido-confirmado'),
   })
 
   const publications = ownPublications.userId === user?.id ? ownPublications.items : []
@@ -354,62 +341,6 @@ function App() {
     if (reloadCart()) retryMetadata()
   }
 
-  const previewOrder = useCallback(async (paymentMethod, signal) => {
-    if (!token || isCartPending()) throw new Error('Esperá a que termine de actualizarse el carrito.')
-    const version = sessionVersion.current
-    try {
-      const response = await fetch(URL + '/orders/preview', {
-        method: 'POST', signal: AbortSignal.any([signal, sessionAbort.current.signal]),
-        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentMethod }),
-      })
-      const quote = await readResponse(response)
-      if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
-      if (!Number.isFinite(quote.total) || !Array.isArray(quote.promotions)) throw new Error('Cotización inválida.')
-      return quote
-    } catch (error) {
-      if (version === sessionVersion.current && error.status === 401) { logout(); setSessionError(error.message) }
-      throw error
-    }
-  }, [token, logout, sessionAbort, sessionVersion, setSessionError, isCartPending])
-
-  function confirmOrder({ paymentMethod, expectedTotal, requestKey }) {
-    const checkout = beginCheckout()
-    if (!checkout) {
-      return Promise.reject(new Error('Revisá el carrito antes de confirmar.'))
-    }
-    const version = sessionVersion.current
-    return fetch(URL + '/orders', {
-      signal: sessionAbort.current.signal,
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentMethod, expectedTotal, requestKey }),
-    })
-      .then(readResponse)
-      .then((order) => {
-        if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
-        if (!order.id || !Array.isArray(order.items) || !Array.isArray(order.promotions)) {
-          throw new Error('La respuesta no contiene el detalle del pedido. Revisá tus pedidos antes de reintentar.')
-        }
-        resetOrderData()
-        publishOrderDetails({ [order.id]: { loading: false, error: '', data: order, updatedAt: Date.now() } })
-        setConfirmedOrder(order)
-        refreshPendingCatalog()
-        // El service vacía el carrito; los productos se consultarán nuevamente.
-        checkout.complete()
-        navigate('/pedido-confirmado')
-        return order
-      })
-      .catch((error) => {
-        if (version === sessionVersion.current && error.status === 401) {
-          logout()
-          setSessionError(error.message)
-        }
-        throw error
-      })
-      .finally(checkout.release)
-  }
-
   function publishReview(product, { rating, comment }) {
     if (!user || !token || reviewRequest.current) return Promise.reject(new Error('Ingresá o esperá a que termine el envío.'))
     if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !comment.trim() || comment.length > 1000) {
@@ -444,98 +375,6 @@ function App() {
         if (version === sessionVersion.current) reviewRequest.current = false
       })
   }
-  const loadOrders = useCallback((force = false) => {
-    if (!user?.id || !token) return
-    if (ordersRequest.current) return ordersRequest.current.promise
-    const cached = ordersCache.current
-    if (!force && cached.items !== null && Date.now() - cached.updatedAt < ordersCacheLifetime) {
-      return Promise.resolve(cached.items)
-    }
-    const version = sessionVersion.current
-    const request = { controller: new AbortController() }
-    ordersRequest.current = request
-    const isCurrent = () => version === sessionVersion.current && ordersRequest.current === request
-    setOrderHistory((current) => ({ ...current, loading: true, error: '' }))
-    request.promise = fetch(URL + '/orders', {
-      signal: AbortSignal.any([request.controller.signal, sessionAbort.current.signal]),
-      headers: { Authorization: 'Bearer ' + token },
-    }).then(readResponse).then((items) => {
-      if (!isCurrent()) return
-      if (!Array.isArray(items) || !items.every((order) => order && Number.isSafeInteger(order.id)
-        && typeof order.orderDate === 'string' && typeof order.state === 'string' && Number.isFinite(order.total))) {
-        throw new Error('La respuesta de pedidos no contiene una lista válida.')
-      }
-      const updatedAt = Date.now()
-      // Una respuesta de detalle anterior no puede deshacer el listado recién actualizado.
-      orderDetailRequests.current.forEach((pending) => pending.controller.abort())
-      orderDetailRequests.current.clear()
-      const details = {}
-      items.forEach((order) => {
-        const previous = orderDetailsCache.current[order.id]
-        if (Array.isArray(order.items) && Array.isArray(order.promotions)) {
-          details[order.id] = { data: order, updatedAt, loading: false, error: '' }
-        } else if (previous?.data && updatedAt - previous.updatedAt < ordersCacheLifetime
-          && orderSummaryFields.every((field) => order[field] === previous.data[field])) {
-          details[order.id] = { ...previous, loading: false, error: '' }
-        }
-      })
-      publishOrderDetails(details)
-      ordersCache.current = { items, updatedAt }
-      setOrderHistory({ items, updatedAt, loading: false, error: '' })
-      return items
-    }).catch((error) => {
-      if (!isCurrent()) return
-      if (error.status === 401) { logout(); setSessionError(error.message) }
-      else setOrderHistory((current) => ({ ...current, error: 'No pudimos actualizar tus pedidos. ' + error.message }))
-    }).finally(() => {
-      if (!isCurrent()) return
-      ordersRequest.current = null
-      setOrderHistory((current) => ({ ...current, loading: false }))
-    })
-    return request.promise
-  }, [user?.id, token, logout, publishOrderDetails, sessionAbort, sessionVersion, setSessionError])
-
-  const needsOrders = location.pathname === '/mis-pedidos'
-  useEffect(() => {
-    if (!needsOrders) return
-    let active = true
-    Promise.resolve().then(() => { if (active) loadOrders() })
-    // La petición pertenece a App y sigue siendo reutilizable si se cambia de pantalla.
-    return () => { active = false }
-  }, [needsOrders, loadOrders])
-
-  useEffect(() => {
-    if (!needsOrders || !orderHistory.updatedAt || orderHistory.loading || orderHistory.error) return
-    const timer = setTimeout(() => loadOrders(), Math.max(0, orderHistory.updatedAt + ordersCacheLifetime - Date.now()))
-    return () => clearTimeout(timer)
-  }, [needsOrders, orderHistory.updatedAt, orderHistory.loading, orderHistory.error, loadOrders])
-
-  const loadOrderDetail = useCallback((orderId) => {
-    if (!user?.id || !token) return
-    const cached = orderDetailsCache.current[orderId]
-    if (cached?.data && Date.now() - cached.updatedAt < ordersCacheLifetime) return
-    if (orderDetailRequests.current.has(orderId)) return orderDetailRequests.current.get(orderId).promise
-    const version = sessionVersion.current
-    const request = { controller: new AbortController() }
-    orderDetailRequests.current.set(orderId, request)
-    const isCurrent = () => version === sessionVersion.current && orderDetailRequests.current.get(orderId) === request
-    publishOrderDetails({ ...orderDetailsCache.current, [orderId]: { ...cached, loading: true, error: '', data: cached?.data ?? null } })
-    request.promise = fetch(URL + '/orders/' + orderId, {
-      signal: AbortSignal.any([request.controller.signal, sessionAbort.current.signal]),
-      headers: { Authorization: 'Bearer ' + token },
-    }).then(readResponse).then((data) => {
-      if (!isCurrent()) return
-      if (data.id !== orderId || !Array.isArray(data.items)) throw new Error('El detalle recibido no corresponde al pedido.')
-      publishOrderDetails({ ...orderDetailsCache.current, [orderId]: { loading: false, error: '', data, updatedAt: Date.now() } })
-    }).catch((error) => {
-      if (!isCurrent()) return
-      if (error.status === 401) { logout(); setSessionError(error.message) }
-      else publishOrderDetails({ ...orderDetailsCache.current, [orderId]: { ...cached, loading: false, error: error.message, data: cached?.data ?? null } })
-    }).finally(() => {
-      if (isCurrent()) orderDetailRequests.current.delete(orderId)
-    })
-    return request.promise
-  }, [user?.id, token, logout, publishOrderDetails, sessionAbort, sessionVersion, setSessionError])
   async function uploadProductPhoto(file) {
     if (!user || !token) throw new Error('Ingresá para subir fotografías.')
     const version = sessionVersion.current
@@ -846,10 +685,10 @@ function App() {
       </ProtectedRoute>} />
       <Route path="/checkout" element={<ProtectedRoute user={user}>
         <Checkout {...shared} cart={cart} products={products} loading={cartLoading}
-          error={cartError} onRetry={retryCart} onPreview={previewOrder} onConfirm={confirmOrder} />
+          error={cartError} onRetry={retryCart} checkout={checkout} />
       </ProtectedRoute>} />
       <Route path="/pedido-confirmado" element={<ProtectedRoute user={user}>
-        <OrderConfirmation order={confirmedOrder} cartCount={cartCount} />
+        <OrderConfirmation order={checkout.confirmedOrder} cartCount={cartCount} />
       </ProtectedRoute>} />
       <Route path="/ingresar" element={<Login {...shared} onLogin={login} />} />
       <Route path="/crear-cuenta" element={<Register {...shared} onRegister={register} />} />
