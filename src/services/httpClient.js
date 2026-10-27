@@ -16,14 +16,15 @@ export function readResponse(response) {
 
 // El token y la cancelación pertenecen al llamador; el cliente no guarda sesión.
 export function request(path, { method = 'GET', token, body, signal } = {}) {
+  const multipart = body instanceof FormData
   return fetch(API_BASE_URL + path, {
     method,
     signal,
     headers: {
       ...(token ? { Authorization: 'Bearer ' + token } : {}),
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(body !== undefined && !multipart ? { 'Content-Type': 'application/json' } : {}),
     },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    ...(body !== undefined ? { body: multipart ? body : JSON.stringify(body) } : {}),
   })
 }
 

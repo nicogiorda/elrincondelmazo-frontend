@@ -25,9 +25,8 @@ import useSession from './hooks/useSession.js'
 import useCatalog from './hooks/useCatalog.js'
 import useCheckout from './hooks/useCheckout.js'
 import useOrders from './hooks/useOrders.js'
+import usePublications from './hooks/usePublications.js'
 import { productIdFrom } from './utils/productId.js'
-
-const publicationsCacheLifetime = 60_000
 
 const promotionTypes = {
   quantity: 'CANTIDAD',
@@ -119,11 +118,6 @@ function App() {
   // Perfil y desactivación no pueden enviar operaciones simultáneas sobre la cuenta.
   const accountRequest = useRef(false)
   const reviewRequest = useRef(false)
-  const [ownPublications, setOwnPublications] = useState({ userId: null, items: [], loading: false, error: '' })
-  const ownPublicationsStamp = useRef(null)
-  const [publicationAttempt, setPublicationAttempt] = useState(0)
-  const [publicationBusyId, setPublicationBusyId] = useState(null)
-  const [publicationError, setPublicationError] = useState('')
   const needsPublications = location.pathname === '/mis-publicaciones'
     || (location.pathname === '/publicar' && Boolean(location.state?.product?.id))
 
@@ -140,10 +134,6 @@ function App() {
     setProfileSaving(false)
     setDeactivating(false)
     setDeactivateError('')
-    ownPublicationsStamp.current = null
-    setOwnPublications({ userId: null, items: [], loading: false, error: '' })
-    setPublicationBusyId(null)
-    setPublicationError('')
     setPromotions([])
     setPromotionError('')
     setPromotionLoading(false)
@@ -159,54 +149,12 @@ function App() {
     refreshPendingCatalog, rememberProduct, upsertProduct, removeProduct, syncPublicProducts, subscribeInvalidation,
   } = useCatalog({ location, productId: selectedProductId, isProductRoute })
 
-  useEffect(() => {
-    if (!needsPublications || !user?.id || !token) return
-    if (ownPublicationsStamp.current?.userId === user.id
-      && Date.now() - ownPublicationsStamp.current.time < publicationsCacheLifetime) return
-    let active = true
-    const controller = new AbortController()
-    const version = sessionVersion.current
-    Promise.resolve().then(async () => {
-      if (!active) return
-      setOwnPublications((current) => ({
-        userId: user.id, items: current.userId === user.id ? current.items : [], loading: true, error: '',
-      }))
-      try {
-        const items = []
-        let page = 0
-        let totalPages
-        do {
-          const response = await fetch(URL + '/products/mine?page=' + page + '&size=20', {
-            headers: { Authorization: 'Bearer ' + token }, signal: controller.signal,
-          })
-          const data = await readResponse(response)
-          if (!active || version !== sessionVersion.current) return
-          if (!Array.isArray(data.content) || !Number.isInteger(data.totalPages) || data.totalPages < 0
-            || data.content.some((product) => product.sellerId !== user.id)) {
-            throw new Error('La respuesta de publicaciones no contiene una página válida del usuario.')
-          }
-          items.push(...data.content)
-          totalPages = data.totalPages
-          page += 1
-        } while (page < totalPages)
-        if (active && version === sessionVersion.current) {
-          ownPublicationsStamp.current = { userId: user.id, time: Date.now() }
-          setOwnPublications({ userId: user.id, items, loading: false, error: '' })
-          syncPublicProducts(user.id, items)
-        }
-      } catch (error) {
-        if (!active || version !== sessionVersion.current) return
-        if (error.status === 401) {
-          logout()
-          setSessionError(error.message)
-        } else {
-          setOwnPublications((current) => ({ ...current, loading: false, error: error.status === 403
-            ? 'No tenés permiso para consultar tus publicaciones.' : error.message }))
-        }
-      }
-    })
-    return () => { active = false; controller.abort() }
-  }, [needsPublications, user?.id, token, publicationAttempt, logout, sessionVersion, setSessionError, syncPublicProducts])
+  const { publications, loading: publicationsLoading, loadError: publicationsLoadError,
+    error: publicationError, busyId: publicationBusyId, refresh: retryPublications,
+    save: publishProduct, uploadPhoto: uploadProductPhoto, toggle: togglePublication, remove: removePublication,
+  } = usePublications({ user, token, active: needsPublications, sessionVersion, sessionAbort,
+    subscribeSessionChange, logout, setSessionError, refreshPendingCatalog, upsertProduct, removeProduct,
+    syncPublicProducts, onSaved: () => navigate('/mis-publicaciones') })
 
   const { cart, items, cartCount, cartLoading, cartBusy, cartError, cartMessage,
     quantitySyncItemId, addToCart, changeQuantity, removeItem, retryCart: reloadCart,
@@ -227,9 +175,6 @@ function App() {
     onOrderConfirmed: recordConfirmedOrder, onCatalogInvalidated: refreshPendingCatalog,
     onConfirmed: () => navigate('/pedido-confirmado'),
   })
-
-  const publications = ownPublications.userId === user?.id ? ownPublications.items : []
-  const publicationsLoading = ownPublications.loading || (needsPublications && ownPublications.userId !== user?.id)
 
   useEffect(() => {
     if (user?.role !== 'ADMIN' || !token || !needsPromotions) return;
@@ -375,51 +320,6 @@ function App() {
         if (version === sessionVersion.current) reviewRequest.current = false
       })
   }
-  async function uploadProductPhoto(file) {
-    if (!user || !token) throw new Error('Ingresá para subir fotografías.')
-    const version = sessionVersion.current
-    const body = new FormData()
-    body.append('file', file)
-    try {
-      const response = await fetch(URL + '/products/images', {
-      signal: sessionAbort.current.signal,
-        method: 'POST', headers: { Authorization: 'Bearer ' + token }, body,
-      })
-      const data = await readResponse(response)
-      if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
-      if (typeof data.url !== 'string' || !/^https?:\/\//.test(data.url)) throw new Error('La subida no devolvió una URL de imagen válida.')
-      return data.url
-    } catch (error) {
-      if (version === sessionVersion.current && error.status === 401) {
-        logout()
-        setSessionError(error.message)
-      }
-      throw error
-    }
-  }
-  async function publishProduct(request, productId) {
-    if (!user || !token) throw new Error('Ingresá para guardar la publicación.')
-    const version = sessionVersion.current
-    try {
-      const response = await fetch(URL + '/products' + (productId == null ? '' : '/' + productId), {
-      signal: sessionAbort.current.signal,
-        method: productId == null ? 'POST' : 'PUT',
-        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      })
-      const saved = await readResponse(response)
-      if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
-      if (!saved.id || saved.sellerId !== user.id || (productId != null && saved.id !== productId)) throw new Error('La respuesta no contiene la publicación esperada.')
-      syncPublication(saved)
-      navigate('/mis-publicaciones')
-    } catch (error) {
-      if (version === sessionVersion.current && error.status === 401) {
-        logout()
-        setSessionError(error.message)
-      }
-      throw error
-    }
-  }
   async function saveProfile(form) {
     if (!user || !token) throw new Error('Ingresá para actualizar tu perfil.')
     if (accountRequest.current) return null
@@ -548,63 +448,8 @@ function App() {
     cartBusy: cartBusy || Boolean(user && !cart), cartError, cartMessage,
   }
   const account = { ...shared, user: currentUser, onLogout: logout }
-  function syncPublication(saved) {
-    refreshPendingCatalog()
-    setOwnPublications((current) => ({ ...current, userId: user.id,
-      items: [saved, ...current.items.filter((product) => product.id !== saved.id)]
-        .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id - a.id),
-    }))
-    upsertProduct(saved)
-  }
-  function retryPublications() {
-    ownPublicationsStamp.current = null
-    setPublicationError('')
-    setPublicationAttempt((current) => current + 1)
-  }
-  async function changePublication(product, action) {
-    if (!user || !token || publicationBusyId !== null || publicationsLoading || product.sellerId !== user.id) return
-    if (action === 'delete' && !window.confirm('¿Querés eliminar esta publicación? Esta acción no se puede deshacer.')) return
-    const version = sessionVersion.current
-    setPublicationBusyId(product.id)
-    setPublicationError('')
-    try {
-      const response = await fetch(URL + '/products/' + product.id + (action === 'delete' ? '' : '/' + action), {
-      signal: sessionAbort.current.signal,
-        method: action === 'delete' ? 'DELETE' : 'PATCH',
-        headers: { Authorization: 'Bearer ' + token },
-      })
-      if (action === 'delete') {
-        if (response.status !== 204) {
-          await readResponse(response)
-          throw new Error('El servidor no confirmó la eliminación.')
-        }
-        if (version !== sessionVersion.current) return
-        refreshPendingCatalog()
-        setOwnPublications((current) => ({ ...current, items: current.items.filter((item) => item.id !== product.id) }))
-        removeProduct(product.id)
-      } else {
-        const saved = await readResponse(response)
-        if (version !== sessionVersion.current) return
-        if (saved.id !== product.id || saved.sellerId !== user.id) throw new Error('La respuesta no contiene la publicación esperada.')
-        syncPublication(saved)
-      }
-    } catch (error) {
-      if (version !== sessionVersion.current) return
-      if (error.status === 401) {
-        logout()
-        setSessionError(error.message)
-      } else {
-        setPublicationError(error.status === 404
-          ? 'La publicación ya no está disponible. Actualizá el listado.'
-          : error.status === 403 ? 'No tenés permiso para modificar esta publicación.' : error.message)
-      }
-    } finally {
-      if (version === sessionVersion.current) setPublicationBusyId(null)
-    }
-  }
-  function togglePublication(product) {
-    if (!['ACTIVO', 'INACTIVO'].includes(product.status)) return
-    return changePublication(product, product.status === 'ACTIVO' ? 'pause' : 'resume')
+  function confirmPublicationRemoval(product) {
+    if (window.confirm('¿Querés eliminar esta publicación? Esta acción no se puede deshacer.')) return removePublication(product)
   }
 
   if (loading) return <p role="status" className="p-8">Verificando sesión…</p>
@@ -657,14 +502,14 @@ function App() {
       ) : <PurchaseNotice {...shared} title="Producto no disponible" message="El producto no existe o ya no está disponible." />} />
       <Route path="/mis-publicaciones" element={<ProtectedRoute user={user}>
         <Publications {...account} products={publications} loading={publicationsLoading}
-          error={ownPublications.error || publicationError} busyId={publicationBusyId} onRetry={retryPublications}
+          error={publicationError} busyId={publicationBusyId} onRetry={retryPublications}
           onEdit={(product) => navigate('/publicar', { state: { product } })}
-          onDelete={(product) => changePublication(product, 'delete')}
+          onDelete={confirmPublicationRemoval}
           onToggleStatus={togglePublication} />
       </ProtectedRoute>} />
       <Route path="/publicar" element={<ProtectedRoute user={user}>
         {location.state?.product && publicationsLoading ? <p role="status" className="p-8 font-bold">Cargando publicación…</p>
-          : location.state?.product && ownPublications.error ? <div role="alert" className="p-8 font-bold"><p>{ownPublications.error}</p><button type="button" onClick={retryPublications} className="underline">Reintentar</button></div>
+          : location.state?.product && publicationsLoadError ? <div role="alert" className="p-8 font-bold"><p>{publicationsLoadError}</p><button type="button" onClick={retryPublications} className="underline">Reintentar</button></div>
           : location.state?.product && !editingPublication ? <Navigate to="/mis-publicaciones" replace />
           : <PublishProduct key={(user?.id ?? '') + ':' + (editingPublication?.id ?? 'new')} {...account}
               product={editingPublication} collections={collections} collectionsLoading={collectionsLoading} collectionsError={collectionsError}
