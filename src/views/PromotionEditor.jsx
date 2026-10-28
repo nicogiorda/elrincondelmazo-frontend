@@ -9,7 +9,7 @@ import { promotionKinds, emptyPromotion, promotionStatus, promotionPeriod, promo
 import { productTypeLabels } from '../data/accountMocks.js'
 import { paymentMethods } from '../data/paymentMethods.js'
 
-function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave,
+function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave, busy = false,
   collections = [], collectionsLoading, collectionsError, loadProductsPage, loadProduct, productCacheVersion }) {
     const [form, setForm] = useState(() => {
       const initial = isNew ? { ...emptyPromotion, collectionId: '', productId: '' } : promotion;
@@ -92,7 +92,7 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
   async function submitPromotion(event) {
     event.preventDefault();
     // La referencia bloquea incluso dos eventos antes del siguiente render.
-    if (saveRequest.current || dataLoading || dataError || missingSelection) return;
+    if (saveRequest.current || busy || dataLoading || dataError || missingSelection) return;
     saveRequest.current = true;
     setSaving(true);
     setSaveError('');
@@ -192,7 +192,7 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
         <div className="flex items-center gap-3.5"><ToggleSwitch large checked={form.stackable} onChange={(value) => changeField('stackable', value)} label="Acumulable" /><div><p className="font-extrabold">Acumulable</p><p className="text-[0.8125rem] leading-[1.096875rem] opacity-85">Se suma a las demás promociones que apliquen.</p></div></div>
         <div className="grid max-w-[40.2rem] grid-cols-1 gap-4.5 sm:grid-cols-2"><FormField id="promotion-start" label="Inicio" type="date" required value={form.startDate.slice(0, 10)} onChange={(event) => changeField('startDate', event.target.value)} /><FormField id="promotion-end" label={<>Fin<span className="mt-2 block font-semibold tracking-normal normal-case opacity-70">(opcional)</span></>} type="date" min={form.startDate.slice(0, 10) || undefined} value={form.endDate.slice(0, 10)} onChange={(event) => changeField('endDate', event.target.value)} /></div>
         {saveError && <p role="alert" className="font-bold text-rojo">{saveError}</p>}
-        <div className="flex flex-wrap justify-end gap-3"><Link to="/promociones" className="rounded-full border-[2.4px] border-bordo px-6 py-3.5 text-base font-extrabold">Cancelar</Link><button type="submit" disabled={saving || dataLoading || Boolean(dataError) || missingSelection} className="rounded-full border-[2.4px] border-bordo bg-bordo px-7 py-3.5 text-base font-extrabold text-crema">{saving ? 'Guardando…' : isNew ? 'Crear promoción' : 'Guardar cambios'}</button></div>
+        <div className="flex flex-wrap justify-end gap-3"><Link to="/promociones" className="rounded-full border-[2.4px] border-bordo px-6 py-3.5 text-base font-extrabold">Cancelar</Link><button type="submit" disabled={saving || busy || dataLoading || Boolean(dataError) || missingSelection} className="rounded-full border-[2.4px] border-bordo bg-bordo px-7 py-3.5 text-base font-extrabold text-crema">{saving ? 'Guardando…' : isNew ? 'Crear promoción' : 'Guardar cambios'}</button></div>
       </form>
       <aside aria-label="Vista previa de promoción" className="flex min-w-0 flex-col gap-3 wrap-anywhere">
         <h2 className="text-[0.8125rem] font-extrabold tracking-[0.065rem] uppercase">Así se ve en la home</h2>

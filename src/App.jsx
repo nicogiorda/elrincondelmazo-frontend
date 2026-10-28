@@ -17,7 +17,7 @@ import Checkout from './views/Checkout.jsx'
 import OrderConfirmation from './views/OrderConfirmation.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import PurchaseNotice from './components/PurchaseNotice.jsx'
-import { invalidatePublicPromotions } from './services/publicPromotions.js'
+import useAdminPromotions from './hooks/useAdminPromotions.js'
 import { API_BASE_URL as URL, readResponse } from './services/httpClient.js'
 import useCart from './hooks/useCart.js'
 import useCartMetadata from './hooks/useCartMetadata.js'
@@ -27,82 +27,6 @@ import useCheckout from './hooks/useCheckout.js'
 import useOrders from './hooks/useOrders.js'
 import usePublications from './hooks/usePublications.js'
 import { productIdFrom } from './utils/productId.js'
-
-const promotionTypes = {
-  quantity: 'CANTIDAD',
-  collection: 'COLECCION',
-  type: 'TIPO_PRODUCTO',
-  payment: 'METODO_PAGO',
-  minimum: 'MONTO_MINIMO',
-  product: 'PRODUCTO',
-};
-
-const frontendPromotionTypes = Object.fromEntries(
-  Object.entries(promotionTypes).map(([key, value]) => [value, key])
-);
-
-function promotionFromBackend(promotion) {
-  return {
-    id: promotion.id,
-    name: promotion.name,
-    description: promotion.description ?? '',
-    kind: frontendPromotionTypes[promotion.type],
-    discount: Number(promotion.discountPercentage),
-    minimumQuantity: promotion.minimumQuantity ?? 1,
-    minimumAmount: Number(promotion.minimumAmount ?? 0),
-    productType: promotion.productType ?? '',
-    paymentMethod: promotion.paymentMethod ?? '',
-    collectionId: promotion.collectionId ?? '',
-    collectionName: promotion.collectionName ?? '',
-    productId: promotion.productId ?? '',
-    productName: promotion.productName ?? '',
-    stackable: promotion.stackable,
-    startDate: promotion.startDate ?? '',
-    endDate: promotion.endDate ?? '',
-    enabled: promotion.active,
-  };
-}
-
-function promotionToBackend(promotion) {
-  const kind = promotion.kind;
-  if (kind === 'type' && !['CARTA', 'SOBRE', 'LOOTBOX'].includes(promotion.productType)) {
-    throw new Error('Seleccioná un tipo de producto válido.');
-  }
-
-  return {
-    name: promotion.name.trim(),
-    description: promotion.description,
-    type: promotionTypes[kind],
-    discountPercentage: Number(promotion.discount),
-
-    minimumQuantity: kind === 'quantity'
-      ? Number(promotion.minimumQuantity) : null,
-
-    minimumAmount: kind === 'minimum'
-      ? Number(promotion.minimumAmount) : null,
-
-    productType: ['type', 'quantity'].includes(kind)
-      ? promotion.productType || null : null,
-
-    paymentMethod: kind === 'payment'
-      ? promotion.paymentMethod || null : null,
-
-    collectionId: kind === 'collection'
-      ? Number(promotion.collectionId) : null,
-
-    productId: kind === 'product'
-      ? Number(promotion.productId) : null,
-
-    stackable: promotion.stackable,
-
-    startDate: promotion.startDate.includes('T')
-      ? promotion.startDate : `${promotion.startDate}T00:00:00`,
-
-    endDate: promotion.endDate
-      ? (promotion.endDate.includes('T') ? promotion.endDate : `${promotion.endDate}T23:59:59`)
-      : null,
-  };
-}
 
 function App() {
 
@@ -121,11 +45,6 @@ function App() {
   const needsPublications = location.pathname === '/mis-publicaciones'
     || (location.pathname === '/publicar' && Boolean(location.state?.product?.id))
 
-  const [promotions, setPromotions] = useState([])
-  const [promotionLoading, setPromotionLoading] = useState(true)
-  const [promotionError, setPromotionError] = useState('')
-  const promotionRequest = useRef(null)
-  const [promotionAttempt, setPromotionAttempt] = useState(0)
   const needsPromotions = ['/promociones', '/editar-promocion', '/nueva-promocion'].includes(location.pathname)
 
   // Coordinación temporal de los dominios que todavía viven en App.
@@ -134,9 +53,6 @@ function App() {
     setProfileSaving(false)
     setDeactivating(false)
     setDeactivateError('')
-    setPromotions([])
-    setPromotionError('')
-    setPromotionLoading(false)
     reviewRequest.current = false
   }, [])
 
@@ -176,57 +92,10 @@ function App() {
     onConfirmed: () => navigate('/pedido-confirmado'),
   })
 
-  useEffect(() => {
-    if (user?.role !== 'ADMIN' || !token || !needsPromotions) return;
-    let cancelled = false;
-    const version = sessionVersion.current;
-
-    async function loadPromotions() {
-      if (cancelled) return;
-      const key = `${version}:${user.id}:${token}:${promotionAttempt}`;
-      let request = promotionRequest.current;
-      if (request?.key !== key) {
-        request = { key, applied: false, promise: fetch(URL + '/promotions', {
-          signal: sessionAbort.current.signal,
-          headers: { Authorization: 'Bearer ' + token },
-        }).then(readResponse) };
-        promotionRequest.current = request;
-      }
-      // Un cambio de ruta puede cambiar logout. Reutilizamos la solicitud en curso
-      // y nunca sobrescribimos con su resultado antiguo una edición ya guardada.
-      if (request.applied) return;
-      setPromotionLoading(true);
-      setPromotionError('');
-      try {
-        const data = await request.promise;
-        if (!Array.isArray(data)) throw new Error('La respuesta de promociones no es una lista.');
-        if (!cancelled && version === sessionVersion.current && token === localStorage.getItem('token')) {
-          request.applied = true;
-          setPromotions(data.map(promotionFromBackend));
-        }
-      } catch (error) {
-        if (cancelled || version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
-        if (error.status === 401) {
-          logout();
-          setSessionError(error.message);
-        } else {
-          request.applied = true;
-          setPromotionError(error.message);
-        }
-      } finally {
-        if (!cancelled && version === sessionVersion.current && token === localStorage.getItem('token')) {
-          setPromotionLoading(false);
-        }
-      }
-    }
-    Promise.resolve().then(loadPromotions);
-    return () => { cancelled = true; };
-  }, [user?.id, user?.role, token, logout, needsPromotions, promotionAttempt, sessionAbort, sessionVersion, setSessionError]);
-
-  useEffect(() => {
-    // Una respuesta pública anterior a un guardado no se reutiliza al volver a Home.
-    invalidatePublicPromotions()
-  }, [promotions])
+  const { promotions, loading: promotionLoading, error: promotionError, busyId: promotionBusyId,
+    refresh: refreshPromotions, save: savePromotion, toggle: togglePromotion,
+  } = useAdminPromotions({ user, token, active: needsPromotions, sessionVersion, sessionAbort,
+    subscribeSessionChange, logout, setSessionError, onSaved: () => navigate('/promociones') })
 
   const [reviewsByProduct, setReviewsByProduct] = useState({})
   const [reviewErrors, setReviewErrors] = useState({})
@@ -361,54 +230,6 @@ function App() {
       }
     }
   }
-  async function savePromotion(promotion) {
-    if (user?.role !== 'ADMIN' || !token) throw new Error('Ingresá con una cuenta administradora.');
-    const version = sessionVersion.current;
-    try {
-      const editing = promotion.id != null;
-      const response = await fetch(URL + '/promotions' + (editing ? '/' + promotion.id : ''), {
-        method: editing ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify(promotionToBackend(promotion)),
-      });
-      const data = await readResponse(response);
-      if (version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
-      const saved = promotionFromBackend(data);
-      setPromotions((current) => editing
-        ? current.map((item) => item.id === saved.id ? saved : item)
-        : [...current, saved]);
-      navigate('/promociones');
-    } catch (error) {
-      if (version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
-      if (error.status === 401) {
-        logout();
-        setSessionError(error.message);
-      }
-      throw error;
-    }
-  }
-
-  async function togglePromotion(promotion) {
-    if (user?.role !== 'ADMIN' || !token) return;
-    const version = sessionVersion.current;
-    try {
-      const action = promotion.enabled ? 'deactivate' : 'activate';
-      const response = await fetch(URL + '/promotions/' + promotion.id + '/' + action, {
-        method: 'PATCH', headers: { Authorization: 'Bearer ' + token },
-      });
-      const data = await readResponse(response);
-      if (version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
-      const updated = promotionFromBackend(data);
-      setPromotions((current) => current.map((item) => item.id === updated.id ? updated : item));
-    } catch (error) {
-      if (version !== sessionVersion.current || token !== localStorage.getItem('token')) return;
-      if (error.status === 401) {
-        logout();
-        setSessionError(error.message);
-      } else alert(error.message);
-    }
-  }
-
   async function deactivateAccount() {
     if (!user || !token || accountRequest.current) return
     const confirmado = window.confirm('¿Estás seguro de que deseás desactivar tu cuenta?')
@@ -539,16 +360,16 @@ function App() {
       <Route path="/crear-cuenta" element={<Register {...shared} onRegister={register} />} />
       <Route path="/promociones" element={loading ? <p role="status">Cargando sesión…</p> : isAdmin
         ? <Promotions {...account} promotions={promotions} loading={promotionLoading} error={promotionError}
-            onRefresh={() => setPromotionAttempt((current) => current + 1)}
+            busyId={promotionBusyId} onRefresh={refreshPromotions}
             onEdit={(promotion) => navigate('/editar-promocion', { state: { promotion } })}
             onToggle={togglePromotion} />
         : <Navigate to="/mi-perfil" replace />} />
 
       <Route path="/editar-promocion" element={loading || (isAdmin && promotionLoading) ? <p role="status">Cargando promociones…</p> : isAdmin ? selectedPromotion
-        ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} collections={collections} loadProductsPage={loadProductPage} loadProduct={loadProduct} productCacheVersion={cacheVersion} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} />
+        ? <PromotionEditor key={selectedPromotion.id} {...account} promotion={selectedPromotion} collections={collections} loadProductsPage={loadProductPage} loadProduct={loadProduct} productCacheVersion={cacheVersion} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} busy={promotionBusyId !== null} />
         : <Navigate to="/promociones" replace /> : <Navigate to="/mi-perfil" replace />} />
       <Route path="/nueva-promocion" element={loading || (isAdmin && promotionLoading) ? <p role="status">Cargando promociones…</p> : isAdmin
-        ? <PromotionEditor key="new-promotion" {...account} isNew collections={collections} loadProductsPage={loadProductPage} loadProduct={loadProduct} productCacheVersion={cacheVersion} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} />
+        ? <PromotionEditor key="new-promotion" {...account} isNew collections={collections} loadProductsPage={loadProductPage} loadProduct={loadProduct} productCacheVersion={cacheVersion} collectionsLoading={collectionsLoading} collectionsError={collectionsError} onSave={savePromotion} busy={promotionBusyId !== null} />
         : <Navigate to="/mi-perfil" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
