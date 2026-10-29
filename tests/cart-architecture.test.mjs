@@ -30,8 +30,8 @@ test('Los módulos de src no contienen dependencias circulares', () => {
   assert.equal(checked.size, modules.size)
 })
 
-test('App compone una única instancia de sesión, carrito, catálogo, checkout, pedidos y publicaciones', () => {
-  for (const hook of ['useCart', 'useSession', 'useCatalog', 'useCheckout', 'useOrders', 'usePublications']) {
+test('App compone una única instancia de cada dominio privado y catálogo', () => {
+  for (const hook of ['useCart', 'useSession', 'useCatalog', 'useCheckout', 'useOrders', 'usePublications', 'useAdminPromotions']) {
     const sites = [...modules].filter(([, source]) => new RegExp('=\\s*' + hook + '\\(').test(source))
     assert.equal(sites.length, 1)
     assert.equal(sites[0][0], resolve(root, 'App.jsx'))
@@ -66,4 +66,12 @@ test('Publicaciones delega HTTP y App solo compone su interfaz', () => {
   assert.doesNotMatch(modules.get(resolve(root, 'hooks/usePublications.js')), /\bfetch\s*\(/)
   assert.doesNotMatch(modules.get(resolve(root, 'services/publicationsApi.js')), /from\s*['"]react['"]|\buseState\(/)
   assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /ownPublications|products\/mine|products\/images/)
+})
+
+test('Promociones administrativas separa HTTP, estado y conversiones puras', () => {
+  assert.doesNotMatch(modules.get(resolve(root, 'hooks/useAdminPromotions.js')), /\bfetch\s*\(/)
+  for (const path of ['services/promotionsApi.js', 'utils/promotionMapper.js']) {
+    assert.doesNotMatch(modules.get(resolve(root, path)), /from\s*['"]react['"]|\buseState\(/)
+  }
+  assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /promotionRequest|promotionAttempt|promotionFromBackend|promotionToBackend|API_URL.*promotions/)
 })

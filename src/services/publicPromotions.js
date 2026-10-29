@@ -1,8 +1,15 @@
 const kinds = { CANTIDAD: 'quantity', COLECCION: 'collection', TIPO_PRODUCTO: 'type', METODO_PAGO: 'payment', MONTO_MINIMO: 'minimum', PRODUCTO: 'product' }
 let pending
+const invalidationListeners = new Set()
+
+export function subscribePublicPromotionsInvalidation(listener) {
+  invalidationListeners.add(listener)
+  return () => invalidationListeners.delete(listener)
+}
 
 export function invalidatePublicPromotions() {
   pending = undefined
+  for (const listener of invalidationListeners) listener()
 }
 
 // Comparte solamente requests en curso. Cada visita real a Home consulta la vigencia

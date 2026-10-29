@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
-import { loadPublicPromotions } from '../services/publicPromotions.js'
+import { loadPublicPromotions, subscribePublicPromotionsInvalidation } from '../services/publicPromotions.js'
 
 export default function usePublicPromotions() {
   const [state, setState] = useState({ items: [], loading: true, error: '' })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let active = true
+    const unsubscribe = subscribePublicPromotionsInvalidation(() => {
+      active = false
+      setState({ items: [], loading: true, error: '' })
+      setAttempt((current) => current + 1)
+    })
     // StrictMode cancela el primer efecto antes de iniciar la petición.
     Promise.resolve().then(async () => {
       if (!active) return
@@ -17,7 +22,7 @@ export default function usePublicPromotions() {
         if (active) setState({ items: [], loading: false, error: error.message })
       }
     })
-    return () => { active = false }
+    return () => { active = false; unsubscribe() }
   }, [attempt])
   return { ...state, retry: () => setAttempt((current) => current + 1) }
 }
