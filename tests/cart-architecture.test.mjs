@@ -31,7 +31,7 @@ test('Los módulos de src no contienen dependencias circulares', () => {
 })
 
 test('App compone una única instancia de cada dominio privado y catálogo', () => {
-  for (const hook of ['useCart', 'useSession', 'useCatalog', 'useCheckout', 'useOrders', 'usePublications', 'useAdminPromotions']) {
+  for (const hook of ['useCart', 'useSession', 'useCatalog', 'useCheckout', 'useOrders', 'usePublications', 'useAdminPromotions', 'useAccount']) {
     const sites = [...modules].filter(([, source]) => new RegExp('=\\s*' + hook + '\\(').test(source))
     assert.equal(sites.length, 1)
     assert.equal(sites[0][0], resolve(root, 'App.jsx'))
@@ -74,4 +74,11 @@ test('Promociones administrativas separa HTTP, estado y conversiones puras', () 
     assert.doesNotMatch(modules.get(resolve(root, path)), /from\s*['"]react['"]|\buseState\(/)
   }
   assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /promotionRequest|promotionAttempt|promotionFromBackend|promotionToBackend|API_URL.*promotions/)
+})
+
+test('Cuenta delega HTTP y conserva el usuario únicamente en useSession', () => {
+  const hook = modules.get(resolve(root, 'hooks/useAccount.js'))
+  assert.doesNotMatch(hook, /\bfetch\s*\(|\[user,\s*setUser\]/)
+  assert.doesNotMatch(modules.get(resolve(root, 'services/accountApi.js')), /from\s*['"]react['"]|\buseState\(/)
+  assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /\/users\/me|accountRequest|setProfileSaving|setDeactivating|setDeactivateError/)
 })

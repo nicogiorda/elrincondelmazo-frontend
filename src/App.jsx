@@ -18,6 +18,7 @@ import OrderConfirmation from './views/OrderConfirmation.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import PurchaseNotice from './components/PurchaseNotice.jsx'
 import useAdminPromotions from './hooks/useAdminPromotions.js'
+import useAccount from './hooks/useAccount.js'
 import { API_BASE_URL as URL, readResponse } from './services/httpClient.js'
 import useCart from './hooks/useCart.js'
 import useCartMetadata from './hooks/useCartMetadata.js'
@@ -36,11 +37,6 @@ function App() {
   const isProductRoute = Boolean(productRoute)
   const selectedProductId = productIdFrom(productRoute?.params.id)
   const legacyProductId = productIdFrom(location.state?.product?.id)
-  const [deactivateError, setDeactivateError] = useState('')
-  const [profileSaving, setProfileSaving] = useState(false)
-  const [deactivating, setDeactivating] = useState(false)
-  // Perfil y desactivación no pueden enviar operaciones simultáneas sobre la cuenta.
-  const accountRequest = useRef(false)
   const reviewRequest = useRef(false)
   const needsPublications = location.pathname === '/mis-publicaciones'
     || (location.pathname === '/publicar' && Boolean(location.state?.product?.id))
@@ -49,16 +45,20 @@ function App() {
 
   // Coordinación temporal de los dominios que todavía viven en App.
   const resetPrivateData = useCallback(() => {
-    accountRequest.current = false
-    setProfileSaving(false)
-    setDeactivating(false)
-    setDeactivateError('')
     reviewRequest.current = false
   }, [])
 
   const { user, token, loading, sessionError, setSessionError, setUser,
     login, register, logout, sessionVersion, sessionAbort, subscribeSessionChange } = useSession({ onSessionChange: resetPrivateData })
 
+  const { profileSaving, deactivating, deactivateError, saveProfile, deactivateAccount } = useAccount({
+    user, token, setUser, logout, setSessionError, sessionVersion, sessionAbort, subscribeSessionChange,
+  })
+  function confirmAccountDeactivation() {
+    if (!profileSaving && !deactivating && window.confirm('¿Estás seguro de que deseás desactivar tu cuenta?')) {
+      return deactivateAccount()
+    }
+  }
   const { products, cacheVersion, loadProductPage, loadProduct, recentProducts, productsLoading, productsError,
     collections, collectionsLoading, collectionsError, catalogCollections, catalogFilters, changeCatalogFilters,
     clearCatalogFilters, selectedProduct, knownProduct, needsDetail, currentDetailRequest, relatedProducts, retryDetail,
@@ -189,81 +189,6 @@ function App() {
         if (version === sessionVersion.current) reviewRequest.current = false
       })
   }
-  async function saveProfile(form) {
-    if (!user || !token) throw new Error('Ingresá para actualizar tu perfil.')
-    if (accountRequest.current) return null
-    const version = sessionVersion.current
-    const savedToken = token
-    const userId = user.id
-    const previousEmail = user.email
-    const isCurrent = () => version === sessionVersion.current && savedToken === localStorage.getItem('token')
-    accountRequest.current = true
-    setProfileSaving(true)
-    try {
-      const response = await fetch(URL + '/users/me', {
-      signal: sessionAbort.current.signal,
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + savedToken },
-        body: JSON.stringify({ firstName: form.firstName, lastName: form.lastName, email: form.email }),
-      })
-      const updated = await readResponse(response)
-      if (!isCurrent()) return null
-      if (updated.id !== userId) throw new Error('El usuario recibido no coincide con tu cuenta.')
-      if (updated.email !== previousEmail) {
-        logout()
-        return null
-      }
-      setUser((current) => isCurrent() && current?.id === userId ? updated : current)
-      return updated
-    } catch (error) {
-      if (!isCurrent()) return null
-      if (error.status === 401) {
-        logout()
-        setSessionError(error.message)
-        return null
-      }
-      throw new Error(error instanceof TypeError ? 'No pudimos conectar con el servidor. Volvé a intentar.' : error.message, { cause: error })
-    } finally {
-      if (isCurrent()) {
-        accountRequest.current = false
-        setProfileSaving(false)
-      }
-    }
-  }
-  async function deactivateAccount() {
-    if (!user || !token || accountRequest.current) return
-    const confirmado = window.confirm('¿Estás seguro de que deseás desactivar tu cuenta?')
-    if (!confirmado) return
-    const version = sessionVersion.current
-    const savedToken = token
-    const userId = user.id
-    const isCurrent = () => version === sessionVersion.current && savedToken === localStorage.getItem('token')
-    accountRequest.current = true
-    setDeactivating(true)
-    setDeactivateError('')
-    try {
-      const response = await fetch(URL + '/users/me/deactivate', {
-      signal: sessionAbort.current.signal,
-        method: 'PUT', headers: { Authorization: 'Bearer ' + savedToken },
-      })
-      const updated = await readResponse(response)
-      if (!isCurrent()) return
-      if (updated.id !== userId || updated.active !== false) throw new Error('El servidor no confirmó la desactivación de tu cuenta.')
-      logout()
-    } catch (error) {
-      if (!isCurrent()) return
-      if (error.status === 401) {
-        logout()
-        setSessionError(error.message)
-      } else setDeactivateError(error instanceof TypeError
-        ? 'No pudimos conectar con el servidor. Volvé a intentar.' : error.message)
-    } finally {
-      if (isCurrent()) {
-        accountRequest.current = false
-        setDeactivating(false)
-      }
-    }
-  }
   const shared = {
     cartCount, userId: user?.id, isLoggedIn: Boolean(user),
     cartBusy: cartBusy || Boolean(user && !cart), cartError, cartMessage,
@@ -343,7 +268,7 @@ function App() {
       </ProtectedRoute>} />
       <Route path="/mi-perfil" element={<ProtectedRoute user={user}>
         <Profile key={JSON.stringify(user)} {...account} onSave={saveProfile} saving={profileSaving}
-          onDeactivate={deactivateAccount} deactivating={deactivating} deactivateError={deactivateError} />
+          onDeactivate={confirmAccountDeactivation} deactivating={deactivating} deactivateError={deactivateError} />
       </ProtectedRoute>} />
       <Route path="/carrito" element={<ProtectedRoute user={user}>
         <Cart {...shared} cart={cart} products={products} metadata={cartMetadata} loading={cartLoading} onRetry={retryCart}
