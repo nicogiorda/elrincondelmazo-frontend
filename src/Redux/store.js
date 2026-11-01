@@ -3,6 +3,7 @@ import catalogReducer from './catalogSlice.js'
 import productsReducer, { cachedProduct, removedCachedProduct,
   clearedCachedProducts } from './productsSlice.js'
 import cartReducer from './cartSlice.js'
+import ordersReducer from './ordersSlice.js'
 import { createProductCache } from '../utils/productCache.js'
 
 // Adaptador Map compatible: la caché organiza la red, pero las entidades viven
@@ -35,6 +36,7 @@ export const store = configureStore({
     catalog: catalogReducer,
     products: productsReducer,
     cart: cartReducer,
+    orders: ordersReducer,
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware({
     // Las operaciones HTTP se realizan desde el coordinador existente.
