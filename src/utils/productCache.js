@@ -5,10 +5,12 @@ const PAGE_CAPACITY = 20
 const changed = () => new Error('El catálogo cambió. Volvé a consultarlo.')
 const aborted = () => new DOMException('La solicitud fue cancelada.', 'AbortError')
 
-// Una instancia por useCatalog. Sin estado global ni entidades privadas.
-// Páginas guardan IDs; todas las lecturas resuelven la misma colección de productos.
-export function createProductCache({ now = Date.now, api = { getProducts, getProduct } } = {}) {
-  const products = new Map(), freshness = new Map(), pages = new Map(), details = new Map()
+// Orquesta solicitudes, vigencia e invalidaciones. En producción, entityStore
+// vincula las entidades a Redux; en tests puede funcionar con una Map aislada.
+// Las páginas guardan IDs y no copias de los objetos.
+export function createProductCache({ now = Date.now, api = { getProducts, getProduct }, entityStore } = {}) {
+  const products = entityStore ?? new Map()
+  const freshness = new Map(), pages = new Map(), details = new Map()
   const listeners = new Set(), invalidations = new Set()
   let generation = 0, sequence = 0, cacheVersion = 0
   let snapshot = { products: [], cacheVersion }

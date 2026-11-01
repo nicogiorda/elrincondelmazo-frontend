@@ -1,11 +1,12 @@
-import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
+import { createAsyncThunk, createEntityAdapter, createSlice } from '@reduxjs/toolkit'
 
-// El estado Redux almacena únicamente metadatos de la página y referencias por ID.
-// La única copia de cada entidad Product sigue en la caché pública normalizada.
-const initialState = {
+// Redux es la única fuente de las entidades públicas.
+// La caché conserva solo tareas de coordinación (TTL, solicitudes y versiones).
+const productsAdapter = createEntityAdapter()
+const initialState = productsAdapter.getInitialState({
   page: null,
   detail: null,
-}
+})
 
 const queryKey = ({ query, cacheVersion, attempt }) => `${query}:${cacheVersion}:${attempt}`
 const detailKey = ({ productId, cacheVersion, attempt }) => `${productId}:${attempt}:${cacheVersion}`
@@ -53,7 +54,11 @@ export const fetchProductDetail = createAsyncThunk(
 const productsSlice = createSlice({
   name: 'products',
   initialState,
-  reducers: {},
+  reducers: {
+    cachedProduct: productsAdapter.upsertOne,
+    removedCachedProduct: productsAdapter.removeOne,
+    clearedCachedProducts: productsAdapter.removeAll,
+  },
   extraReducers: (builder) => {
     builder
       .addCase(fetchProductPage.pending, (state, action) => {
@@ -108,5 +113,9 @@ const productsSlice = createSlice({
       })
   },
 })
+
+export const { cachedProduct, removedCachedProduct, clearedCachedProducts } = productsSlice.actions
+export const { selectAll: selectPublicProducts, selectById: selectPublicProductById } =
+  productsAdapter.getSelectors((state) => state.products)
 
 export default productsSlice.reducer
