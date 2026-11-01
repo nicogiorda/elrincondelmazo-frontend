@@ -2,20 +2,22 @@ import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchProductDetail } from '../Redux/productsSlice.js'
 
-export default function useProductDetail({ productId, active, products, cacheVersion, loadProduct, loadPage, isFresh }) {
+export default function useProductDetail({ productId, active, products, cacheVersion, loadPage, isFresh }) {
   const dispatch = useDispatch()
   const request = useSelector((state) => state.products.detail)
   const [attempt, setAttempt] = useState(0)
   const [relatedIds, setRelatedIds] = useState([])
   const key = productId + ':' + attempt + ':' + cacheVersion
-  const currentDetailRequest = request?.key === key ? request : null
+  // pending todavía debe verse como «Cargando producto», no «Producto no disponible».
+  const currentDetailRequest = request?.key === key && request.status !== 'loading' ? request : null
   const knownProduct = products.find(product => product.id === productId)
   const selectedProduct = !currentDetailRequest?.error && !currentDetailRequest?.notFound
     && knownProduct && ['ACTIVO', 'AGOTADO'].includes(knownProduct.status) ? knownProduct : undefined
   const needsDetail = Boolean(active && productId && !isFresh(productId) && !currentDetailRequest)
 
   useEffect(() => {
-    if (!needsDetail) return
+    // No depender de needsDetail: pending lo cambia y abortaría el mismo thunk.
+    if (!active || !productId || isFresh(productId)) return
     let activeRequest = true
     let dispatched
     // Se difiere el inicio para evitar una petición del primer efecto de StrictMode.
@@ -27,7 +29,7 @@ export default function useProductDetail({ productId, active, products, cacheVer
       activeRequest = false
       dispatched?.abort()
     }
-  }, [needsDetail, productId, attempt, cacheVersion, dispatch])
+  }, [active, productId, attempt, cacheVersion, dispatch, isFresh])
 
   useEffect(() => {
     if (!active || !selectedProduct?.collectionId) return
