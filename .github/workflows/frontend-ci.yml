@@ -1,8 +1,7 @@
 name: Frontend checks
 
 on:
-  pull_request:
-    branches: [main]
+  pull_request: # También valida PRs encadenados antes del merge a main
   push:
     branches: [main]
 
