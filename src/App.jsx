@@ -1,5 +1,4 @@
 
-import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom'
 import Home from './views/Home.jsx'
 import Login from './views/Login.jsx'
@@ -19,7 +18,7 @@ import ProtectedRoute from './components/ProtectedRoute.jsx'
 import PurchaseNotice from './components/PurchaseNotice.jsx'
 import useAdminPromotions from './hooks/useAdminPromotions.js'
 import useAccount from './hooks/useAccount.js'
-import { API_BASE_URL as URL, readResponse } from './services/httpClient.js'
+import useReviews from './hooks/useReviews.js'
 import useCart from './hooks/useCart.js'
 import useCartMetadata from './hooks/useCartMetadata.js'
 import useSession from './hooks/useSession.js'
@@ -37,19 +36,13 @@ function App() {
   const isProductRoute = Boolean(productRoute)
   const selectedProductId = productIdFrom(productRoute?.params.id)
   const legacyProductId = productIdFrom(location.state?.product?.id)
-  const reviewRequest = useRef(false)
   const needsPublications = location.pathname === '/mis-publicaciones'
     || (location.pathname === '/publicar' && Boolean(location.state?.product?.id))
 
   const needsPromotions = ['/promociones', '/editar-promocion', '/nueva-promocion'].includes(location.pathname)
 
-  // Coordinación temporal de los dominios que todavía viven en App.
-  const resetPrivateData = useCallback(() => {
-    reviewRequest.current = false
-  }, [])
-
   const { user, token, loading, sessionError, setSessionError, setUser,
-    login, register, logout, sessionVersion, sessionAbort, subscribeSessionChange } = useSession({ onSessionChange: resetPrivateData })
+    login, register, logout, sessionVersion, sessionAbort, subscribeSessionChange } = useSession()
 
   const { profileSaving, deactivating, deactivateError, saveProfile, deactivateAccount } = useAccount({
     user, token, setUser, logout, setSessionError, sessionVersion, sessionAbort, subscribeSessionChange,
@@ -97,40 +90,14 @@ function App() {
   } = useAdminPromotions({ user, token, active: needsPromotions, sessionVersion, sessionAbort,
     subscribeSessionChange, logout, setSessionError, onSaved: () => navigate('/promociones') })
 
-  const [reviewsByProduct, setReviewsByProduct] = useState({})
-  const [reviewErrors, setReviewErrors] = useState({})
-  const [reviewAttempt, setReviewAttempt] = useState(0)
-  const requestedReviews = useRef(new Set())
   const currentUser = user
   const isAdmin = user?.role === 'ADMIN'
   const selectedPromotion = promotions.find((promotion) => promotion.id === location.state?.promotion?.id)
   const reviewProductId = productRoute ? selectedProduct?.id : undefined
-
-  useEffect(() => {
-    if (reviewProductId === undefined || requestedReviews.current.has(reviewProductId)) return
-    // Registrar antes del fetch evita duplicados si salimos y volvemos mientras carga.
-    requestedReviews.current.add(reviewProductId)
-    fetch(`${URL}/products/${reviewProductId}/reviews`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`Error ${response.status} al cargar reseñas`)
-        return response.json()
-      })
-      .then((data) => {
-        if (!Array.isArray(data)) throw new Error('La respuesta de reseñas no es una lista')
-        setReviewsByProduct((current) => ({ ...current, [reviewProductId]: data }))
-      })
-      .catch((error) => {
-        console.log(error)
-        setReviewErrors((current) => ({ ...current, [reviewProductId]: 'No pudimos cargar las reseñas.' }))
-      })
-  }, [reviewProductId, reviewAttempt])
-
-  function retryReviews() {
-    if (!reviewErrors[reviewProductId]) return
-    requestedReviews.current.delete(reviewProductId)
-    setReviewErrors((current) => ({ ...current, [reviewProductId]: '' }))
-    setReviewAttempt((current) => current + 1)
-  }
+  const { reviewsByProduct, reviewErrors, retryReviews, canReview, publishReview } = useReviews({
+    productId: reviewProductId, user, token, sessionVersion, sessionAbort,
+    subscribeSessionChange, logout, setSessionError,
+  })
 
   const editingPublication = publications.find((product) => product.id === location.state?.product?.id)
 
@@ -155,40 +122,6 @@ function App() {
     if (reloadCart()) retryMetadata()
   }
 
-  function publishReview(product, { rating, comment }) {
-    if (!user || !token || reviewRequest.current) return Promise.reject(new Error('Ingresá o esperá a que termine el envío.'))
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !comment.trim() || comment.length > 1000) {
-      return Promise.reject(new Error('Revisá la puntuación y el comentario.'))
-    }
-    const version = sessionVersion.current
-    reviewRequest.current = true
-    return fetch(URL + '/products/' + product.id + '/reviews', {
-      signal: sessionAbort.current.signal,
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rating, comment: comment.trim() }),
-    })
-      .then(readResponse)
-      .then((review) => {
-        if (version !== sessionVersion.current) throw new Error('La sesión cambió.')
-        if (!review.id || review.productId !== product.id) throw new Error('La respuesta no contiene la reseña esperada.')
-        setReviewsByProduct((current) => ({
-          ...current,
-          [product.id]: [review, ...(current[product.id] ?? []).filter((item) => item.id !== review.id)],
-        }))
-        return true
-      })
-      .catch((error) => {
-        if (version === sessionVersion.current && error.status === 401) {
-          logout()
-          setSessionError(error.message)
-        }
-        throw error
-      })
-      .finally(() => {
-        if (version === sessionVersion.current) reviewRequest.current = false
-      })
-  }
   const shared = {
     cartCount, userId: user?.id, isLoggedIn: Boolean(user),
     cartBusy: cartBusy || Boolean(user && !cart), cartError, cartMessage,
