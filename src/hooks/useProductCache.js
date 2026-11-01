@@ -1,10 +1,13 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { PRODUCT_CACHE_TTL } from '../utils/productCache.js'
+import { useSelector } from 'react-redux'
+import { selectPublicProducts } from '../Redux/productsSlice.js'
 import { catalogProductCache } from '../Redux/store.js'
 
 export default function useProductCache() {
   const cache = catalogProductCache
   const snapshot = useSyncExternalStore(cache.subscribe, cache.getSnapshot)
+  const products = useSelector(selectPublicProducts)
   const mounted = useRef(false)
   useEffect(() => {
     mounted.current = true
@@ -15,5 +18,5 @@ export default function useProductCache() {
       queueMicrotask(() => { if (!mounted.current) cache.invalidate() })
     }
   }, [cache])
-  return { ...snapshot, ...cache }
+  return { ...snapshot, products, ...cache }
 }
