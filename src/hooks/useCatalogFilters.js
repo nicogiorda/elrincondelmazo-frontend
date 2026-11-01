@@ -10,7 +10,7 @@ export default function useCatalogFilters(location) {
   const catalog = useSelector((state) => state.catalog)
   const catalogFilters = useMemo(
     () => filtersForCatalogLocation(catalog, location),
-    [catalog, location.pathname, location.key, location.state],
+    [catalog, location],
   )
 
   const selectedType = location.state?.type
