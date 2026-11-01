@@ -1,8 +1,21 @@
-import { request, requestJson } from './httpClient.js'
+import axios from 'axios'
+import { API_BASE_URL } from './httpClient.js'
 import { productIdFrom } from '../utils/productId.js'
 
+// Un solo transporte Axios para los GET públicos. Las vistas no invocan estas
+// funciones: las acciones asíncronas y el coordinador de caché las consumen.
+function httpError(error) {
+  if (!error?.response?.status) return error
+  const status = error.response.status
+  const body = error.response.data
+  const message = status === 401 ? 'Tu sesión venció. Volvé a ingresar.'
+    : body?.message || body?.detail || 'No se pudo completar la operación (HTTP ' + status + ').'
+  return Object.assign(new Error(message), { status })
+}
+
 export async function getProducts(query, { signal } = {}) {
-  const data = await requestJson('/products?' + query, { signal })
+  const { data } = await axios.get(API_BASE_URL + '/products?' + query, { signal })
+    .catch(error => { throw httpError(error) })
   if (!Array.isArray(data?.content) || !Number.isInteger(data.totalPages)
     || !Number.isInteger(data.totalElements) || !Number.isInteger(data.number)) {
     throw new Error('La respuesta de productos no contiene una página válida.')
@@ -26,18 +39,24 @@ export function productError(error, context = 'detail') {
 export async function getProduct(id, { signal, context = 'detail' } = {}) {
   if (productIdFrom(id) === null) throw new Error('La URL del producto no es válida.')
   try {
-    const data = await requestJson('/products/' + id, { signal })
+    const { data } = await axios.get(API_BASE_URL + '/products/' + id, { signal })
     if (data?.id !== Number(id)) {
       throw Object.assign(new Error('El producto recibido no coincide con el seleccionado.'), { code: 'INVALID_PRODUCT' })
     }
     return data
-  } catch (error) { throw productError(error, context) }
+  } catch (error) { throw productError(httpError(error), context) }
 }
 
 export async function getCollections({ signal } = {}) {
-  const response = await request('/collections', { signal })
-  if (!response.ok) throw Object.assign(new Error('Error ' + response.status + ' al cargar colecciones'), { status: response.status })
-  const data = await response.json()
-  if (!Array.isArray(data)) throw new Error('La respuesta de colecciones no es una lista')
-  return data
+  try {
+    const { data } = await axios.get(API_BASE_URL + '/collections', { signal })
+    // Axios puede entregar una cadena si el servidor respondió JSON inválido.
+    const collections = typeof data === 'string' ? JSON.parse(data) : data
+    if (!Array.isArray(collections)) throw new Error('La respuesta de colecciones no es una lista')
+    return collections
+  } catch (error) {
+    if (!error?.response?.status) throw error
+    const status = error.response.status
+    throw Object.assign(new Error('Error ' + status + ' al cargar colecciones'), { status })
+  }
 }

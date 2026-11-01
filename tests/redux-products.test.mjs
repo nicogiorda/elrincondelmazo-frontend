@@ -129,3 +129,64 @@ test('cancelación de un detalle descarta la respuesta anterior', async () => {
   assert.equal(store.getState().products.detail, null)
   gate.resolve({ id: 5, status: 'ACTIVO' })
 })
+
+
+test('Home despacha un thunk que conserva solo IDs y evita duplicados de StrictMode', async () => {
+  const gate = deferred(); let calls = 0
+  const store = create({ loadPage: () => { calls++; return gate.promise } })
+  const { fetchHomeProducts } = await import('../src/Redux/productsSlice.js')
+  const first = store.dispatch(fetchHomeProducts({ cacheVersion: 0 }))
+  const duplicate = await store.dispatch(fetchHomeProducts({ cacheVersion: 0 }))
+  assert.equal(duplicate.meta.condition, true)
+  gate.resolve(page([5, 6, 7]))
+  await first
+  assert.equal(calls, 1)
+  assert.equal(store.getState().products.home.status, 'succeeded')
+  assert.deepEqual(store.getState().products.home.ids, [5, 6, 7])
+  await store.dispatch(fetchHomeProducts({ cacheVersion: 0 }))
+  assert.equal(calls, 1, 'Una segunda entrada a Home no repite un GET fresco')
+})
+
+test('Home, catálogo y relacionados conservan sus estados independientes', async () => {
+  const { fetchHomeProducts, fetchRelatedProducts } = await import('../src/Redux/productsSlice.js')
+  const calls = []
+  const store = create({ loadPage: async query => {
+    calls.push(query)
+    if (query.includes('collectionId=4')) return page([7, 8])
+    if (query.includes('size=4')) return page([1, 2])
+    return page([42])
+  } })
+  await store.dispatch(fetchProductPage(pageArgs('page=0&size=9')))
+  await store.dispatch(fetchHomeProducts({ cacheVersion: 0 }))
+  await store.dispatch(fetchRelatedProducts({ collectionId: 4, cacheVersion: 0 }))
+  assert.deepEqual(store.getState().products.page.ids, [42])
+  assert.deepEqual(store.getState().products.home.ids, [1, 2])
+  assert.deepEqual(store.getState().products.related.ids, [7, 8])
+  assert.deepEqual(calls, ['page=0&size=9', 'page=0&size=4', 'page=0&size=5&collectionId=4'])
+})
+
+test('una respuesta tardía de productos relacionados no sobrescribe otra colección', async () => {
+  const { fetchRelatedProducts } = await import('../src/Redux/productsSlice.js')
+  const oldGate = deferred()
+  const store = create({ loadPage: query => query.includes('collectionId=4')
+    ? oldGate.promise : Promise.resolve(page([22])) })
+  const old = store.dispatch(fetchRelatedProducts({ collectionId: 4, cacheVersion: 0 }))
+  await store.dispatch(fetchRelatedProducts({ collectionId: 9, cacheVersion: 0 }))
+  oldGate.resolve(page([14]))
+  await old
+  assert.equal(store.getState().products.related.key, '9:0')
+  assert.deepEqual(store.getState().products.related.ids, [22])
+})
+
+test('el error de Home se refleja en Redux y la siguiente acción puede reintentarlo', async () => {
+  const { fetchHomeProducts } = await import('../src/Redux/productsSlice.js')
+  let calls = 0
+  const store = create({ loadPage: () => ++calls === 1
+    ? Promise.reject(new Error('Error 503 QA')) : Promise.resolve(page([19])) })
+  await store.dispatch(fetchHomeProducts({ cacheVersion: 0 }))
+  assert.match(store.getState().products.home.error, /503/)
+  await store.dispatch(fetchHomeProducts({ cacheVersion: 0 }))
+  assert.equal(store.getState().products.home.status, 'succeeded')
+  assert.deepEqual(store.getState().products.home.ids, [19])
+  assert.equal(calls, 2)
+})

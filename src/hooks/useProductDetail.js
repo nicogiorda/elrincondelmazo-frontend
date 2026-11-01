@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { fetchProductDetail } from '../Redux/productsSlice.js'
+import { fetchProductDetail, fetchRelatedProducts } from '../Redux/productsSlice.js'
 
-export default function useProductDetail({ productId, active, products, cacheVersion, loadPage, isFresh }) {
+export default function useProductDetail({ productId, active, products, cacheVersion, isFresh }) {
   const dispatch = useDispatch()
   const request = useSelector((state) => state.products.detail)
+  const related = useSelector((state) => state.products.related)
   const [attempt, setAttempt] = useState(0)
-  const [relatedIds, setRelatedIds] = useState([])
   const key = productId + ':' + attempt + ':' + cacheVersion
   // pending todavía debe verse como «Cargando producto», no «Producto no disponible».
   const currentDetailRequest = request?.key === key && request.status !== 'loading' ? request : null
@@ -33,12 +33,13 @@ export default function useProductDetail({ productId, active, products, cacheVer
 
   useEffect(() => {
     if (!active || !selectedProduct?.collectionId) return
-    let current = true
-    loadPage('page=0&size=5&collectionId=' + selectedProduct.collectionId)
-      .then(data => { if (current) setRelatedIds(data.content.map(product => product.id)) })
-      .catch(() => { if (current) setRelatedIds([]) })
-    return () => { current = false }
-  }, [active, selectedProduct?.collectionId, loadPage, cacheVersion])
+    dispatch(fetchRelatedProducts({ collectionId: selectedProduct.collectionId, cacheVersion }))
+  }, [active, selectedProduct?.collectionId, cacheVersion, dispatch])
+
+  const relatedKey = `${selectedProduct?.collectionId}:${cacheVersion}`
+  const relatedIds = related?.key === relatedKey && related.status === 'succeeded'
+    ? related.ids : []
+
   return { selectedProduct, knownProduct, needsDetail, currentDetailRequest,
     relatedProducts: relatedIds.map(id => products.find(product => product.id === id)).filter(Boolean),
     retryDetail: () => setAttempt(value => value + 1) }
