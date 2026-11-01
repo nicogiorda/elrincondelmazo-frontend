@@ -126,3 +126,18 @@ test('Redux administra el estado del carrito; useCart coordina mutaciones y sesi
   assert.match(slice, /ownerId/)
   assert.match(store, /cart:\s*cartReducer/)
 })
+
+test('Redux administra el historial privado y detalles de pedidos sin caches duplicadas', () => {
+  const hook = modules.get(resolve(root, 'hooks/useOrders.js'))
+  const slice = modules.get(resolve(root, 'Redux/ordersSlice.js'))
+  const store = modules.get(resolve(root, 'Redux/store.js'))
+  assert.match(hook, /useSelector\(/)
+  assert.match(hook, /useStore\(/)
+  assert.match(hook, /ordersSessionCleared\(/)
+  assert.match(hook, /ordersHistoryLoaded\(/)
+  assert.doesNotMatch(hook, /\buseState\s*\(|historyCache|detailCache|\bfetch\s*\(/)
+  assert.doesNotMatch(slice, /from ['"]react['"]|\bfetch\s*\(/)
+  assert.match(slice, /ownerId/)
+  assert.match(slice, /generation/)
+  assert.match(store, /orders:\s*ordersReducer/)
+})

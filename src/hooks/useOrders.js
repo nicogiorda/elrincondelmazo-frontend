@@ -1,37 +1,34 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import { useDispatch, useSelector, useStore } from 'react-redux'
 import { getOrders, getOrderDetail } from '../services/ordersApi.js'
+import {
+  ORDERS_CACHE_TTL, ordersSessionCleared, ordersHistoryStarted,
+  ordersHistoryLoaded, ordersHistoryFailed, ordersHistoryFinished,
+  ordersDetailStarted, ordersDetailLoaded, ordersDetailFailed, ordersConfirmed,
+} from '../Redux/ordersSlice.js'
 
-const CACHE_LIFETIME = 60_000
-const emptyHistory = () => ({ items: [], updatedAt: 0, loading: false, error: '' })
-const summaryFields = ['state', 'orderDate', 'paymentMethod', 'subtotal', 'totalDiscount', 'total']
-
-// Una instancia en App. La navegación no destruye la caché ni sus solicitudes.
+// Única instancia en App: Redux guarda el estado privado, el hook coordina
+// solicitudes y cancelaciones. Navegar no destruye una lectura pendiente.
 export default function useOrders({ user, token, sessionVersion, sessionAbort,
   subscribeSessionChange, logout, setSessionError, active }) {
-  const [orderHistory, setOrderHistory] = useState(emptyHistory)
-  const [orderDetails, setOrderDetails] = useState({})
-  const historyCache = useRef({ items: null, updatedAt: 0 })
+  const dispatch = useDispatch()
+  const store = useStore()
+  const orderHistory = useSelector((state) => state.orders.history)
+  const orderDetails = useSelector((state) => state.orders.details)
   const historyRequest = useRef(null)
   const detailRequests = useRef(new Map())
-  const detailCache = useRef({})
   const mounted = useRef(false)
 
-  const publishDetails = useCallback((details) => {
-    detailCache.current = details
-    setOrderDetails(details)
-  }, [])
   const cancelRequests = useCallback(() => {
     historyRequest.current?.controller.abort()
     historyRequest.current = null
-    detailRequests.current.forEach(request => request.controller.abort())
+    detailRequests.current.forEach((request) => request.controller.abort())
     detailRequests.current.clear()
   }, [])
   const resetOrders = useCallback(() => {
     cancelRequests()
-    historyCache.current = { items: null, updatedAt: 0 }
-    setOrderHistory(emptyHistory())
-    publishDetails({})
-  }, [cancelRequests, publishDetails])
+    dispatch(ordersSessionCleared())
+  }, [cancelRequests, dispatch])
 
   useEffect(() => {
     mounted.current = true
@@ -39,7 +36,7 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
     return () => {
       mounted.current = false
       unsubscribe()
-      // StrictMode vuelve a montar en el mismo turno; el desmontaje real aborta.
+      // StrictMode vuelve a montar efectos en el mismo turno.
       queueMicrotask(() => { if (!mounted.current) cancelRequests() })
     }
   }, [subscribeSessionChange, resetOrders, cancelRequests])
@@ -47,52 +44,42 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
   const loadOrders = useCallback((force = false) => {
     if (!mounted.current || !user?.id || !token) return
     if (historyRequest.current) return historyRequest.current.promise
-    const cached = historyCache.current
-    if (!force && cached.items !== null && Date.now() - cached.updatedAt < CACHE_LIFETIME) {
-      return Promise.resolve(cached.items)
-    }
     const version = sessionVersion.current
+    const previous = store.getState().orders
+    if (!force && previous.ownerId === user.id && previous.generation === version
+      && previous.history.updatedAt > 0 && Date.now() - previous.history.updatedAt < ORDERS_CACHE_TTL) {
+      return Promise.resolve(previous.history.items)
+    }
+    const scope = { ownerId: user.id, generation: version }
     const request = { controller: new AbortController() }
     const signal = AbortSignal.any([request.controller.signal, sessionAbort.current.signal])
     historyRequest.current = request
     const isCurrent = () => mounted.current && !signal.aborted
       && version === sessionVersion.current && historyRequest.current === request
-    setOrderHistory(current => ({ ...current, loading: true, error: '' }))
-    request.promise = getOrders({ token, signal }).then(items => {
+    dispatch(ordersHistoryStarted(scope))
+    request.promise = getOrders({ token, signal }).then((items) => {
       if (!isCurrent()) return
       if (!Array.isArray(items) || !items.every(order => order && Number.isSafeInteger(order.id)
         && typeof order.orderDate === 'string' && typeof order.state === 'string' && Number.isFinite(order.total))) {
         throw new Error('La respuesta de pedidos no contiene una lista válida.')
       }
-      const updatedAt = Date.now()
-      // Un detalle enviado antes de este listado no puede deshacer su resumen.
-      detailRequests.current.forEach(pending => pending.controller.abort())
+      // Un detalle anterior a un listado actualizado no debe sobrescribirlo.
+      detailRequests.current.forEach((pending) => pending.controller.abort())
       detailRequests.current.clear()
-      const details = {}
-      items.forEach(order => {
-        const previous = detailCache.current[order.id]
-        if (Array.isArray(order.items) && Array.isArray(order.promotions)) {
-          details[order.id] = { data: order, updatedAt, loading: false, error: '' }
-        } else if (previous?.data && updatedAt - previous.updatedAt < CACHE_LIFETIME
-          && summaryFields.every(field => order[field] === previous.data[field])) {
-          details[order.id] = { ...previous, loading: false, error: '' }
-        }
-      })
-      publishDetails(details)
-      historyCache.current = { items, updatedAt }
-      setOrderHistory({ items, updatedAt, loading: false, error: '' })
+      dispatch(ordersHistoryLoaded({ ...scope, items, updatedAt: Date.now() }))
       return items
-    }).catch(error => {
+    }).catch((error) => {
       if (!isCurrent()) return
       if (error.status === 401) { logout(); setSessionError(error.message) }
-      else setOrderHistory(current => ({ ...current, error: 'No pudimos actualizar tus pedidos. ' + error.message }))
+      else dispatch(ordersHistoryFailed({ ...scope,
+        message: 'No pudimos actualizar tus pedidos. ' + error.message }))
     }).finally(() => {
       if (!isCurrent()) return
       historyRequest.current = null
-      setOrderHistory(current => ({ ...current, loading: false }))
+      dispatch(ordersHistoryFinished(scope))
     })
     return request.promise
-  }, [user?.id, token, logout, publishDetails, sessionAbort, sessionVersion, setSessionError])
+  }, [user?.id, token, logout, store, dispatch, sessionAbort, sessionVersion, setSessionError])
 
   useEffect(() => {
     if (!active) return
@@ -103,42 +90,50 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
 
   useEffect(() => {
     if (!active || !orderHistory.updatedAt || orderHistory.loading || orderHistory.error) return
-    const timer = setTimeout(() => loadOrders(), Math.max(0, orderHistory.updatedAt + CACHE_LIFETIME - Date.now()))
+    const timer = setTimeout(() => loadOrders(), Math.max(0, orderHistory.updatedAt + ORDERS_CACHE_TTL - Date.now()))
     return () => clearTimeout(timer)
   }, [active, orderHistory.updatedAt, orderHistory.loading, orderHistory.error, loadOrders])
 
   const loadOrderDetail = useCallback((orderId) => {
     if (!mounted.current || !user?.id || !token) return
-    const cached = detailCache.current[orderId]
-    if (cached?.data && Date.now() - cached.updatedAt < CACHE_LIFETIME) return Promise.resolve(cached.data)
-    if (detailRequests.current.has(orderId)) return detailRequests.current.get(orderId).promise
     const version = sessionVersion.current
+    const existing = store.getState().orders
+    const cached = existing.ownerId === user.id && existing.generation === version
+      ? existing.details[orderId] : undefined
+    if (cached?.data && Date.now() - cached.updatedAt < ORDERS_CACHE_TTL) return Promise.resolve(cached.data)
+    if (detailRequests.current.has(orderId)) return detailRequests.current.get(orderId).promise
+    const scope = { ownerId: user.id, generation: version }
     const request = { controller: new AbortController() }
     const signal = AbortSignal.any([request.controller.signal, sessionAbort.current.signal])
     detailRequests.current.set(orderId, request)
     const isCurrent = () => mounted.current && !signal.aborted
       && version === sessionVersion.current && detailRequests.current.get(orderId) === request
-    publishDetails({ ...detailCache.current, [orderId]: { ...cached, loading: true, error: '', data: cached?.data ?? null } })
-    request.promise = getOrderDetail(orderId, { token, signal }).then(data => {
+    dispatch(ordersDetailStarted({ ...scope, orderId }))
+    request.promise = getOrderDetail(orderId, { token, signal }).then((data) => {
       if (!isCurrent()) return
-      if (data?.id !== orderId || !Array.isArray(data.items)) throw new Error('El detalle recibido no corresponde al pedido.')
-      publishDetails({ ...detailCache.current, [orderId]: { loading: false, error: '', data, updatedAt: Date.now() } })
+      if (data?.id !== orderId || !Array.isArray(data.items)) {
+        throw new Error('El detalle recibido no corresponde al pedido.')
+      }
+      dispatch(ordersDetailLoaded({ ...scope, orderId, data, updatedAt: Date.now() }))
       return data
-    }).catch(error => {
+    }).catch((error) => {
       if (!isCurrent()) return
       if (error.status === 401) { logout(); setSessionError(error.message) }
-      else publishDetails({ ...detailCache.current, [orderId]: { ...cached, loading: false, error: error.message, data: cached?.data ?? null } })
+      else dispatch(ordersDetailFailed({ ...scope, orderId, message: error.message }))
     }).finally(() => {
       if (isCurrent()) detailRequests.current.delete(orderId)
     })
     return request.promise
-  }, [user?.id, token, logout, publishDetails, sessionAbort, sessionVersion, setSessionError])
+  }, [user?.id, token, logout, dispatch, store, sessionAbort, sessionVersion, setSessionError])
 
-  // El llamador entrega únicamente una confirmación validada para la sesión actual.
+  // El checkout ya validó que la confirmación pertenece a la sesión vigente.
   const recordConfirmedOrder = useCallback((order) => {
-    resetOrders()
-    publishDetails({ [order.id]: { loading: false, error: '', data: order, updatedAt: Date.now() } })
-  }, [resetOrders, publishDetails])
+    if (!user?.id) return
+    cancelRequests()
+    dispatch(ordersConfirmed({
+      ownerId: user.id, generation: sessionVersion.current, order, updatedAt: Date.now(),
+    }))
+  }, [user?.id, sessionVersion, cancelRequests, dispatch])
 
   return { orderHistory, orderDetails, loadOrders, loadOrderDetail, recordConfirmedOrder }
 }
