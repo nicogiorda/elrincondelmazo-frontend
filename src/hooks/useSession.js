@@ -4,7 +4,7 @@ import { authenticate, getCurrentUser, register as registerAccount } from '../se
 
 // Una sola instancia en App. El callback limpia datos de otros dominios sin
 // introducir dependencias de carrito, pedidos o publicaciones en este hook.
-export default function useSession({ onSessionChange }) {
+export default function useSession({ onSessionChange = () => {} } = {}) {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(() => localStorage.getItem('token'))
