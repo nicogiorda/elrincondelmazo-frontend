@@ -1,83 +1,35 @@
-import AccountAccess from '../components/AccountAccess.jsx';
-import { useState } from 'react';
+import AccountAccess from '../components/AccountAccess.jsx'
+import { useEffect, useRef, useState } from 'react'
 
 function Register({ cartCount, onRegister }) {
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const request = useRef(null)
+  useEffect(() => () => request.current?.abort(), [])
 
   async function handleRegister(form) {
-    setError("");
-    setLoading(true);
-
-
+    if (request.current) return
+    const controller = new AbortController()
+    request.current = controller
+    setError('')
+    setLoading(true)
     try {
-      const response = await fetch(
-        "http://localhost:8080/api/v1/auth/register",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            firstname: form.firstName,
-            lastname: form.lastName,
-            email: form.email,
-            password: form.password
-          })
-        }
-      );
-
-      if (response.status === 409) {
-        throw new Error("Ya existe un usuario con este correo");
-      }
-
-      if (!response.ok) {
-        throw new Error("No se pudo registrar el usuario");
-      }
-
-      const data = await response.json();
-      const token = data.access_token;
-
-      const responseUsuario = await fetch(
-        "http://localhost:8080/users/me",
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!responseUsuario.ok) {
-        throw new Error("No se pudo obtener el usuario");
-      }
-
-      const usuario = await responseUsuario.json();
-
-      localStorage.setItem("token", token);
-
-      console.log("Registro exitoso");
-      onRegister(usuario);
-
+      await onRegister({
+        firstname: form.firstName, lastname: form.lastName,
+        email: form.email, password: form.password,
+      }, { signal: controller.signal })
     } catch (error) {
-      console.error("Error durante el registro:", error);
-      setError(error.message);
-
+      if (controller.signal.aborted) return
+      setError(error instanceof TypeError
+        ? 'No pudimos conectar con el servidor. Revisá tu conexión y volvé a intentar.' : error.message)
     } finally {
-      setLoading(false);
+      request.current = null
+      if (!controller.signal.aborted) setLoading(false)
     }
-
   }
 
-  return (
-    <AccountAccess
-      mode="register"
-      cartCount={cartCount}
-      onSubmit={handleRegister}
-      error={error}
-      loading={loading}
-    />
-  );
+  return <AccountAccess mode="register" cartCount={cartCount} onSubmit={handleRegister} error={error} loading={loading} />
 }
 
-export default Register;
+export default Register

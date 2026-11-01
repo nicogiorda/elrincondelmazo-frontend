@@ -10,7 +10,7 @@ import { catalogTypes, catalogProductBackgrounds } from '../data/catalogMocks.js
 
 const pageSize = 9
 
-function Catalog({ isLoggedIn, cartBusy, cartError, cartMessage, collectionsError, cartItems = [], collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+function Catalog({ loadPage, cacheVersion, isLoggedIn, cartBusy, cartError, cartMessage, collectionsError, cartItems = [], collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
 
 
   const { search, type, collection, minPrice, maxPrice, page } = filters
@@ -24,7 +24,7 @@ function Catalog({ isLoggedIn, cartBusy, cartError, cartMessage, collectionsErro
   const query = params.toString()
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState(null)
-  const loading = result?.query !== query || result?.attempt !== attempt
+  const loading = result?.query !== query || result?.attempt !== attempt || result?.cacheVersion !== cacheVersion
   const error = loading ? '' : result.error
   const visibleProducts = loading ? [] : result.content
   const totalProducts = loading ? 0 : result.totalElements
@@ -33,25 +33,18 @@ function Catalog({ isLoggedIn, cartBusy, cartError, cartMessage, collectionsErro
 
   useEffect(() => {
     let active = true
-    const controller = new AbortController()
     // Agrupa cambios rápidos de búsqueda/filtros sin agregar otro estado.
     const timeout = setTimeout(async () => {
       try {
-        const response = await fetch('http://localhost:8080/products?' + query, { signal: controller.signal })
-        if (!response.ok) throw new Error('No pudimos cargar el catálogo (HTTP ' + response.status + ').')
-        const data = await response.json()
-        if (!Array.isArray(data.content) || !Number.isInteger(data.totalPages)
-          || !Number.isInteger(data.totalElements) || !Number.isInteger(data.number)) {
-          throw new Error('La respuesta del catálogo no contiene una página válida.')
-        }
-        if (active) setResult({ ...data, query, attempt, error: '' })
+        const data = await loadPage(query)
+        if (active) setResult({ ...data, query, attempt, cacheVersion, error: '' })
       } catch (error) {
-        if (active) setResult({ query, attempt, content: [], totalElements: 0, totalPages: 0, number: page,
+        if (active) setResult({ query, attempt, cacheVersion, content: [], totalElements: 0, totalPages: 0, number: page,
           error: error.message || 'No pudimos cargar el catálogo.' })
       }
     }, 250)
-    return () => { active = false; clearTimeout(timeout); controller.abort() }
-  }, [query, attempt, page])
+    return () => { active = false; clearTimeout(timeout) }
+  }, [query, attempt, page, loadPage, cacheVersion])
 
   function changeFilter(field, value) {
     onFiltersChange({ ...filters, [field]: value, page: 0 })

@@ -9,7 +9,6 @@ import QuantitySelector from '../components/QuantitySelector.jsx'
 import ReviewCard from '../components/ReviewCard.jsx'
 import ReviewForm from '../components/ReviewForm.jsx'
 import {
-  detailGallery,
   detailProductBackgrounds,
   detailPaymentLabel,
   detailPromotionLabel
@@ -31,7 +30,7 @@ function ProductDetail({ cartBusy, cartError, cartMessage, cartItems = [], cartQ
   const isLastUnit = canBuy && product.stock === 1
   const averageRating = reviews.length ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length : 0
   const ratingLabel = averageRating.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-  const images = detailGallery.map((image, index) => ({ ...image, url: product.imageUrls?.[index] }))
+  const images = (product.imageUrls ?? []).map((url, index) => ({label: `Foto ${index + 1}`, url, background: 'crema',}))
   const productInformation = [
     { label: 'Vendido por', value: product.sellerName },
     { label: 'Tipo', value: typeLabels[product.type] },

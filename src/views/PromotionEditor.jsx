@@ -3,76 +3,79 @@ import { Link } from 'react-router-dom'
 import AccountLayout from '../components/AccountLayout.jsx'
 import FormField from '../components/FormField.jsx'
 import PromotionCard from '../components/PromotionCard.jsx'
+import Pagination from '../components/Pagination.jsx'
 import ToggleSwitch from '../components/ToggleSwitch.jsx'
 import { promotionKinds, emptyPromotion, promotionStatus, promotionPeriod, promotionCondition } from '../data/promotionMocks.js'
 import { productTypeLabels } from '../data/accountMocks.js'
 import { paymentMethods } from '../data/paymentMethods.js'
 
-function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave }) {
+function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, onSave, busy = false,
+  collections = [], collectionsLoading, collectionsError, loadProductsPage, loadProduct, productCacheVersion }) {
     const [form, setForm] = useState(() => {
       const initial = isNew ? { ...emptyPromotion, collectionId: '', productId: '' } : promotion;
       return { ...initial, productType: initial.kind === 'type' && !productTypeLabels[initial.productType]
         ? 'CARTA' : initial.productType };
     })
-    const [collections, setCollections] = useState([]);
-    const [products, setProducts] = useState([]);
-    const [dataLoading, setDataLoading] = useState(true);
-    const [dataError, setDataError] = useState('');
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState('');
     const saveRequest = useRef(false);
 
-useEffect(() => {
-  let cancelled = false;
+  const [productSearch, setProductSearch] = useState('');
+  const [productPage, setProductPage] = useState(0);
+  const [productAttempt, setProductAttempt] = useState(0);
+  const [productResult, setProductResult] = useState(null);
+  const [selection, setSelection] = useState(null);
+  const productParams = new URLSearchParams({ page: String(productPage), size: '9' });
+  if (productSearch.trim()) productParams.set('search', productSearch.trim());
+  const productQuery = productParams.toString();
+  const productKey = productQuery + ':' + productAttempt + ':' + productCacheVersion;
+  const selectedProductId = Number(form.productId);
+  const productsLoading = productResult?.key !== productKey;
+  const selectedLoading = Boolean(selectedProductId && selection?.id !== selectedProductId);
+  const productsError = (!productsLoading && productResult?.error) || (!selectedLoading && selection?.error) || '';
+  const pageProducts = productsLoading ? [] : productResult.content;
+  // La selección conserva su entidad real aunque el usuario navegue a otra página.
+  const selectedProduct = selection?.id === selectedProductId ? selection.data : null;
+  const products = selectedProduct && !pageProducts.some((item) => item.id === selectedProduct.id)
+    ? [selectedProduct, ...pageProducts] : pageProducts;
 
-  async function loadData() {
-    try {
-      setDataLoading(true);
-      setDataError('');
+  useEffect(() => {
+    if (form.kind !== 'product') return;
+    let active = true;
+    const timer = setTimeout(() => {
+      loadProductsPage(productQuery)
+        .then((data) => { if (active) setProductResult({ ...data, key: productKey, error: '' }); })
+        .catch((error) => { if (active) setProductResult({ key: productKey, content: [], totalPages: 0, error: error.message }); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [form.kind, productQuery, productKey, loadProductsPage]);
 
-      const [collectionsResponse, productsResponse] =
-        await Promise.all([
-          fetch('http://localhost:8080/collections'),
-          fetch('http://localhost:8080/products?size=100')
-        ]);
+  useEffect(() => {
+    if (form.kind !== 'product' || !selectedProductId || selection?.id === selectedProductId) return;
+    const controller = new AbortController();
+    Promise.resolve().then(async () => {
+        if (controller.signal.aborted) return;
+        // La selección guardada se verifica al abrir el editor, como antes.
+        const data = await loadProduct(selectedProductId, { signal: controller.signal, context: 'selection', revalidate: true });
+        if (!controller.signal.aborted) setSelection({ id: selectedProductId, data, error: '' });
+      }).catch((error) => {
+        if (!controller.signal.aborted) setSelection({ id: selectedProductId, data: null, error: error.message });
+      });
+    return () => controller.abort();
+  }, [form.kind, selectedProductId, selection?.id, loadProduct]);
 
-      if (!collectionsResponse.ok || !productsResponse.ok) {
-        throw new Error('No se pudieron cargar colecciones y productos');
-      }
-
-      const collectionsData = await collectionsResponse.json();
-      const productsData = await productsResponse.json();
-
-      if (!cancelled) {
-        setCollections(collectionsData);
-        setProducts(productsData.content);
-        if (isNew) {
-          setForm((current) => ({
-            ...current,
-            collectionId: current.collectionId === '' ? collectionsData[0]?.id ?? '' : current.collectionId,
-            productId: current.productId === '' ? productsData.content[0]?.id ?? '' : current.productId,
-          }));
-        }
-      }
-    } catch (error) {
-      if (!cancelled) {
-        setDataError(error.message);
-      }
-    } finally {
-      if (!cancelled) {
-        setDataLoading(false);
-      }
-    }
-  }
-
-  loadData();
-
-  return () => {
-    cancelled = true;
-  };
-}, [isNew]);
+  // Colecciones compartidas de App; productos cargados solo al elegir esa condición.
+  const dataLoading = form.kind === 'collection' ? collectionsLoading : form.kind === 'product' ? productsLoading || selectedLoading : false;
+  const dataError = form.kind === 'collection' ? collectionsError : form.kind === 'product' ? productsError : '';
+  const options = form.kind === 'collection' ? collections : products;
+  const selectedId = form.kind === 'collection' ? form.collectionId : form.productId;
+  const needsSelection = ['collection', 'product'].includes(form.kind);
+  const missingSelection = needsSelection && !options.some((item) => item.id === Number(selectedId));
 
   function changeField(field, value) {
+    if (field === 'productId') setSelection(value === '' ? null : {
+      id: Number(value), data: products.find((item) => item.id === Number(value)), error: '',
+    });
     setForm((current) => {
       const next = { ...current, [field]: value };
       if (field === 'kind' && value === 'type' && !productTypeLabels[current.productType]) {
@@ -89,7 +92,7 @@ useEffect(() => {
   async function submitPromotion(event) {
     event.preventDefault();
     // La referencia bloquea incluso dos eventos antes del siguiente render.
-    if (saveRequest.current) return;
+    if (saveRequest.current || busy || dataLoading || dataError || missingSelection) return;
     saveRequest.current = true;
     setSaving(true);
     setSaveError('');
@@ -104,14 +107,6 @@ useEffect(() => {
   }
   const condition = promotionCondition(form, collections, products, paymentMethods)
   
-    if (dataLoading) {
-      return <p>Cargando datos de promociones...</p>;
-    }
-
-    if (dataError) {
-      return <p role="alert">{dataError}</p>;
-    }
-
   return <AccountLayout user={user} cartCount={cartCount} onLogout={onLogout} activeView="promotions">
     <div className="flex flex-col items-start gap-2.5"><Link to="/promociones" className="text-[0.9375rem] font-bold underline">← Promociones</Link><h1 className="font-display text-[4rem] leading-[3.52rem] font-black uppercase">{isNew ? 'Nueva promoción' : 'Editar promoción'}</h1></div>
     <div className="grid min-w-0 items-start gap-7 xl:grid-cols-[minmax(0,1fr)_17rem]">
@@ -126,7 +121,11 @@ useEffect(() => {
           {['quantity', 'type'].includes(form.kind) && <fieldset><legend className="mb-2 text-[0.8125rem] font-extrabold tracking-[0.04875rem] uppercase">Aplica a</legend><div className="flex flex-wrap gap-2">{[...(form.kind === 'quantity' ? [['', 'Todos']] : []), ...Object.entries(productTypeLabels)].map(([value, label]) => <button key={value} type="button" aria-pressed={form.productType === value} onClick={() => changeField('productType', value)} className={`rounded-full border-[1.6px] border-bordo px-4 py-2.25 text-[0.875rem] font-bold ${form.productType === value ? 'bg-bordo text-crema' : 'bg-papel'}`}>{label}</button>)}</div></fieldset>}
           {form.kind === 'minimum' && <FormField id="promotion-minimum" label="Monto mínimo (ARS)" type="number" min="0.01" step="0.01" required value={form.minimumAmount} onChange={(event) => changeField('minimumAmount', Number(event.target.value))} />}
          
-{['collection', 'payment', 'product'].includes(form.kind) && (
+{form.kind === 'product' && <label className="flex flex-col gap-2 font-bold">
+            Buscar productos de la promoción
+            <input type="search" value={productSearch} onChange={(event) => { setProductSearch(event.target.value); setProductPage(0); }} className="rounded-xl border-2 border-bordo px-4 py-3" />
+          </label>}
+          {['collection', 'payment', 'product'].includes(form.kind) && (
   <label className="flex min-w-0 flex-col gap-2">
     <span className="text-[0.8125rem] font-extrabold tracking-[0.04875rem] uppercase">
       {form.kind === 'collection'
@@ -137,6 +136,8 @@ useEffect(() => {
     </span>
 
     <select
+      required
+      disabled={dataLoading || Boolean(form.kind === 'product' ? productResult?.error : dataError)}
       value={
         form.kind === 'collection'
           ? form.collectionId
@@ -153,11 +154,13 @@ useEffect(() => {
               : 'productId',
           form.kind === 'payment'
             ? event.target.value
-            : Number(event.target.value)
+            : event.target.value === '' ? '' : Number(event.target.value)
         )
       }
       className="min-w-0 rounded-[0.875rem] border-[2.4px] border-bordo bg-papel px-4 py-3.5 text-[1.0625rem] font-semibold"
     >
+      <option value="">Seleccioná una opción</option>
+      {missingSelection && selectedId !== '' && <option value={selectedId} disabled>Selección anterior no disponible ({selectedId})</option>}
       {(form.kind === 'collection'
         ? collections.map((item) => ({
             value: item.id,
@@ -178,11 +181,18 @@ useEffect(() => {
   </label>
 )}
 
+          {form.kind === 'product' && !productsLoading && productResult.totalPages > 1 &&
+            <Pagination page={productPage} totalPages={productResult.totalPages} onPageChange={setProductPage} />}
+          {dataLoading && <p role="status">Cargando {form.kind === 'collection' ? 'colecciones' : 'productos'}…</p>}
+          {dataError && <p role="alert">{dataError}{form.kind === 'product' && <button type="button" className="ml-2 underline" onClick={() => { setProductAttempt((value) => value + 1); setSelection(null); }}>Reintentar productos</button>}</p>}
+          {needsSelection && !dataLoading && !dataError && !options.length && <p role="status">No hay {form.kind === 'collection' ? 'colecciones' : 'productos'} disponibles.</p>}
+          {missingSelection && selectedId !== '' && !dataLoading && !dataError && <p role="alert">La selección anterior no está disponible en los datos cargados. Seleccioná otra opción.</p>}
+
         </section>
         <div className="flex items-center gap-3.5"><ToggleSwitch large checked={form.stackable} onChange={(value) => changeField('stackable', value)} label="Acumulable" /><div><p className="font-extrabold">Acumulable</p><p className="text-[0.8125rem] leading-[1.096875rem] opacity-85">Se suma a las demás promociones que apliquen.</p></div></div>
         <div className="grid max-w-[40.2rem] grid-cols-1 gap-4.5 sm:grid-cols-2"><FormField id="promotion-start" label="Inicio" type="date" required value={form.startDate.slice(0, 10)} onChange={(event) => changeField('startDate', event.target.value)} /><FormField id="promotion-end" label={<>Fin<span className="mt-2 block font-semibold tracking-normal normal-case opacity-70">(opcional)</span></>} type="date" min={form.startDate.slice(0, 10) || undefined} value={form.endDate.slice(0, 10)} onChange={(event) => changeField('endDate', event.target.value)} /></div>
         {saveError && <p role="alert" className="font-bold text-rojo">{saveError}</p>}
-        <div className="flex flex-wrap justify-end gap-3"><Link to="/promociones" className="rounded-full border-[2.4px] border-bordo px-6 py-3.5 text-base font-extrabold">Cancelar</Link><button type="submit" disabled={saving} className="rounded-full border-[2.4px] border-bordo bg-bordo px-7 py-3.5 text-base font-extrabold text-crema">{saving ? 'Guardando…' : isNew ? 'Crear promoción' : 'Guardar cambios'}</button></div>
+        <div className="flex flex-wrap justify-end gap-3"><Link to="/promociones" className="rounded-full border-[2.4px] border-bordo px-6 py-3.5 text-base font-extrabold">Cancelar</Link><button type="submit" disabled={saving || busy || dataLoading || Boolean(dataError) || missingSelection} className="rounded-full border-[2.4px] border-bordo bg-bordo px-7 py-3.5 text-base font-extrabold text-crema">{saving ? 'Guardando…' : isNew ? 'Crear promoción' : 'Guardar cambios'}</button></div>
       </form>
       <aside aria-label="Vista previa de promoción" className="flex min-w-0 flex-col gap-3 wrap-anywhere">
         <h2 className="text-[0.8125rem] font-extrabold tracking-[0.065rem] uppercase">Así se ve en la home</h2>

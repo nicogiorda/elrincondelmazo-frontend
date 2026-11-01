@@ -27,7 +27,7 @@ function Cart({ loading, cartBusy, quantitySyncItemId, cartError, cartMessage, o
           </div>
           <PurchaseSummary summary={summary} variant="cart">
             <button type="button" disabled={!items.length || cartBusy || !onCheckout} onClick={onCheckout} className="rounded-full bg-bordo px-6 py-4 text-[1.0625rem] font-extrabold text-crema disabled:opacity-50">Iniciar compra</button>
-            <p className="text-[0.8125rem] leading-[1.1375rem] opacity-80">Los descuentos y el total final se calculan al confirmar el pedido.</p>
+            <p className="text-[0.8125rem] leading-[1.1375rem] opacity-80">Podés revisar los descuentos y el total final en el siguiente paso, antes de confirmar.</p>
           </PurchaseSummary>
         </div>
       </main>

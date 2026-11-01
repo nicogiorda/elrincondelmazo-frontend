@@ -1,6 +1,6 @@
 import ProductThumbnail from './ProductThumbnail.jsx'
 import { productTypeLabels } from '../data/accountMocks.js'
-import { formatPrice } from '../data/purchaseMocks.js'
+import { formatPrice } from '../utils/formatPrice.js'
 
 function ProductPreview({ product }) {
   return (
