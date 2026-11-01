@@ -84,8 +84,8 @@ test('Cuenta delega HTTP y conserva el usuario únicamente en useSession', () =>
 })
 
 test('Reseñas separa HTTP, estado y composición', () => {
-  const owner = [...modules].filter(([, source]) => /['"`]\/products\/[^\n]*\/reviews/.test(source))
-  assert.ok(owner.some(([path]) => relative(root, path).replaceAll('\\', '/') === 'services/reviewsApi.js'))
+  assert.match(modules.get(resolve(root, 'services/reviewsApi.js')), /\/reviews/)
+  assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /\/reviews/)
   assert.doesNotMatch(modules.get(resolve(root, 'hooks/useReviews.js')), /\bfetch\s*\(/)
   assert.doesNotMatch(modules.get(resolve(root, 'services/reviewsApi.js')), /from\s*['"]react['"]|\buseState\s*\(/)
   const app = modules.get(resolve(root, 'App.jsx'))
