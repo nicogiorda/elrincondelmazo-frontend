@@ -1,22 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import { getCart, addCartItem, updateCartItemQuantity, removeCartItem } from '../services/cartApi.js'
+import {
+  cartSessionCleared, cartOperationStarted, cartReceived, cartUpdated,
+  cartQuantityChanged, cartQuantitySyncStarted, cartOperationReleased,
+  cartFailed, cartRetryRequested, cartCheckoutCompleted,
+} from '../Redux/cartSlice.js'
 
-function updateQuantity(cart, id, quantity) {
-  const items = cart.items.map((item) => item.id === id
-    ? { ...item, quantity, subtotal: item.unitPrice * quantity } : item)
-  return { ...cart, items, subtotal: items.reduce((sum, item) => sum + item.subtotal, 0) }
-}
-
-// App mantiene una sola instancia; las vistas reciben el mismo estado y acciones.
+// App conserva una sola instancia: el store administra datos y estado visual.
+// Los refs coordinan exclusión, sesión y cancelación antes de cualquier render.
 export default function useCart({ user, token, sessionVersion, sessionAbort,
   subscribeSessionChange, logout, setSessionError, products, onProductAdded, onLoginRequired }) {
-  const [cart, setCart] = useState(null)
-  const [cartLoading, setCartLoading] = useState(false)
-  const [cartBusy, setCartBusy] = useState(false)
-  const [cartError, setCartError] = useState('')
-  const [cartMessage, setCartMessage] = useState('')
-  const [cartAttempt, setCartAttempt] = useState(0)
-  const [quantitySyncItemId, setQuantitySyncItemId] = useState(null)
+  const dispatch = useDispatch()
+  const { cart, cartLoading, cartBusy, cartError, cartMessage, cartAttempt,
+    quantitySyncItemId } = useSelector((state) => state.cart)
   const requested = useRef(null)
   const operation = useRef(null)
   const mounted = useRef(false)
@@ -24,13 +21,8 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
   const resetCart = useCallback(() => {
     requested.current = null
     operation.current = null
-    setCart(null)
-    setCartLoading(false)
-    setCartBusy(false)
-    setCartError('')
-    setCartMessage('')
-    setQuantitySyncItemId(null)
-  }, [])
+    dispatch(cartSessionCleared())
+  }, [dispatch])
 
   useEffect(() => {
     mounted.current = true
@@ -38,33 +30,31 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
     return () => { mounted.current = false; unsubscribe() }
   }, [subscribeSessionChange, resetCart])
 
-  // El bloqueo se toma sin esperar al render: dos eventos del mismo turno no
-  // pueden iniciar operaciones incompatibles. La sesión es dueña del aborto.
+  // Dos eventos en un mismo turno nunca inician mutaciones incompatibles.
+  // ownerId + generation impiden que una respuesta de otra sesión llegue a Redux.
   const startOperation = useCallback((kind) => {
     if (operation.current) return null
     const version = sessionVersion.current
     const signal = sessionAbort.current.signal
-    const request = { kind, signal }
+    const request = { kind, signal, ownerId: user?.id, generation: version }
     request.isCurrent = () => mounted.current && !signal.aborted
       && version === sessionVersion.current && operation.current === request
     request.release = () => {
       if (!request.isCurrent()) return
       operation.current = null
-      setCartBusy(false)
-      setCartLoading(false)
-      setQuantitySyncItemId(null)
+      dispatch(cartOperationReleased({ ownerId: request.ownerId, generation: version }))
     }
     operation.current = request
-    setCartBusy(true)
-    setCartError('')
-    setCartMessage('')
+    dispatch(cartOperationStarted({ ownerId: request.ownerId, generation: version, kind }))
     return request
-  }, [sessionVersion, sessionAbort])
+  }, [sessionVersion, sessionAbort, user?.id, dispatch])
 
   const reportError = useCallback((error) => {
     if (error.status === 401) { logout(); setSessionError(error.message) }
-    else setCartError(error.message)
-  }, [logout, setSessionError])
+    else dispatch(cartFailed({
+      ownerId: user?.id, generation: sessionVersion.current, message: error.message,
+    }))
+  }, [logout, setSessionError, user?.id, sessionVersion, dispatch])
 
   useEffect(() => {
     if (!user?.id || !token) return
@@ -79,18 +69,17 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
       const request = startOperation('load')
       if (!request) return
       requested.current = key
-      setCartLoading(true)
       getCart({ token, signal: request.signal })
         .then((data) => {
           if (!request.isCurrent()) return
           if (!Array.isArray(data.items)) throw new Error('El carrito recibido no tiene una lista de ítems.')
-          setCart(data)
+          dispatch(cartReceived({ ownerId: request.ownerId, generation: request.generation, cart: data }))
         })
         .catch((error) => { if (request.isCurrent()) reportError(error) })
         .finally(request.release)
     })
     return () => { active = false }
-  }, [user?.id, token, cartAttempt, sessionVersion, startOperation, reportError])
+  }, [user?.id, token, cartAttempt, sessionVersion, startOperation, reportError, dispatch])
 
   function changeCart(mutation, onStart) {
     if (!user || !token) { onLoginRequired(); return Promise.resolve(false) }
@@ -101,8 +90,7 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
     return mutation({ token, signal: request.signal }).then((data) => {
       if (!request.isCurrent()) return false
       if (!Array.isArray(data.items)) throw new Error('El carrito recibido no tiene una lista de ítems.')
-      setCart(data)
-      setCartMessage('Carrito actualizado.')
+      dispatch(cartUpdated({ ownerId: request.ownerId, generation: request.generation, cart: data }))
       return true
     }).catch((error) => {
       if (request.isCurrent()) reportError(error)
@@ -125,16 +113,21 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
         if (!Array.isArray(data.items)) throw new Error('El servidor devolvió un carrito inválido.')
         confirmedCart = data
         if (request.desiredQuantity !== quantity) continue
-        setCart(data)
-        setCartMessage('Carrito actualizado.')
+        dispatch(cartUpdated({ ownerId: request.ownerId, generation: request.generation, cart: data }))
         return true
       }
       return false
     } catch (error) {
       if (!request.isCurrent()) return false
-      setCart(confirmedCart)
-      if (error instanceof TypeError) setCartError('No pudimos conectar con el servidor. Recuperamos la última cantidad guardada.')
-      else reportError(error)
+      dispatch(cartReceived({
+        ownerId: request.ownerId, generation: request.generation, cart: confirmedCart,
+      }))
+      if (error instanceof TypeError) {
+        dispatch(cartFailed({
+          ownerId: request.ownerId, generation: request.generation,
+          message: 'No pudimos conectar con el servidor. Recuperamos la última cantidad guardada.',
+        }))
+      } else reportError(error)
       return false
     } finally { request.release() }
   }
@@ -143,17 +136,19 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
     if (!user || !token || !cart || quantity < 1) return Promise.resolve(false)
     const pending = operation.current
     if (pending && (pending.kind !== 'quantity' || pending.id !== id)) return Promise.resolve(false)
-    const item = cart.items.find((item) => item.id === id)
-    const product = products.find((product) => product.id === item?.productId)
+    const item = cart.items.find((entry) => entry.id === id)
+    const product = products.find((entry) => entry.id === item?.productId)
     if (!item || !product || (quantity > item.quantity && quantity > product.stock)) return Promise.resolve(false)
-    setCart((current) => updateQuantity(current, id, quantity))
+    dispatch(cartQuantityChanged({
+      ownerId: user.id, generation: sessionVersion.current, id, quantity,
+    }))
     if (pending) {
       pending.desiredQuantity = quantity
       return pending.promise
     }
     const request = startOperation('quantity')
     Object.assign(request, { id, desiredQuantity: quantity, originalCart: cart })
-    setQuantitySyncItemId(id)
+    dispatch(cartQuantitySyncStarted({ ownerId: request.ownerId, generation: request.generation, id }))
     request.promise = syncQuantity(request)
     return request.promise
   }
@@ -164,21 +159,23 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
 
   function retryCart() {
     if (operation.current) return false
-    setCartAttempt((attempt) => attempt + 1)
+    dispatch(cartRetryRequested({ ownerId: user?.id, generation: sessionVersion.current }))
     return true
   }
 
   const isCartPending = useCallback(() => Boolean(operation.current), [])
 
-  // Checkout conserva HTTP, idempotencia y validación del pedido. Esta reserva
-  // solo protege el carrito y no permite que un cierre antiguo desbloquee B.
+  // Checkout conserva idempotencia, HTTP y validación del pedido. La reserva
+  // evita que otro evento cambie el carrito durante una confirmación.
   function beginCheckout() {
     if (!user || !token || !cart?.items.length) return null
     const request = startOperation('checkout')
     if (!request) return null
     return {
       complete: () => {
-        if (request.isCurrent()) setCart((current) => ({ ...current, items: [], subtotal: 0 }))
+        if (request.isCurrent()) {
+          dispatch(cartCheckoutCompleted({ ownerId: request.ownerId, generation: request.generation }))
+        }
       },
       release: request.release,
     }
