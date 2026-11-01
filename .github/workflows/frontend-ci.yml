@@ -1,0 +1,27 @@
+name: Frontend checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias desde package-lock.json
+        run: npm ci
+      - name: Revisar ESLint
+        run: npm run lint
+      - name: Compilar con Vite
+        run: npm run build
+      - name: Ejecutar pruebas unitarias
+        run: node --test tests/*.test.mjs
