@@ -31,7 +31,7 @@ test('Los módulos de src no contienen dependencias circulares', () => {
 })
 
 test('App compone una única instancia de cada dominio privado y catálogo', () => {
-  for (const hook of ['useCart', 'useSession', 'useCatalog', 'useCheckout', 'useOrders', 'usePublications', 'useAdminPromotions', 'useAccount']) {
+  for (const hook of ['useCart', 'useSession', 'useCatalog', 'useCheckout', 'useOrders', 'usePublications', 'useAdminPromotions', 'useAccount', 'useReviews']) {
     const sites = [...modules].filter(([, source]) => new RegExp('=\\s*' + hook + '\\(').test(source))
     assert.equal(sites.length, 1)
     assert.equal(sites[0][0], resolve(root, 'App.jsx'))
@@ -81,4 +81,14 @@ test('Cuenta delega HTTP y conserva el usuario únicamente en useSession', () =>
   assert.doesNotMatch(hook, /\bfetch\s*\(|\[user,\s*setUser\]/)
   assert.doesNotMatch(modules.get(resolve(root, 'services/accountApi.js')), /from\s*['"]react['"]|\buseState\(/)
   assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /\/users\/me|accountRequest|setProfileSaving|setDeactivating|setDeactivateError/)
+})
+
+test('Reseñas separa HTTP, estado y composición', () => {
+  const owner = [...modules].filter(([, source]) => /['"`]\/products\/[^\n]*\/reviews/.test(source))
+  assert.ok(owner.some(([path]) => relative(root, path).replaceAll('\\', '/') === 'services/reviewsApi.js'))
+  assert.doesNotMatch(modules.get(resolve(root, 'hooks/useReviews.js')), /\bfetch\s*\(/)
+  assert.doesNotMatch(modules.get(resolve(root, 'services/reviewsApi.js')), /from\s*['"]react['"]|\buseState\s*\(/)
+  const app = modules.get(resolve(root, 'App.jsx'))
+  assert.doesNotMatch(app, /\bfetch\s*\(|setReviewsByProduct|requestedReviews|reviewRequest/)
+  assert.match(app, /useReviews\s*\(/)
 })
