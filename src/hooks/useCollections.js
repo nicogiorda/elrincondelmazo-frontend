@@ -1,24 +1,27 @@
-import { useEffect, useRef, useState } from 'react'
-import { getCollections } from '../services/productsApi.js'
+import { useEffect, useMemo } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { fetchCollections } from '../Redux/catalogSlice.js'
 
+// Home, catálogo, publicación y promociones consumen las mismas colecciones del store.
 export default function useCollections() {
-  const [collections, setCollections] = useState([])
-  const [collectionsLoading, setLoading] = useState(true)
-  const [collectionsError, setError] = useState('')
-  const request = useRef(null)
+  const dispatch = useDispatch()
+  const collections = useSelector((state) => state.catalog.collections)
+  const status = useSelector((state) => state.catalog.collectionsStatus)
+  const collectionsError = useSelector((state) => state.catalog.collectionsError)
+
   useEffect(() => {
-    let active = true
-    const controller = new AbortController()
-    Promise.resolve().then(() => {
-      if (!active || request.current) return
-      request.current = controller
-      getCollections({ signal: controller.signal }).then(data => { if (active) setCollections(data) })
-        .catch(() => { if (active) setError('No pudimos cargar las colecciones. Recargá la página para reintentar.') })
-        .finally(() => { if (active) setLoading(false) })
-    })
-    return () => { active = false; controller.abort() }
-  }, [])
-  const catalogCollections = [{ value: '', label: 'Todas' },
-    ...collections.map(collection => ({ value: String(collection.id), label: collection.name }))]
-  return { collections, collectionsLoading, collectionsError, catalogCollections }
+    dispatch(fetchCollections())
+  }, [dispatch])
+
+  const catalogCollections = useMemo(() => [
+    { value: '', label: 'Todas' },
+    ...collections.map((collection) => ({ value: String(collection.id), label: collection.name })),
+  ], [collections])
+
+  return {
+    collections,
+    collectionsLoading: status === 'idle' || status === 'loading',
+    collectionsError,
+    catalogCollections,
+  }
 }
