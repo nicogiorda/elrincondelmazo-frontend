@@ -17,9 +17,11 @@ export function invalidatePublicPromotions() {
 export function loadPublicPromotions() {
   if (!pending) {
     const request = fetch('http://localhost:8080/promotions/public')
-      .then(async (response) => {
+      .then((response) => {
         if (!response.ok) throw new Error(`No pudimos cargar las promociones (HTTP ${response.status}).`)
-        const data = await response.json()
+        return response.json()
+      })
+      .then((data) => {
         if (!Array.isArray(data)) throw new Error('La respuesta de promociones no es una lista.')
         return data.map((promotion) => ({
           ...promotion,

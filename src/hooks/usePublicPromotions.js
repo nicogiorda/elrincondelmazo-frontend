@@ -12,16 +12,18 @@ export default function usePublicPromotions() {
       setAttempt((current) => current + 1)
     })
     // StrictMode cancela el primer efecto antes de iniciar la petición.
-    Promise.resolve().then(async () => {
-      if (!active) return
-      setState({ items: [], loading: true, error: '' })
-      try {
-        const items = await loadPublicPromotions()
+    Promise.resolve()
+      .then(() => {
+        if (!active) return
+        setState({ items: [], loading: true, error: '' })
+        return loadPublicPromotions()
+      })
+      .then((items) => {
         if (active) setState({ items, loading: false, error: '' })
-      } catch (error) {
+      })
+      .catch((error) => {
         if (active) setState({ items: [], loading: false, error: error.message })
-      }
-    })
+      })
     return () => { active = false; unsubscribe() }
   }, [attempt])
   return { ...state, retry: () => setAttempt((current) => current + 1) }
