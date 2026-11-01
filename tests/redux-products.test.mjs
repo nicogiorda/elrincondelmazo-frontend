@@ -31,7 +31,10 @@ test('fetchProductPage usa el coordinador y mantiene solamente IDs y metadatos e
   assert.equal(state.status, 'succeeded')
   assert.deepEqual(state.ids, [10, 11])
   assert.equal(state.totalPages, 2)
-  assert.equal('entities' in store.getState().products, false)
+  // Etapa 3: las entidades ya pertenecen a Redux; el coordinador falso de
+  // esta prueba no las inserta, por eso la colección normalizada está vacía.
+  assert.deepEqual(store.getState().products.ids, [])
+  assert.deepEqual(Object.keys(store.getState().products.entities), [])
 })
 
 test('createAsyncThunk impide solicitudes simultáneas repetidas de una página', async () => {
