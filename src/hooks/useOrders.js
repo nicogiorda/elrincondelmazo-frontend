@@ -11,6 +11,7 @@ import {
 // solicitudes y cancelaciones. Navegar no destruye una lectura pendiente.
 export default function useOrders({ user, token, sessionVersion, sessionAbort,
   subscribeSessionChange, logout, setSessionError, active }) {
+  const userId = user?.id
   const dispatch = useDispatch()
   const store = useStore()
   const orderHistory = useSelector((state) => state.orders.history)
@@ -42,15 +43,15 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
   }, [subscribeSessionChange, resetOrders, cancelRequests])
 
   const loadOrders = useCallback((force = false) => {
-    if (!mounted.current || !user?.id || !token) return
+    if (!mounted.current || !userId || !token) return
     if (historyRequest.current) return historyRequest.current.promise
     const version = sessionVersion.current
     const previous = store.getState().orders
-    if (!force && previous.ownerId === user.id && previous.generation === version
+    if (!force && previous.ownerId === userId && previous.generation === version
       && previous.history.updatedAt > 0 && Date.now() - previous.history.updatedAt < ORDERS_CACHE_TTL) {
       return Promise.resolve(previous.history.items)
     }
-    const scope = { ownerId: user.id, generation: version }
+    const scope = { ownerId: userId, generation: version }
     const request = { controller: new AbortController() }
     const signal = AbortSignal.any([request.controller.signal, sessionAbort.current.signal])
     historyRequest.current = request
@@ -79,7 +80,7 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
       dispatch(ordersHistoryFinished(scope))
     })
     return request.promise
-  }, [user?.id, token, logout, store, dispatch, sessionAbort, sessionVersion, setSessionError])
+  }, [userId, token, logout, store, dispatch, sessionAbort, sessionVersion, setSessionError])
 
   useEffect(() => {
     if (!active) return
@@ -95,14 +96,14 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
   }, [active, orderHistory.updatedAt, orderHistory.loading, orderHistory.error, loadOrders])
 
   const loadOrderDetail = useCallback((orderId) => {
-    if (!mounted.current || !user?.id || !token) return
+    if (!mounted.current || !userId || !token) return
     const version = sessionVersion.current
     const existing = store.getState().orders
-    const cached = existing.ownerId === user.id && existing.generation === version
+    const cached = existing.ownerId === userId && existing.generation === version
       ? existing.details[orderId] : undefined
     if (cached?.data && Date.now() - cached.updatedAt < ORDERS_CACHE_TTL) return Promise.resolve(cached.data)
     if (detailRequests.current.has(orderId)) return detailRequests.current.get(orderId).promise
-    const scope = { ownerId: user.id, generation: version }
+    const scope = { ownerId: userId, generation: version }
     const request = { controller: new AbortController() }
     const signal = AbortSignal.any([request.controller.signal, sessionAbort.current.signal])
     detailRequests.current.set(orderId, request)
@@ -124,16 +125,16 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
       if (isCurrent()) detailRequests.current.delete(orderId)
     })
     return request.promise
-  }, [user?.id, token, logout, dispatch, store, sessionAbort, sessionVersion, setSessionError])
+  }, [userId, token, logout, dispatch, store, sessionAbort, sessionVersion, setSessionError])
 
   // El checkout ya validó que la confirmación pertenece a la sesión vigente.
   const recordConfirmedOrder = useCallback((order) => {
-    if (!user?.id) return
+    if (!userId) return
     cancelRequests()
     dispatch(ordersConfirmed({
-      ownerId: user.id, generation: sessionVersion.current, order, updatedAt: Date.now(),
+      ownerId: userId, generation: sessionVersion.current, order, updatedAt: Date.now(),
     }))
-  }, [user?.id, sessionVersion, cancelRequests, dispatch])
+  }, [userId, sessionVersion, cancelRequests, dispatch])
 
   return { orderHistory, orderDetails, loadOrders, loadOrderDetail, recordConfirmedOrder }
 }
