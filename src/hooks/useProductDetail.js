@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { fetchProductDetail } from '../Redux/productsSlice.js'
 
 export default function useProductDetail({ productId, active, products, cacheVersion, loadProduct, loadPage, isFresh }) {
-  const [request, setRequest] = useState(null)
+  const dispatch = useDispatch()
+  const request = useSelector((state) => state.products.detail)
   const [attempt, setAttempt] = useState(0)
   const [relatedIds, setRelatedIds] = useState([])
   const key = productId + ':' + attempt + ':' + cacheVersion
@@ -10,21 +13,22 @@ export default function useProductDetail({ productId, active, products, cacheVer
   const selectedProduct = !currentDetailRequest?.error && !currentDetailRequest?.notFound
     && knownProduct && ['ACTIVO', 'AGOTADO'].includes(knownProduct.status) ? knownProduct : undefined
   const needsDetail = Boolean(active && productId && !isFresh(productId) && !currentDetailRequest)
+
   useEffect(() => {
     if (!needsDetail) return
-    let current = true
-    const controller = new AbortController()
-    Promise.resolve().then(async () => {
-      if (!current) return
-      try {
-        const product = await loadProduct(productId, { signal: controller.signal })
-        if (current && !['ACTIVO', 'AGOTADO'].includes(product.status)) setRequest({ key, notFound: true })
-      } catch (error) {
-        if (current) setRequest(error.status === 404 ? { key, notFound: true } : { key, error: error.message })
-      }
+    let activeRequest = true
+    let dispatched
+    // Se difiere el inicio para evitar una petición del primer efecto de StrictMode.
+    queueMicrotask(() => {
+      if (!activeRequest) return
+      dispatched = dispatch(fetchProductDetail({ productId, attempt, cacheVersion }))
     })
-    return () => { current = false; controller.abort() }
-  }, [needsDetail, productId, key, loadProduct])
+    return () => {
+      activeRequest = false
+      dispatched?.abort()
+    }
+  }, [needsDetail, productId, attempt, cacheVersion, dispatch])
+
   useEffect(() => {
     if (!active || !selectedProduct?.collectionId) return
     let current = true

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { createProductCache, PRODUCT_CACHE_TTL } from '../utils/productCache.js'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { PRODUCT_CACHE_TTL } from '../utils/productCache.js'
+import { catalogProductCache } from '../Redux/store.js'
 
 export default function useProductCache() {
-  const [cache] = useState(() => createProductCache())
+  const cache = catalogProductCache
   const snapshot = useSyncExternalStore(cache.subscribe, cache.getSnapshot)
   const mounted = useRef(false)
   useEffect(() => {

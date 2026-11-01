@@ -144,7 +144,7 @@ function App() {
                                     onAddToCart={addToCart}
                                     collections={catalogCollections}
                                     collectionsError={collectionsError}
-                                    loadPage={loadProductPage}
+                                    products={products}
                                     cacheVersion={cacheVersion}
                                     filters={catalogFilters}
                                     onFiltersChange={changeCatalogFilters}
