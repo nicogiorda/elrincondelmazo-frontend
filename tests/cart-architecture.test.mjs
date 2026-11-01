@@ -112,3 +112,17 @@ test('Redux concentra el estado de las páginas y el detalle, pero no duplica en
   assert.match(cacheHook, /catalogProductCache/)
   assert.match(store, /productCache:\s*catalogProductCache/)
 })
+
+test('Redux administra el estado del carrito; useCart coordina mutaciones y sesión', () => {
+  const hook = modules.get(resolve(root, 'hooks/useCart.js'))
+  const slice = modules.get(resolve(root, 'Redux/cartSlice.js'))
+  const store = modules.get(resolve(root, 'Redux/store.js'))
+  assert.match(hook, /useSelector\(/)
+  assert.match(hook, /cartSessionCleared\(/)
+  assert.match(hook, /cartOperationStarted\(/)
+  assert.doesNotMatch(hook, /\buseState\s*\(/)
+  assert.doesNotMatch(slice, /\bfetch\s*\(|from ['"]react['"]|from ['"]\.\.\/services\/cartApi\.js['"]/)
+  assert.match(slice, /generation/)
+  assert.match(slice, /ownerId/)
+  assert.match(store, /cart:\s*cartReducer/)
+})
