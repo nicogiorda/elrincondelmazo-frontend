@@ -53,12 +53,16 @@ function PromotionEditor({ user, onLogout, cartCount, isNew = false, promotion, 
   useEffect(() => {
     if (form.kind !== 'product' || !selectedProductId || selection?.id === selectedProductId) return;
     const controller = new AbortController();
-    Promise.resolve().then(async () => {
+    // Se difiere a una microtarea para evitar un GET del primer efecto descartado por StrictMode.
+    Promise.resolve()
+      .then(() => {
         if (controller.signal.aborted) return;
-        // La selección guardada se verifica al abrir el editor, como antes.
-        const data = await loadProduct(selectedProductId, { signal: controller.signal, context: 'selection', revalidate: true });
+        return loadProduct(selectedProductId, { signal: controller.signal, context: 'selection', revalidate: true });
+      })
+      .then((data) => {
         if (!controller.signal.aborted) setSelection({ id: selectedProductId, data, error: '' });
-      }).catch((error) => {
+      })
+      .catch((error) => {
         if (!controller.signal.aborted) setSelection({ id: selectedProductId, data: null, error: error.message });
       });
     return () => controller.abort();

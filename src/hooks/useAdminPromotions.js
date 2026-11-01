@@ -112,9 +112,9 @@ export default function useAdminPromotions({ user, token, active, sessionVersion
   function save(promotion) {
     return mutate(promotion.id, options => savePromotion(promotionToBackend(promotion), promotion.id, options), onSaved)
   }
-  async function toggle(promotion) {
-    try { return await mutate(promotion.id, options => setPromotionActive(promotion.id, !promotion.enabled, options)) }
-    catch { return false } // La tarjeta presenta el error del hook; no deja un rechazo sin manejar.
+  function toggle(promotion) {
+    return mutate(promotion.id, options => setPromotionActive(promotion.id, !promotion.enabled, options))
+      .catch(() => false) // La tarjeta presenta el error del hook; no deja un rechazo sin manejar.
   }
 
   return { promotions: allowed && state.userId === userId ? state.items : [],
