@@ -1,30 +1,36 @@
 import { useEffect, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { fetchProductDetail } from '../Redux/productsSlice.js'
 
-export default function useProductDetail({ productId, active, products, cacheVersion, loadProduct, loadPage, isFresh }) {
-  const [request, setRequest] = useState(null)
+export default function useProductDetail({ productId, active, products, cacheVersion, loadPage, isFresh }) {
+  const dispatch = useDispatch()
+  const request = useSelector((state) => state.products.detail)
   const [attempt, setAttempt] = useState(0)
   const [relatedIds, setRelatedIds] = useState([])
   const key = productId + ':' + attempt + ':' + cacheVersion
-  const currentDetailRequest = request?.key === key ? request : null
+  // pending todavía debe verse como «Cargando producto», no «Producto no disponible».
+  const currentDetailRequest = request?.key === key && request.status !== 'loading' ? request : null
   const knownProduct = products.find(product => product.id === productId)
   const selectedProduct = !currentDetailRequest?.error && !currentDetailRequest?.notFound
     && knownProduct && ['ACTIVO', 'AGOTADO'].includes(knownProduct.status) ? knownProduct : undefined
   const needsDetail = Boolean(active && productId && !isFresh(productId) && !currentDetailRequest)
+
   useEffect(() => {
-    if (!needsDetail) return
-    let current = true
-    const controller = new AbortController()
-    Promise.resolve().then(async () => {
-      if (!current) return
-      try {
-        const product = await loadProduct(productId, { signal: controller.signal })
-        if (current && !['ACTIVO', 'AGOTADO'].includes(product.status)) setRequest({ key, notFound: true })
-      } catch (error) {
-        if (current) setRequest(error.status === 404 ? { key, notFound: true } : { key, error: error.message })
-      }
+    // No depender de needsDetail: pending lo cambia y abortaría el mismo thunk.
+    if (!active || !productId || isFresh(productId)) return
+    let activeRequest = true
+    let dispatched
+    // Se difiere el inicio para evitar una petición del primer efecto de StrictMode.
+    queueMicrotask(() => {
+      if (!activeRequest) return
+      dispatched = dispatch(fetchProductDetail({ productId, attempt, cacheVersion }))
     })
-    return () => { current = false; controller.abort() }
-  }, [needsDetail, productId, key, loadProduct])
+    return () => {
+      activeRequest = false
+      dispatched?.abort()
+    }
+  }, [active, productId, attempt, cacheVersion, dispatch, isFresh])
+
   useEffect(() => {
     if (!active || !selectedProduct?.collectionId) return
     let current = true

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { fetchProductPage } from '../Redux/productsSlice.js'
 import Pagination from '../components/Pagination.jsx'
 import { Link } from 'react-router-dom'
 import Header from '../components/Header.jsx'
@@ -10,7 +12,7 @@ import { catalogTypes, catalogProductBackgrounds } from '../data/catalogMocks.js
 
 const pageSize = 9
 
-function Catalog({ loadPage, cacheVersion, isLoggedIn, cartBusy, cartError, cartMessage, collectionsError, cartItems = [], collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+function Catalog({ products, cacheVersion, isLoggedIn, cartBusy, cartError, cartMessage, collectionsError, cartItems = [], collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
 
 
   const { search, type, collection, minPrice, maxPrice, page } = filters
@@ -22,29 +24,28 @@ function Catalog({ loadPage, cacheVersion, isLoggedIn, cartBusy, cartError, cart
   if (minPrice !== '') params.set('minPrice', minPrice)
   if (maxPrice !== '') params.set('maxPrice', maxPrice)
   const query = params.toString()
+  const dispatch = useDispatch()
   const [attempt, setAttempt] = useState(0)
-  const [result, setResult] = useState(null)
-  const loading = result?.query !== query || result?.attempt !== attempt || result?.cacheVersion !== cacheVersion
-  const error = loading ? '' : result.error
-  const visibleProducts = loading ? [] : result.content
-  const totalProducts = loading ? 0 : result.totalElements
-  const totalPages = loading ? 0 : result.totalPages
-  const currentPage = loading ? page : result.number
+  const pageResult = useSelector((state) => state.products.page)
+  const currentKey = `${query}:${cacheVersion}:${attempt}`
+  const current = pageResult?.key === currentKey ? pageResult : null
+  const loading = !current || current.status === 'loading'
+  const error = current?.status === 'failed' ? current.error : ''
+  const byId = new Map(products.map((product) => [product.id, product]))
+  const visibleProducts = current?.status === 'succeeded'
+    ? current.ids.map((id) => byId.get(id)).filter(Boolean) : []
+  const totalProducts = current?.status === 'succeeded' ? current.totalElements : 0
+  const totalPages = current?.status === 'succeeded' ? current.totalPages : 0
+  const currentPage = current?.status === 'succeeded' ? current.number : page
 
   useEffect(() => {
-    let active = true
-    // Agrupa cambios rápidos de búsqueda/filtros sin agregar otro estado.
-    const timeout = setTimeout(async () => {
-      try {
-        const data = await loadPage(query)
-        if (active) setResult({ ...data, query, attempt, cacheVersion, error: '' })
-      } catch (error) {
-        if (active) setResult({ query, attempt, cacheVersion, content: [], totalElements: 0, totalPages: 0, number: page,
-          error: error.message || 'No pudimos cargar el catálogo.' })
-      }
+    // El debounce sigue en la vista; Redux controla pending / fulfilled / rejected.
+    const timeout = setTimeout(() => {
+      dispatch(fetchProductPage({ query, cacheVersion, attempt }))
     }, 250)
-    return () => { active = false; clearTimeout(timeout) }
-  }, [query, attempt, page, loadPage, cacheVersion])
+    return () => clearTimeout(timeout)
+  }, [dispatch, query, cacheVersion, attempt])
+
 
   function changeFilter(field, value) {
     onFiltersChange({ ...filters, [field]: value, page: 0 })
