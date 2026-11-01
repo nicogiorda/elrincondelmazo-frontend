@@ -4,8 +4,10 @@ import { createAsyncThunk, createEntityAdapter, createSlice } from '@reduxjs/too
 // La caché conserva solo tareas de coordinación (TTL, solicitudes y versiones).
 const productsAdapter = createEntityAdapter()
 const initialState = productsAdapter.getInitialState({
+  home: null,
   page: null,
   detail: null,
+  related: null,
 })
 
 const queryKey = ({ query, cacheVersion, attempt }) => `${query}:${cacheVersion}:${attempt}`
@@ -51,6 +53,38 @@ export const fetchProductDetail = createAsyncThunk(
   },
 )
 
+const homeKey = ({ cacheVersion }) => String(cacheVersion)
+const relatedKey = ({ collectionId, cacheVersion }) => `${collectionId}:${cacheVersion}`
+
+// Home y relacionados también despachan acciones. No hacen GET desde hooks.
+export const fetchHomeProducts = createAsyncThunk(
+  'products/fetchHome',
+  async (_args, { extra }) => {
+    const page = await extra.productCache.loadPage('page=0&size=4')
+    return page.content.map(product => product.id)
+  },
+  {
+    condition: (args, { getState }) => {
+      const home = getState().products.home
+      return !(home?.key === homeKey(args) && ['loading', 'succeeded'].includes(home.status))
+    },
+  },
+)
+
+export const fetchRelatedProducts = createAsyncThunk(
+  'products/fetchRelated',
+  async ({ collectionId }, { extra }) => {
+    const page = await extra.productCache.loadPage('page=0&size=5&collectionId=' + collectionId)
+    return page.content.map(product => product.id)
+  },
+  {
+    condition: (args, { getState }) => {
+      const related = getState().products.related
+      return !(related?.key === relatedKey(args) && ['loading', 'succeeded'].includes(related.status))
+    },
+  },
+)
+
 const productsSlice = createSlice({
   name: 'products',
   initialState,
@@ -61,6 +95,38 @@ const productsSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      .addCase(fetchHomeProducts.pending, (state, action) => {
+        state.home = {
+          key: homeKey(action.meta.arg), requestId: action.meta.requestId,
+          status: 'loading', ids: [], error: '',
+        }
+      })
+      .addCase(fetchHomeProducts.fulfilled, (state, action) => {
+        if (state.home?.requestId !== action.meta.requestId) return
+        state.home.ids = action.payload
+        state.home.status = 'succeeded'
+      })
+      .addCase(fetchHomeProducts.rejected, (state, action) => {
+        if (state.home?.requestId !== action.meta.requestId) return
+        state.home.status = 'failed'
+        state.home.error = action.error.message || 'No pudimos cargar los productos recientes.'
+      })
+      .addCase(fetchRelatedProducts.pending, (state, action) => {
+        state.related = {
+          key: relatedKey(action.meta.arg), requestId: action.meta.requestId,
+          status: 'loading', ids: [], error: '',
+        }
+      })
+      .addCase(fetchRelatedProducts.fulfilled, (state, action) => {
+        if (state.related?.requestId !== action.meta.requestId) return
+        state.related.ids = action.payload
+        state.related.status = 'succeeded'
+      })
+      .addCase(fetchRelatedProducts.rejected, (state, action) => {
+        if (state.related?.requestId !== action.meta.requestId) return
+        state.related.status = 'failed'
+        state.related.error = action.error.message || 'No pudimos cargar productos relacionados.'
+      })
       .addCase(fetchProductPage.pending, (state, action) => {
         state.page = {
           key: queryKey(action.meta.arg),
