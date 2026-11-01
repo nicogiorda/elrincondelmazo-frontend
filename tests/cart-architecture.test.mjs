@@ -102,6 +102,8 @@ test('Redux concentra el estado de las páginas y el detalle, pero no duplica en
   const store = modules.get(resolve(root, 'Redux/store.js'))
   assert.match(page, /dispatch\(fetchProductPage\(/)
   assert.match(detail, /dispatch\(fetchProductDetail\(/)
+  assert.doesNotMatch(detail, /\[needsDetail,\s*productId/)
+  assert.match(detail, /request\.status !== 'loading'/)
   assert.doesNotMatch(page, /\[result,\s*setResult\]/)
   assert.doesNotMatch(detail, /\[request,\s*setRequest\]/)
   assert.doesNotMatch(slice, /\bfetch\s*\(/)
