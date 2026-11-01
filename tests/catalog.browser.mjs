@@ -24,6 +24,29 @@ async function setup(options = {}) {
       window.productRequests.push(record)
       return original(url, ignoreAbort ? { ...init, signal: undefined } : init).finally(() => { record.settled = true })
     }
+    // Axios utiliza XMLHttpRequest en el navegador: seguir únicamente fetch
+    // deja productRequests vacío y provoca timeouts falsos en las carreras.
+    const xhrOpen = XMLHttpRequest.prototype.open
+    const xhrSend = XMLHttpRequest.prototype.send
+    const xhrAbort = XMLHttpRequest.prototype.abort
+    XMLHttpRequest.prototype.open = function (method, url, ...args) {
+      this.isProductRequest = String(url).includes('/products')
+      return xhrOpen.call(this, method, url, ...args)
+    }
+    XMLHttpRequest.prototype.send = function (...args) {
+      if (this.isProductRequest) {
+        const record = { settled: false }
+        window.productRequests.push(record)
+        this.addEventListener('loadend', () => { record.settled = true }, { once: true })
+      }
+      return xhrSend.apply(this, args)
+    }
+    XMLHttpRequest.prototype.abort = function (...args) {
+      // Igual que para fetch: el modo QA simula una respuesta antigua que
+      // ignora la cancelación, para comprobar que Redux la descarte.
+      if (ignoreAbort && this.isProductRequest) return
+      return xhrAbort.apply(this, args)
+    }
   }, { loggedIn: options.loggedIn ?? false, ignoreAbort: options.ignoreAbort ?? false })
   const page = await context.newPage()
   page.setDefaultTimeout(10000)
@@ -81,6 +104,8 @@ try {
     const s = await setup({ path: '/' })
     await card(s.page, 4).waitFor()
     assert.equal(s.count('/products', '?page=0&size=4'), 1)
+    assert.equal(await s.page.evaluate(() => window.productRequests.length), 1,
+      'El monitor debe registrar también la petición Axios de Home')
     assert.equal(s.count('/collections'), 1)
     assert.equal(s.state.calls.filter(c => /^\/products\/\d+$/.test(c.path)).length, 0)
     assert.deepEqual(await s.page.locator('button[aria-label^="Ver Producto "]').evaluateAll(buttons => buttons.map(b => b.getAttribute('aria-label'))),
