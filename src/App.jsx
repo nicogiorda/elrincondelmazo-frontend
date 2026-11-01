@@ -106,12 +106,6 @@ function App() {
     rememberProduct(product)
     navigate('/producto/' + product.id)
   }
-  // Solo ocultamos duplicados conocidos. Spring decide si hubo compra previa.
-  function canReview(product) {
-    return Boolean(user && reviewsByProduct[product.id]
-      && !reviewsByProduct[product.id].some((review) => review.userId === user.id))
-  }
-
   function buyNow(product, quantity) {
     return addToCart(product, quantity).then((saved) => {
       if (saved) navigate('/carrito')

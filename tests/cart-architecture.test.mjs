@@ -90,5 +90,6 @@ test('Reseñas separa HTTP, estado y composición', () => {
   assert.doesNotMatch(modules.get(resolve(root, 'services/reviewsApi.js')), /from\s*['"]react['"]|\buseState\s*\(/)
   const app = modules.get(resolve(root, 'App.jsx'))
   assert.doesNotMatch(app, /\bfetch\s*\(|setReviewsByProduct|requestedReviews|reviewRequest/)
+  assert.doesNotMatch(app, /\bfunction\s+canReview\s*\(/)
   assert.match(app, /useReviews\s*\(/)
 })
