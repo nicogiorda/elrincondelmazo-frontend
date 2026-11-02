@@ -5,6 +5,7 @@ import productsReducer, { cachedProduct, removedCachedProduct,
 import cartReducer from './cartSlice.js'
 import ordersReducer from './ordersSlice.js'
 import publicationsReducer from './publicationsSlice.js'
+import userReducer from './userSlice.js'
 import { createProductCache } from '../utils/productCache.js'
 
 // Adaptador Map compatible: la caché organiza la red, pero las entidades viven
@@ -39,6 +40,20 @@ export const store = configureStore({
     cart: cartReducer,
     orders: ordersReducer,
     publications: publicationsReducer,
+    users: userReducer,
+  },
+  // DevTools representa el flujo de Redux sin exponer contraseñas o JWT.
+  devTools: {
+    actionSanitizer: action => {
+      if (['users/login/fulfilled', 'users/register/fulfilled', 'users/sessionAuthenticated'].includes(action.type)) {
+        return { ...action, payload: { ...action.payload, token: '[oculto]' } }
+      }
+      return action
+    },
+    stateSanitizer: state => ({
+      ...state,
+      users: { ...state.users, token: state.users.token ? '[oculto]' : null },
+    }),
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware({
     // Las operaciones HTTP se realizan desde el coordinador existente.
@@ -46,6 +61,7 @@ export const store = configureStore({
     thunk: { extraArgument: {
       productCache: catalogProductCache,
       publicationToken: () => globalThis.localStorage?.getItem('token'),
+      authToken: () => globalThis.localStorage?.getItem('token'),
     } },
   }),
 })

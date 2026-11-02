@@ -1,24 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { authenticate, getCurrentUser, register as registerAccount } from '../services/authApi.js'
+import { useDispatch, useSelector, useStore } from 'react-redux'
+import {
+  fetchAuthenticatedUser, loginUser, registerUser, stageAuthCredentials,
+  discardAuthCredentials, sessionAuthenticated, sessionEnded,
+  sessionErrorChanged, authenticatedUserUpdated,
+} from '../Redux/userSlice.js'
 
 const noop = () => {}
 
-// Una sola instancia en App. El callback limpia datos de otros dominios sin
-// introducir dependencias de carrito, pedidos o publicaciones en este hook.
+// Única instancia en App. Estado global en Redux como en el demo de Gisele;
+// las refs solo coordinan cancelaciones, desmontaje y cambios de sesión.
 export default function useSession({ onSessionChange = noop } = {}) {
   const navigate = useNavigate()
-  const [user, setUser] = useState(null)
-  const [token, setToken] = useState(() => localStorage.getItem('token'))
-  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem('token')))
-  const [sessionError, setSessionError] = useState('')
+  const dispatch = useDispatch()
+  const store = useStore()
+  const { user, token, loading, sessionError } = useSelector(state => state.users)
   const sessionVersion = useRef(0)
   const sessionAbort = useRef(new AbortController())
   const sessionRequested = useRef(false)
   const mounted = useRef(false)
   const sessionListeners = useRef(new Set())
-  // Cada dominio registra su limpieza sin que la sesión importe sus hooks.
-  const subscribeSessionChange = useCallback((listener) => {
+
+  const subscribeSessionChange = useCallback(listener => {
     sessionListeners.current.add(listener)
     return () => sessionListeners.current.delete(listener)
   }, [])
@@ -27,8 +31,6 @@ export default function useSession({ onSessionChange = noop } = {}) {
     mounted.current = true
     return () => {
       mounted.current = false
-      // StrictMode vuelve a montar los efectos en el mismo turno. El desmontaje
-      // real invalida inmediatamente resultados y aborta al finalizar ese turno.
       queueMicrotask(() => {
         if (!mounted.current) {
           sessionVersion.current += 1
@@ -42,18 +44,26 @@ export default function useSession({ onSessionChange = noop } = {}) {
     sessionVersion.current += 1
     sessionAbort.current.abort()
     sessionAbort.current = new AbortController()
-    sessionListeners.current.forEach((listener) => listener())
+    sessionListeners.current.forEach(listener => listener())
     onSessionChange()
   }, [onSessionChange])
+
+  const setSessionError = useCallback(message => {
+    dispatch(sessionErrorChanged(message))
+  }, [dispatch])
+
+  const setUser = useCallback(updater => {
+    const previous = store.getState().users.user
+    const updated = typeof updater === 'function' ? updater(previous) : updater
+    if (updated && updated !== previous) dispatch(authenticatedUserUpdated(updated))
+  }, [dispatch, store])
 
   const logout = useCallback(() => {
     invalidateSession()
     localStorage.removeItem('token')
-    setToken(null)
-    setUser(null)
-    setLoading(false)
+    dispatch(sessionEnded())
     navigate('/ingresar', { replace: true })
-  }, [invalidateSession, navigate])
+  }, [invalidateSession, dispatch, navigate])
 
   useEffect(() => {
     if (sessionRequested.current) return
@@ -63,43 +73,44 @@ export default function useSession({ onSessionChange = noop } = {}) {
     const version = sessionVersion.current
     const isCurrent = () => mounted.current && version === sessionVersion.current
       && savedToken === localStorage.getItem('token')
-    getCurrentUser({ token: savedToken, signal: sessionAbort.current.signal })
-      .then((usuario) => { if (isCurrent()) setUser(usuario) })
-      .catch((error) => {
-        if (!isCurrent()) return
-        if (error.status === 401 || error.status === 403 || error.code === 'INVALID_USER') logout()
-        setSessionError(error instanceof TypeError
-          ? 'No pudimos conectar con el servidor. Revisá tu conexión y volvé a intentar.' : error.message)
-      })
-      .finally(() => {
-        if (mounted.current && (version === sessionVersion.current || !localStorage.getItem('token'))) setLoading(false)
-      })
-  }, [logout])
+    dispatch(fetchAuthenticatedUser()).then(action => {
+      if (!isCurrent() || !fetchAuthenticatedUser.rejected.match(action) || action.meta.aborted) return
+      const error = action.error
+      if (error.status === 401 || error.status === 403 || error.code === 'INVALID_USER') logout()
+      setSessionError(error.code === 'ERR_NETWORK'
+        ? 'No pudimos conectar con el servidor. Revisá tu conexión y volvé a intentar.'
+        : error.message)
+    })
+  }, [dispatch, logout, setSessionError])
 
   const startSession = useCallback(async (operation, credentials, { signal } = {}) => {
     const version = sessionVersion.current
     const previousToken = localStorage.getItem('token')
     const requestSignal = signal ? AbortSignal.any([signal, sessionAbort.current.signal]) : sessionAbort.current.signal
-    const session = await operation(credentials, { signal: requestSignal })
-    if (!mounted.current || requestSignal.aborted || version !== sessionVersion.current
-      || previousToken !== localStorage.getItem('token')) return false
-    // authApi ya verificó token y usuario. Invalidar A antes de publicar B.
-    invalidateSession()
-    localStorage.setItem('token', session.token)
-    setToken(session.token)
-    setUser(session.user)
-    setSessionError('')
-    setLoading(false)
-    navigate('/mi-perfil', { replace: true })
-    return true
-  }, [invalidateSession, navigate])
+    const requestId = stageAuthCredentials(credentials)
+    const pending = dispatch(operation(requestId))
+    const abort = () => pending.abort()
+    if (requestSignal.aborted) abort()
+    else requestSignal.addEventListener('abort', abort, { once: true })
+    try {
+      const session = await pending.unwrap()
+      if (!mounted.current || requestSignal.aborted || version !== sessionVersion.current
+        || previousToken !== localStorage.getItem('token')) return false
+      // La API verificó el usuario con /users/me: invalidar A antes de publicar B.
+      invalidateSession()
+      localStorage.setItem('token', session.token)
+      dispatch(sessionAuthenticated(session))
+      navigate('/mi-perfil', { replace: true })
+      return true
+    } finally {
+      requestSignal.removeEventListener('abort', abort)
+      discardAuthCredentials(requestId)
+    }
+  }, [dispatch, invalidateSession, navigate])
 
-  const login = useCallback((credentials, options) => startSession(authenticate, credentials, options), [startSession])
-  const register = useCallback((credentials, options) => startSession(registerAccount, credentials, options), [startSession])
+  const login = useCallback((credentials, options) => startSession(loginUser, credentials, options), [startSession])
+  const register = useCallback((credentials, options) => startSession(registerUser, credentials, options), [startSession])
 
-  // App solo lee estas refs para conservar los controles de sus operaciones.
-  // La versión y el controlador se modifican exclusivamente dentro del hook.
-  // setUser permite aplicar el perfil confirmado sin iniciar otra sesión.
   return { user, token, loading, sessionError, setSessionError, setUser,
     login, register, logout, sessionVersion, sessionAbort, subscribeSessionChange }
 }
