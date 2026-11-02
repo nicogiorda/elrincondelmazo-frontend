@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useDispatch, useSelector, useStore } from 'react-redux'
-import { getOrders, getOrderDetail } from '../services/ordersApi.js'
 import {
-  ORDERS_CACHE_TTL, ordersSessionCleared, ordersHistoryStarted,
-  ordersHistoryLoaded, ordersHistoryFailed, ordersHistoryFinished,
-  ordersDetailStarted, ordersDetailLoaded, ordersDetailFailed, ordersConfirmed,
+  ORDERS_CACHE_TTL, ordersSessionCleared, ordersConfirmed,
+  fetchOrdersHistory, fetchOrderDetail,
 } from '../Redux/ordersSlice.js'
 
 // Única instancia en App: Redux guarda el estado privado, el hook coordina
@@ -57,28 +55,20 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
     historyRequest.current = request
     const isCurrent = () => mounted.current && !signal.aborted
       && version === sessionVersion.current && historyRequest.current === request
-    dispatch(ordersHistoryStarted(scope))
-    request.promise = getOrders({ token, signal }).then((items) => {
-      if (!isCurrent()) return
-      if (!Array.isArray(items) || !items.every(order => order && Number.isSafeInteger(order.id)
-        && typeof order.orderDate === 'string' && typeof order.state === 'string' && Number.isFinite(order.total))) {
-        throw new Error('La respuesta de pedidos no contiene una lista válida.')
-      }
-      // Un detalle anterior a un listado actualizado no debe sobrescribirlo.
-      detailRequests.current.forEach((pending) => pending.controller.abort())
-      detailRequests.current.clear()
-      dispatch(ordersHistoryLoaded({ ...scope, items, updatedAt: Date.now() }))
-      return items
-    }).catch((error) => {
-      if (!isCurrent()) return
-      if (error.status === 401) { logout(); setSessionError(error.message) }
-      else dispatch(ordersHistoryFailed({ ...scope,
-        message: 'No pudimos actualizar tus pedidos. ' + error.message }))
-    }).finally(() => {
-      if (!isCurrent()) return
-      historyRequest.current = null
-      dispatch(ordersHistoryFinished(scope))
-    })
+    request.promise = dispatch(fetchOrdersHistory(scope, { signal })).unwrap()
+      .then(({ items }) => {
+        if (!isCurrent()) return
+        // Un nuevo historial invalida los detalles en curso; el slice preserva
+        // únicamente los detalles compatibles con las filas actualizadas.
+        detailRequests.current.forEach(pending => pending.controller.abort())
+        detailRequests.current.clear()
+        return items
+      }).catch(error => {
+        if (!isCurrent()) return
+        if (error.status === 401) { logout(); setSessionError(error.message) }
+      }).finally(() => {
+        if (historyRequest.current === request) historyRequest.current = null
+      })
     return request.promise
   }, [userId, token, logout, store, dispatch, sessionAbort, sessionVersion, setSessionError])
 
@@ -109,21 +99,13 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
     detailRequests.current.set(orderId, request)
     const isCurrent = () => mounted.current && !signal.aborted
       && version === sessionVersion.current && detailRequests.current.get(orderId) === request
-    dispatch(ordersDetailStarted({ ...scope, orderId }))
-    request.promise = getOrderDetail(orderId, { token, signal }).then((data) => {
-      if (!isCurrent()) return
-      if (data?.id !== orderId || !Array.isArray(data.items)) {
-        throw new Error('El detalle recibido no corresponde al pedido.')
-      }
-      dispatch(ordersDetailLoaded({ ...scope, orderId, data, updatedAt: Date.now() }))
-      return data
-    }).catch((error) => {
-      if (!isCurrent()) return
-      if (error.status === 401) { logout(); setSessionError(error.message) }
-      else dispatch(ordersDetailFailed({ ...scope, orderId, message: error.message }))
-    }).finally(() => {
-      if (isCurrent()) detailRequests.current.delete(orderId)
-    })
+    request.promise = dispatch(fetchOrderDetail({ ...scope, orderId }, { signal })).unwrap()
+      .then(({ data }) => isCurrent() ? data : undefined)
+      .catch(error => {
+        if (isCurrent() && error.status === 401) { logout(); setSessionError(error.message) }
+      }).finally(() => {
+        if (detailRequests.current.get(orderId) === request) detailRequests.current.delete(orderId)
+      })
     return request.promise
   }, [userId, token, logout, dispatch, store, sessionAbort, sessionVersion, setSessionError])
 
