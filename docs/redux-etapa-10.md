@@ -42,7 +42,7 @@ Pruebas unitarias: `tests/orders-api.test.mjs`, `tests/redux-orders.test.mjs`, `
 
 En GitHub Actions: `npm ci`, `npm run lint`, `npm run build`, `node --test tests/*.test.mjs`.
 
-La suite E2E `tests/checkout.browser.mjs` mantiene contratos de moneda, rutas, 409, 422, 401, resultados ambiguos, navegación, pago, bloqueo del carrito, doble clic, cuentas distintas y reintento con misma clave. Se actualizó el monitor de red para observar **XMLHttpRequest**, transporte de Axios, además de `fetch`. Requiere Vite y Playwright + Microsoft Edge en el entorno de QA. CI actual no ejecuta pruebas E2E.
+La suite E2E `tests/checkout.browser.mjs` mantiene contratos de moneda, rutas, 409, 422, 401, resultados ambiguos, navegación, pago, bloqueo del carrito, doble clic, cuentas distintas y reintento con misma clave. Se actualizó el monitor de red para observar **XMLHttpRequest**, transporte de Axios, además de `fetch`, incluso cuando se ignora la cancelación para simular respuestas tardías. El nuevo workflow `.github/workflows/frontend-browser-ci.yml` instala Playwright y ejecuta en Microsoft Edge las suites `tests/cart-api.browser.mjs` y `tests/checkout.browser.mjs`, con backend simulado y sin escribir en la base de datos. También pueden ejecutarse localmente con Vite + Playwright y Microsoft Edge configurados.
 
 ## Alcance
 
