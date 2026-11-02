@@ -22,6 +22,28 @@ async function setup(options = {}) {
     }
     const original = window.fetch.bind(window)
     window.checkoutRequests = []
+
+    // Los endpoints migrados usan XMLHttpRequest con Axios. Observar ambos
+    // transportes para seguir probando carreras, cancelaciones y late responses.
+    const xhrOpen = XMLHttpRequest.prototype.open
+    const xhrSend = XMLHttpRequest.prototype.send
+    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      this.__checkoutUrl = String(url)
+      return xhrOpen.call(this, method, url, ...rest)
+    }
+    XMLHttpRequest.prototype.send = function (...args) {
+      if ((this.__checkoutUrl || '').startsWith('http://localhost:8080')) {
+        const record = { path: new URL(this.__checkoutUrl).pathname, settled: false, aborted: false }
+        window.checkoutRequests.push(record)
+        this.addEventListener('abort', () => { record.aborted = true }, { once: true })
+        this.addEventListener('loadend', () => { record.settled = true }, { once: true })
+        if (ignoreAbort) {
+          // Simular respuestas tardias aun cuando el thunk cancelo su espera.
+          this.abort = () => { record.aborted = true }
+        }
+      }
+      return xhrSend.apply(this, args)
+    }
     window.fetch = (url, init = {}) => {
       if (!String(url).startsWith('http://localhost:8080')) return original(url, init)
       const record = { path: new URL(url).pathname, settled: false, aborted: false }

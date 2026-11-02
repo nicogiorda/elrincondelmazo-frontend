@@ -4,6 +4,7 @@ import productsReducer, { cachedProduct, removedCachedProduct,
   clearedCachedProducts } from './productsSlice.js'
 import cartReducer from './cartSlice.js'
 import ordersReducer from './ordersSlice.js'
+import checkoutReducer from './checkoutSlice.js'
 import publicationsReducer from './publicationsSlice.js'
 import userReducer from './userSlice.js'
 import { createProductCache } from '../utils/productCache.js'
@@ -39,6 +40,7 @@ export const store = configureStore({
     products: productsReducer,
     cart: cartReducer,
     orders: ordersReducer,
+    checkout: checkoutReducer,
     publications: publicationsReducer,
     users: userReducer,
   },
@@ -63,6 +65,7 @@ export const store = configureStore({
       publicationToken: () => globalThis.localStorage?.getItem('token'),
       authToken: () => globalThis.localStorage?.getItem('token'),
       cartToken: () => globalThis.localStorage?.getItem('token'),
+      ordersToken: () => globalThis.localStorage?.getItem('token'),
     } },
   }),
 })

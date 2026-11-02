@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createOrder } from '../services/ordersApi.js'
+import { useDispatch, useSelector } from 'react-redux'
+import { confirmCheckoutOrder, checkoutSessionCleared, checkoutSubmitErrorSet } from '../Redux/checkoutSlice.js'
 import useCheckoutQuote from './useCheckoutQuote.js'
 
-const ambiguousMessage = 'No pudimos comprobar si el pedido se creó. Revisá tus pedidos antes de iniciar otra compra; podés reintentar este mismo intento sin cambiar sus datos.'
 const changedAttemptMessage = 'Hay una confirmación sin resolver con otros datos. Revisá tus pedidos antes de iniciar otra compra.'
 
-// Una instancia en App: el intento y su clave sobreviven a la navegación.
-// No administra carrito, catálogo ni historial: coordina sus interfaces públicas.
+// Redux guarda los resultados del backend; refs locales protegen el UUID
+// idempotente y el bloqueo sincrono contra dos clics en el mismo turno.
 export default function useCheckout({ active, user, token, cart, cartBusy, isCartPending, beginCheckout,
   sessionVersion, sessionAbort, subscribeSessionChange, logout, setSessionError,
   onOrderConfirmed, onCatalogInvalidated, onConfirmed }) {
+  const dispatch = useDispatch()
   const [paymentMethod, setPaymentMethod] = useState('TRANSFERENCIA')
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState('')
-  const [confirmedOrder, setConfirmedOrder] = useState(null)
-  const [unresolved, setUnresolved] = useState(null)
+  const { submitting, submitError, confirmedOrder, unresolved } = useSelector(
+    state => state.checkout.confirmation)
   const attempt = useRef(null)
   const operation = useRef(null)
   const mounted = useRef(false)
@@ -25,15 +24,13 @@ export default function useCheckout({ active, user, token, cart, cartBusy, isCar
   const cartKey = JSON.stringify(cart)
   const confirmationBlocked = Boolean(unresolved && (unresolved.cartKey !== cartKey
     || unresolved.payload.paymentMethod !== paymentMethod || (quote && unresolved.payload.expectedTotal !== quote.total)))
+
   const resetCheckout = useCallback(() => {
     operation.current = null
     attempt.current = null
     setPaymentMethod('TRANSFERENCIA')
-    setSubmitting(false)
-    setSubmitError('')
-    setConfirmedOrder(null)
-    setUnresolved(null)
-  }, [])
+    dispatch(checkoutSessionCleared())
+  }, [dispatch])
   useEffect(() => {
     mounted.current = true
     const unsubscribe = subscribeSessionChange(resetCheckout)
@@ -46,7 +43,7 @@ export default function useCheckout({ active, user, token, cart, cartBusy, isCar
   }
 
   function confirmOrder() {
-    // El ref y beginCheckout toman los bloqueos antes de esperar un render.
+    // Tomar el lock del hook y la reserva del carrito ANTES del primer await.
     if (operation.current) return operation.current.promise
     if (!active || !user || !token || !quote || confirmationBlocked || isCartPending()) return Promise.resolve(false)
     let currentAttempt = attempt.current
@@ -59,55 +56,55 @@ export default function useCheckout({ active, user, token, cart, cartBusy, isCar
       } }
       attempt.current = currentAttempt
     }
-    // La clave nunca puede acompañar otros importes o medios de pago, ni otro carrito.
+    // Nunca reutilizar requestKey si cambiaron importe, pago o carrito.
     if (currentAttempt.cartKey !== cartKey || currentAttempt.payload.paymentMethod !== paymentMethod
       || currentAttempt.payload.expectedTotal !== quote.total) return Promise.resolve(false)
     const reservation = beginCheckout()
-    if (!reservation) { setSubmitError('Revisá el carrito antes de confirmar.'); return Promise.resolve(false) }
+    if (!reservation) {
+      dispatch(checkoutSubmitErrorSet({
+        ownerId: user.id, generation: sessionVersion.current,
+        message: 'Revisá el carrito antes de confirmar.',
+      }))
+      return Promise.resolve(false)
+    }
     const version = sessionVersion.current
     const signal = sessionAbort.current.signal
     const request = {}
     operation.current = request
     const isCurrent = () => mounted.current && !signal.aborted && version === sessionVersion.current
       && operation.current === request
-    setSubmitting(true)
-    setSubmitError('')
-    request.promise = createOrder(currentAttempt.payload, { token, signal }).then(order => {
+
+    request.promise = dispatch(confirmCheckoutOrder({
+      ownerId: user.id, generation: version, quoteKey, cartKey, payload: currentAttempt.payload,
+    }, { signal })).unwrap().then(order => {
       if (!isCurrent()) return false
-      // Solo una respuesta válida y actual habilita efectos en otros dominios.
+      // El thunk verifico HTTP 201, importe, items e identidad de la operacion.
       onOrderConfirmed(order)
-      setConfirmedOrder(order)
       onCatalogInvalidated()
       reservation.complete()
       attempt.current = null
-      setUnresolved(null)
       onConfirmed(order)
       return order
     }).catch(error => {
       if (!isCurrent()) return false
       if (error.status === 401) { logout(); setSessionError(error.message); return false }
       if (error.status === 409) {
-        // El servidor rechazó el importe. La siguiente cotización requiere otro clic.
         attempt.current = null
-        setUnresolved(null)
-        setSubmitError('El total cambió. Revisá el nuevo importe y confirmá otra vez.')
+        // El reducer muestra el mensaje y la nueva cotizacion exige otro clic.
         retryQuote()
       } else if (error.ambiguous) {
+        // Solo se reintenta con la misma clave, precio y medio de pago.
         currentAttempt.ambiguous = true
-        setUnresolved(currentAttempt)
-        setSubmitError((error.message ? error.message + ' ' : '') + ambiguousMessage)
-      } else {
-        setSubmitError(error.message || 'No pudimos confirmar el pedido.')
       }
       return false
     }).finally(() => {
       reservation.release()
       if (!isCurrent()) return
       operation.current = null
-      setSubmitting(false)
     })
     return request.promise
   }
+
   return { paymentMethod, changePaymentMethod, quote, quoteError, retryQuote, submitting,
     submitError: confirmationBlocked ? changedAttemptMessage : submitError, confirmationBlocked,
     confirmOrder, confirmedOrder }

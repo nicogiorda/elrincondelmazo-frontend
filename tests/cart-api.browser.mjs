@@ -31,6 +31,11 @@ async function setup(options = {}) {
         window.cartRequests.push(record)
         this.addEventListener('abort', () => { record.aborted = true }, { once: true })
         this.addEventListener('loadend', () => { record.settled = true }, { once: true })
+        if (ignoreAbort) {
+          // Axios llama a xhr.abort() cuando el thunk cancela su señal.
+          // La respuesta sigue llegando para probar el aislamiento real de sesiones.
+          this.abort = () => { record.aborted = true }
+        }
       }
       return xhrSend.apply(this, args)
     }
