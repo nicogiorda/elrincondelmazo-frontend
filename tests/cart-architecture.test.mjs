@@ -45,7 +45,11 @@ test('Pedidos delega HTTP en ordersApi y Checkout no duplica cotizaciones ni con
   for (const name of ['useCheckout', 'useCheckoutQuote', 'useOrders']) {
     assert.doesNotMatch(modules.get(resolve(root, 'hooks/' + name + '.js')), /\bfetch\s*\(/)
   }
-  assert.doesNotMatch(modules.get(resolve(root, 'services/ordersApi.js')), /from\s*['"]react['"]|\buseState\(/)
+  const service = modules.get(resolve(root, 'services/ordersApi.js'))
+  assert.doesNotMatch(service, /from\s*['"]react['"]|\buseState\(/)
+  assert.match(service, /import axios from 'axios'/)
+  assert.match(service, /axios\.request\(/)
+  assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\s*\(/)
   assert.doesNotMatch(modules.get(resolve(root, 'views/Checkout.jsx')), /randomUUID|\buseEffect\s*\(|\buseRef\s*\(/)
 })
 
@@ -146,12 +150,47 @@ test('Redux administra el historial privado y detalles de pedidos sin caches dup
   assert.match(hook, /useSelector\(/)
   assert.match(hook, /useStore\(/)
   assert.match(hook, /ordersSessionCleared\(/)
-  assert.match(hook, /ordersHistoryLoaded\(/)
+  assert.match(hook, /dispatch\(fetchOrdersHistory\(/)
+  assert.match(hook, /dispatch\(fetchOrderDetail\(/)
+  assert.doesNotMatch(hook, /\bgetOrders\s*\(|\bgetOrderDetail\s*\(/)
+  for (const name of ['fetchOrdersHistory', 'fetchOrderDetail']) {
+    assert.ok(slice.includes('export const ' + name + ' = createAsyncThunk('), name)
+    for (const stage of ['pending', 'fulfilled', 'rejected']) {
+      assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
+    }
+  }
+  assert.match(store, /ordersToken: \(\) =>/)
   assert.doesNotMatch(hook, /\buseState\s*\(|historyCache|detailCache|\bfetch\s*\(/)
   assert.doesNotMatch(slice, /from ['"]react['"]|\bfetch\s*\(/)
   assert.match(slice, /ownerId/)
   assert.match(slice, /generation/)
   assert.match(store, /orders:\s*ordersReducer/)
+})
+
+test('Redux + Axios coordinan cotizacion y confirmacion con respuestas serializables', () => {
+  const checkout = modules.get(resolve(root, 'hooks/useCheckout.js'))
+  const quote = modules.get(resolve(root, 'hooks/useCheckoutQuote.js'))
+  const slice = modules.get(resolve(root, 'Redux/checkoutSlice.js'))
+  const store = modules.get(resolve(root, 'Redux/store.js'))
+  assert.match(checkout, /useSelector\(/)
+  assert.match(quote, /useSelector\(/)
+  assert.match(checkout, /dispatch\(confirmCheckoutOrder\(/)
+  assert.match(quote, /dispatch\(fetchCheckoutQuote\(/)
+  assert.doesNotMatch(checkout, /\bcreateOrder\s*\(|\bfetch\s*\(/)
+  assert.doesNotMatch(quote, /\bpreviewOrder\s*\(|\bfetch\s*\(/)
+  assert.match(checkout, /crypto\.randomUUID\(\)/)
+  assert.match(checkout, /beginCheckout\(\)/)
+  assert.match(checkout, /\.unwrap\(\)/)
+  assert.match(slice, /serializeCheckoutError/)
+  for (const name of ['fetchCheckoutQuote', 'confirmCheckoutOrder']) {
+    assert.ok(slice.includes('export const ' + name + ' = createAsyncThunk('), name)
+    for (const stage of ['pending', 'fulfilled', 'rejected']) {
+      assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
+    }
+  }
+  assert.match(store, /checkout:\s*checkoutReducer/)
+  assert.match(store, /ordersToken: \(\) =>/)
+  assert.doesNotMatch(slice, /\blocalStorage\s*\(|\buseState\s*\(/)
 })
 
 test('Publicaciones administra GET, POST, PUT, PATCH, DELETE y fotos mediante Redux y Axios', () => {
