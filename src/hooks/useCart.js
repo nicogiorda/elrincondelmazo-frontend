@@ -117,7 +117,8 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
       dispatch(cartReceived({
         ownerId: request.ownerId, generation: request.generation, cart: confirmedCart,
       }))
-      if (error instanceof TypeError) {
+      // unwrap() entrega un error serializado, no una instancia de TypeError.
+      if (error instanceof TypeError || error?.name === 'TypeError' || error?.code === 'ERR_NETWORK') {
         dispatch(cartFailed({
           ownerId: request.ownerId, generation: request.generation,
           message: 'No pudimos conectar con el servidor. Recuperamos la última cantidad guardada.',
