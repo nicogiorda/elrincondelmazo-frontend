@@ -1,7 +1,39 @@
-import { createSlice } from '@reduxjs/toolkit'
+import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
+import { getCart, addCartItem, updateCartItemQuantity, removeCartItem } from '../services/cartApi.js'
 
 // Solo estado serializable del carrito. El token, los bloqueos síncronos,
 // AbortController y las promesas permanecen en useCart/useSession.
+
+// El JWT nunca forma parte de meta.arg, las acciones ni el estado serializado.
+// useCart conserva el bloqueo sincrono y pasa el AbortSignal de la sesion.
+// createAsyncThunk omite por defecto campos adicionales del Error, incluido
+// `status`. Conservarlo es imprescindible para que useCart detecte HTTP 401
+// al hacer .unwrap(), invalide el JWT y proteja la sesion.
+const serializeCartError = (error) => ({
+  name: typeof error?.name === 'string' ? error.name : 'Error',
+  message: typeof error?.message === 'string' ? error.message : 'No se pudo actualizar el carrito.',
+  ...(typeof error?.status === 'number' ? { status: error.status } : {}),
+  ...(typeof error?.code === 'string' ? { code: error.code } : {}),
+})
+
+const cartRequest = (type, perform) => createAsyncThunk(type, async (args, { extra, signal }) => {
+  const token = extra?.cartToken?.()
+  if (!token) throw new Error('No hay una sesion activa para el carrito.')
+  const data = await perform(args, { token, signal })
+  if (!data || !Array.isArray(data.items)) {
+    throw new Error('El carrito recibido no tiene una lista de ítems.')
+  }
+  return data
+}, { serializeError: serializeCartError })
+
+export const fetchCart = cartRequest('cart/fetch', (_, options) => getCart(options))
+export const addItemToCart = cartRequest('cart/add', (args, options) =>
+  addCartItem({ productId: args.productId, quantity: args.quantity }, options))
+export const changeCartItemQuantity = cartRequest('cart/quantity', (args, options) =>
+  updateCartItemQuantity(args.id, args.quantity, options))
+export const deleteCartItem = cartRequest('cart/delete', (args, options) =>
+  removeCartItem(args.id, options))
+
 const initialCart = () => ({
   ownerId: null,
   generation: null,
@@ -16,6 +48,36 @@ const initialCart = () => ({
 
 const currentOwner = (state, action) => state.ownerId === action.payload.ownerId
   && state.generation === action.payload.generation
+
+const sameRequest = (state, action) => state.ownerId === action.meta.arg.ownerId
+  && state.generation === action.meta.arg.generation
+
+const addCartRequestCases = (builder, thunk, { quantity = false, load = false } = {}) => {
+  builder
+    .addCase(thunk.pending, (state, action) => {
+      if (!sameRequest(state, action)) return
+      state.cartBusy = true
+      if (load) state.cartLoading = true
+      state.cartError = ''
+    })
+    .addCase(thunk.fulfilled, (state, action) => {
+      if (!sameRequest(state, action)) return
+      // El hook aplica la ultima cantidad confirmada, no una respuesta
+      // intermedia de una cadena de PUT agrupados.
+      if (!quantity) {
+        state.cart = action.payload
+        if (!load) state.cartMessage = 'Carrito actualizado.'
+      }
+      if (load) state.cartLoading = false
+    })
+    .addCase(thunk.rejected, (state, action) => {
+      if (!sameRequest(state, action)) return
+      if (!action.meta.aborted && !action.meta.condition) {
+        state.cartError = action.error.message || 'No se pudo actualizar el carrito.'
+      }
+      if (load) state.cartLoading = false
+    })
+}
 
 const cartSlice = createSlice({
   name: 'cart',
@@ -76,6 +138,12 @@ const cartSlice = createSlice({
       state.cart.items = []
       state.cart.subtotal = 0
     },
+  },
+  extraReducers: (builder) => {
+    addCartRequestCases(builder, fetchCart, { load: true })
+    addCartRequestCases(builder, addItemToCart)
+    addCartRequestCases(builder, changeCartItemQuantity, { quantity: true })
+    addCartRequestCases(builder, deleteCartItem)
   },
 })
 

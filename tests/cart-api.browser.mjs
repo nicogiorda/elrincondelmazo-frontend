@@ -17,6 +17,23 @@ async function setup(options = {}) {
     localStorage.setItem('token', 'account-a')
     const original = window.fetch.bind(window)
     window.cartRequests = []
+    // Registrar tambien XMLHttpRequest: Axios usa XHR en el navegador.
+    const xhrOpen = XMLHttpRequest.prototype.open
+    const xhrSend = XMLHttpRequest.prototype.send
+    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      this.__cartTrackedUrl = String(url)
+      return xhrOpen.call(this, method, url, ...rest)
+    }
+    XMLHttpRequest.prototype.send = function (...args) {
+      if (['/carts', '/orders', '/products/7'].some(path => (this.__cartTrackedUrl || '').includes(path))) {
+        const record = { path: new URL(this.__cartTrackedUrl, location.origin).pathname,
+          aborted: false, settled: false }
+        window.cartRequests.push(record)
+        this.addEventListener('abort', () => { record.aborted = true }, { once: true })
+        this.addEventListener('loadend', () => { record.settled = true }, { once: true })
+      }
+      return xhrSend.apply(this, args)
+    }
     window.fetch = (url, init = {}) => {
       if (!/\/(carts|orders|products\/7)/.test(String(url))) return original(url, init)
       const record = { path: new URL(url).pathname, aborted: false, settled: false }

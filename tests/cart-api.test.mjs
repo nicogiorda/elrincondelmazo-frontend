@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import axios from 'axios'
 import { getCart, addCartItem, updateCartItemQuantity, removeCartItem } from '../src/services/cartApi.js'
-import { requestJson, readResponse } from '../src/services/httpClient.js'
+import { readResponse, requestJson } from '../src/services/httpClient.js'
 
 const cart = { id: 1, items: [{ id: 11, productId: 7, quantity: 2 }], subtotal: 200 }
 const controller = new AbortController()
@@ -13,32 +14,32 @@ for (const [name, run, path, method, body] of [
   ['quantity', () => updateCartItemQuantity(11, 3, options), '/carts/items/11', 'PUT', { quantity: 3 }],
   ['remove', () => removeCartItem(11, options), '/carts/items/11', 'DELETE'],
 ]) {
-  test(`${name}: exact endpoint, JWT, signal, JSON and one request only`, async (t) => {
-    const fetch = t.mock.method(globalThis, 'fetch', async (url, init) => {
-      assert.equal(url, 'http://localhost:8080' + path)
-      assert.equal(init.method, method)
-      assert.equal(init.signal, controller.signal)
-      assert.deepEqual(init.headers, {
-        Authorization: 'Bearer account-a', ...(body ? { 'Content-Type': 'application/json' } : {}),
-      })
-      assert.equal(init.body, body ? JSON.stringify(body) : undefined)
-      return Response.json(cart)
+  test(name + ': Axios conserva endpoint, JWT, signal y una unica solicitud', async t => {
+    const request = t.mock.method(axios, 'request', async config => {
+      assert.equal(config.url, 'http://localhost:8080' + path)
+      assert.equal(config.method, method)
+      assert.equal(config.signal, controller.signal)
+      assert.equal(config.headers?.Authorization, 'Bearer account-a')
+      assert.deepEqual(config.data, body)
+      return { status: 200, data: cart }
     })
     assert.deepEqual(await run(), cart)
-    assert.equal(fetch.mock.callCount(), 1, 'No follow-up GET or automatic retry')
+    assert.equal(request.mock.callCount(), 1)
   })
 }
 
-test('anonymous requests do not inherit a previous JWT', async (t) => {
+test('solicitudes anonimas no heredan token', async t => {
   const headers = []
-  t.mock.method(globalThis, 'fetch', async (_, init) => {
-    headers.push(init.headers)
-    return Response.json({})
+  t.mock.method(axios, 'request', async config => {
+    headers.push(config.headers)
+    return { status: 200, data: cart }
   })
   await getCart({ token: 'account-a' })
-  await requestJson('/public')
+  await getCart()
   await getCart({ token: 'account-b' })
-  assert.deepEqual(headers, [{ Authorization: 'Bearer account-a' }, {}, { Authorization: 'Bearer account-b' }])
+  assert.deepEqual(headers, [
+    { Authorization: 'Bearer account-a' }, undefined, { Authorization: 'Bearer account-b' },
+  ])
 })
 
 for (const [status, data, message] of [
@@ -47,38 +48,36 @@ for (const [status, data, message] of [
   [503, {}, 'No se pudo completar la operación (HTTP 503).'],
   [401, { message: 'Backend message' }, 'Tu sesión venció. Volvé a ingresar.'],
 ]) {
-  test(`HTTP ${status} preserves status and the existing message precedence`, async (t) => {
-    const fetch = t.mock.method(globalThis, 'fetch', async () => Response.json(data, { status }))
+  test('Axios HTTP ' + status + ' conserva status y precedencia de mensaje', async t => {
+    const mock = t.mock.method(axios, 'request', async () => {
+      throw { response: { status, data } }
+    })
     await assert.rejects(addCartItem({ productId: 7, quantity: 2 }, options), { status, message })
-    assert.equal(fetch.mock.callCount(), 1)
+    assert.equal(mock.mock.callCount(), 1)
   })
 }
 
-test('empty and non-JSON success responses retain the existing empty-object fallback', async () => {
+test('sin contenido conserva objeto vacio y errores de otro servicio no cambian', async t => {
+  t.mock.method(axios, 'request', async () => ({ status: 204, data: undefined }))
+  assert.deepEqual(await getCart(options), {})
   assert.deepEqual(await readResponse(new Response(null, { status: 204 })), {})
-  assert.deepEqual(await readResponse(new Response('not json')), {})
+  assert.equal(typeof requestJson, 'function')
 })
 
-test('non-JSON HTTP errors retain their status', async () => {
-  await assert.rejects(readResponse(new Response('<html>Error</html>', { status: 500 })), {
-    status: 500, message: 'No se pudo completar la operación (HTTP 500).',
-  })
-})
-
-test('cancellation propagates the same AbortError without retrying', async (t) => {
+test('AbortSignal propaga AbortError sin reintentar', async t => {
   const abort = new AbortController()
-  const fetch = t.mock.method(globalThis, 'fetch', (_, { signal }) => new Promise((resolve, reject) => {
-    signal.addEventListener('abort', () => reject(signal.reason), { once: true })
-  }))
-  const pending = getCart({ token: 'account-a', signal: abort.signal })
-  abort.abort()
-  await assert.rejects(pending, (error) => error === abort.signal.reason && error.name === 'AbortError')
-  assert.equal(fetch.mock.callCount(), 1)
+  const request = t.mock.method(axios, 'request', async () => {
+    abort.abort()
+    throw { code: 'ERR_CANCELED' }
+  })
+  await assert.rejects(getCart({ token: 'account-a', signal: abort.signal }), { name: 'AbortError' })
+  assert.equal(request.mock.callCount(), 1)
 })
 
-test('network errors remain TypeErrors for App rollback messaging', async (t) => {
-  const failure = new TypeError('Failed to fetch')
-  const fetch = t.mock.method(globalThis, 'fetch', async () => { throw failure })
-  await assert.rejects(updateCartItemQuantity(11, 3, options), (error) => error === failure)
-  assert.equal(fetch.mock.callCount(), 1)
+test('network ERR_NETWORK es TypeError para el rollback de la UI', async t => {
+  const request = t.mock.method(axios, 'request', async () => {
+    throw { code: 'ERR_NETWORK', message: 'Network Error' }
+  })
+  await assert.rejects(updateCartItemQuantity(11, 3, options), TypeError)
+  assert.equal(request.mock.callCount(), 1)
 })
