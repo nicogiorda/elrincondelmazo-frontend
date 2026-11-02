@@ -127,15 +127,15 @@ test('Redux administra el estado del carrito; useCart coordina mutaciones y sesi
   for (const thunk of ['fetchCart', 'addItemToCart', 'changeCartItemQuantity', 'deleteCartItem']) {
     assert.match(slice, new RegExp('export const ' + thunk + ' = cartRequest\\('))
   }
-  assert.match(slice, /addCartRequestCases\\(builder, fetchCart/)
-  assert.match(slice, /addCartRequestCases\\(builder, changeCartItemQuantity/)
-  assert.doesNotMatch(hook, /\\b(getCart|addCartItem|updateCartItemQuantity|removeCartItem)\\s*\\(/)
-  assert.match(hook, /dispatch\\(fetchCart\\(/)
-  assert.match(hook, /dispatch\\(changeCartItemQuantity\\(/)
+  assert.match(slice, /addCartRequestCases\(builder, fetchCart/)
+  assert.match(slice, /addCartRequestCases\(builder, changeCartItemQuantity/)
+  assert.doesNotMatch(hook, /\b(getCart|addCartItem|updateCartItemQuantity|removeCartItem)\s*\(/)
+  assert.match(hook, /dispatch\(fetchCart\(/)
+  assert.match(hook, /dispatch\(changeCartItemQuantity\(/)
   assert.match(modules.get(resolve(root, 'services/cartApi.js')), /import axios from 'axios'/)
-  assert.match(modules.get(resolve(root, 'services/cartApi.js')), /axios\\.request\\(/)
-  assert.doesNotMatch(modules.get(resolve(root, 'services/cartApi.js')), /\\bfetch\\s*\\(|requestJson\\s*\\(/)
-  assert.match(store, /cartToken: \\(\\) =>/)
+  assert.match(modules.get(resolve(root, 'services/cartApi.js')), /axios\.request\(/)
+  assert.doesNotMatch(modules.get(resolve(root, 'services/cartApi.js')), /\bfetch\s*\(|requestJson\s*\(/)
+  assert.match(store, /cartToken: \(\) =>/)
   assert.match(store, /cart:\s*cartReducer/)
 })
 
