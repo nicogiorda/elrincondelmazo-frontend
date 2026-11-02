@@ -2,6 +2,8 @@
 // pública del hook. La suite normal también recorre las vistas reales de App.
 import React, { StrictMode, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Provider } from 'react-redux'
+import { store } from '../../src/Redux/store.js'
 import usePublications from '../../src/hooks/usePublications.js'
 import { createProductCache } from '../../src/utils/productCache.js'
 
@@ -21,4 +23,5 @@ function Harness() {
     React.createElement('pre', { id: 'private' }, JSON.stringify(publications.publications)),
     React.createElement('pre', { id: 'public' }, JSON.stringify(catalog.getSnapshot().products)))
 }
-createRoot(document.getElementById('root')).render(React.createElement(StrictMode, {}, React.createElement(Harness)))
+createRoot(document.getElementById('root')).render(React.createElement(StrictMode, {},
+  React.createElement(Provider, { store }, React.createElement(Harness))))

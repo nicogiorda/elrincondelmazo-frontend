@@ -1,42 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { getPublications, savePublication, changePublicationStatus,
-  deletePublication, uploadPublicationPhoto } from '../services/publicationsApi.js'
+import { useCallback, useEffect, useRef } from 'react'
+import { useDispatch, useSelector, useStore } from 'react-redux'
+import {
+  PUBLICATIONS_TTL, fetchOwnPublications, saveOwnPublication,
+  setOwnPublicationStatus, removeOwnPublication, uploadOwnPublicationPhoto,
+  publicationsSessionCleared, publicationLocalError,
+} from '../Redux/publicationsSlice.js'
 
-const CACHE_LIFETIME = 60_000
-const empty = () => ({ userId: null, items: [], loading: false, error: '' })
-const newestFirst = (a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id - a.id
-const operationMessage = error => error.status === 404
-  ? 'La publicación ya no está disponible. Actualizá el listado.'
-  : error.status === 403 ? 'No tenés permiso para modificar esta publicación.' : error.message
-
-// Única instancia en App: datos privados aquí, productos públicos en useCatalog.
+// Redux es dueño de los datos y del estado de carga; el hook conserva los
+// bloqueos síncronos, navegación, cancelación y efectos entre dominios.
 export default function usePublications({ user, token, active, sessionVersion, sessionAbort,
   subscribeSessionChange, logout, setSessionError,
   refreshPendingCatalog, upsertProduct, removeProduct, syncPublicProducts, onSaved }) {
-  const [listing, setListing] = useState(empty)
-  const [busyId, setBusyId] = useState(null)
-  const [operationError, setOperationError] = useState('')
-  const stamp = useRef(null)
+  const dispatch = useDispatch()
+  const store = useStore()
+  const userId = user?.id
+  const listing = useSelector(state => state.publications)
   const listRequest = useRef(null)
   const mutation = useRef(null)
   const mounted = useRef(false)
 
   const cancelListing = useCallback(() => {
-    listRequest.current?.controller.abort()
+    listRequest.current?.abort()
     listRequest.current = null
   }, [])
   const cancelRequests = useCallback(() => {
     cancelListing()
-    mutation.current?.controller.abort()
+    mutation.current?.abort()
     mutation.current = null
   }, [cancelListing])
   const reset = useCallback(() => {
     cancelRequests()
-    stamp.current = null
-    setListing(empty())
-    setBusyId(null)
-    setOperationError('')
-  }, [cancelRequests])
+    dispatch(publicationsSessionCleared())
+  }, [cancelRequests, dispatch])
   useEffect(() => {
     mounted.current = true
     const unsubscribe = subscribeSessionChange(reset)
@@ -48,125 +43,113 @@ export default function usePublications({ user, token, active, sessionVersion, s
   }, [subscribeSessionChange, reset, cancelRequests])
 
   const load = useCallback((force = false) => {
-    if (!mounted.current || !user?.id || !token || token !== localStorage.getItem('token') || mutation.current) return
+    if (!mounted.current || !userId || !token || token !== localStorage.getItem('token') || mutation.current) return
     if (listRequest.current) return listRequest.current.promise
-    if (!force && stamp.current?.userId === user.id && Date.now() - stamp.current.time < CACHE_LIFETIME) return
     const version = sessionVersion.current
-    const pending = { controller: new AbortController() }
-    const signal = AbortSignal.any([pending.controller.signal, sessionAbort.current.signal])
-    listRequest.current = pending
-    const isCurrent = () => mounted.current && !signal.aborted && version === sessionVersion.current
-      && token === localStorage.getItem('token') && listRequest.current === pending
-    setOperationError('')
-    setListing(current => ({ userId: user.id, items: current.userId === user.id ? current.items : [], loading: true, error: '' }))
-    pending.promise = (async () => {
-      try {
-        const items = []
-        let page = 0, totalPages
-        do {
-          const data = await getPublications(page, { userId: user.id, token, signal })
-          if (!isCurrent()) return
-          items.push(...data.content)
-          totalPages = data.totalPages
-          page += 1
-        } while (page < totalPages)
-        items.sort(newestFirst)
-        stamp.current = { userId: user.id, time: Date.now() }
-        setListing({ userId: user.id, items, loading: false, error: '' })
-        syncPublicProducts(user.id, items)
-      } catch (error) {
-        if (!isCurrent()) return
-        if (error.status === 401) { logout(); setSessionError(error.message) }
-        else setListing(current => ({ ...current, loading: false, error: error.status === 403
-          ? 'No tenés permiso para consultar tus publicaciones.' : error.message }))
-      } finally {
-        if (isCurrent()) listRequest.current = null
+    const cached = store.getState().publications
+    if (!force && cached.ownerId === userId && cached.generation === version && cached.updatedAt > 0
+      && Date.now() - cached.updatedAt < PUBLICATIONS_TTL) return Promise.resolve(cached.items)
+    const request = { abort: () => {} }
+    listRequest.current = request
+    const isCurrent = () => mounted.current && version === sessionVersion.current
+      && token === localStorage.getItem('token') && listRequest.current === request
+      && !sessionAbort.current.signal.aborted
+    const promise = dispatch(fetchOwnPublications({ userId, generation: version }))
+    request.abort = promise.abort
+    request.promise = promise.then(action => {
+      if (!isCurrent()) return
+      if (fetchOwnPublications.fulfilled.match(action)) {
+        syncPublicProducts(userId, action.payload.items)
+        return action.payload.items
       }
-    })()
-    return pending.promise
-  }, [user?.id, token, sessionVersion, sessionAbort, logout, setSessionError, syncPublicProducts])
+      if (fetchOwnPublications.rejected.match(action) && action.error.status === 401) {
+        logout()
+        setSessionError(action.error.message)
+      }
+    }).finally(() => {
+      if (isCurrent()) listRequest.current = null
+    })
+    return request.promise
+  }, [userId, token, sessionVersion, sessionAbort, store, dispatch,
+    logout, setSessionError, syncPublicProducts])
 
   useEffect(() => {
     if (!active) return
     let current = true
-    Promise.resolve().then(() => { if (current) load() })
+    queueMicrotask(() => { if (current) load() })
     return () => { current = false }
-  }, [active, load, busyId])
+  }, [active, load, listing.busyId])
 
-  // Reserva sincrónica: ni dos clics en un turno ni una respuesta de otra sesión
-  // pueden compartir/liberar la operación actual. Los GET anteriores se descartan.
-  async function runOperation(id, operation, apply) {
-    if (!mounted.current || !user?.id || !token || token !== localStorage.getItem('token')) {
-      throw new Error('Ingresá para guardar la publicación.')
+  function runOperation(busyId, action, apply) {
+    if (!mounted.current || !userId || !token || token !== localStorage.getItem('token')) {
+      return Promise.reject(new Error('Ingresá para guardar la publicación.'))
     }
-    if (mutation.current) throw new Error('Esperá a que termine la operación de publicaciones.')
+    if (mutation.current) return Promise.reject(new Error('Esperá a que termine la operación de publicaciones.'))
     const version = sessionVersion.current
-    const pending = { controller: new AbortController() }
-    const signal = AbortSignal.any([pending.controller.signal, sessionAbort.current.signal])
-    mutation.current = pending
+    const request = { abort: () => {} }
+    mutation.current = request
     cancelListing()
-    setListing(current => ({ ...current, loading: false }))
-    setBusyId(id)
-    setOperationError('')
-    const isCurrent = () => mounted.current && !signal.aborted && version === sessionVersion.current
-      && token === localStorage.getItem('token') && mutation.current === pending
-    try {
-      const result = await operation({ userId: user.id, token, signal })
+    const promise = dispatch(action({ userId, generation: version, busyId }))
+    request.abort = promise.abort
+    const isCurrent = () => mounted.current && version === sessionVersion.current
+      && token === localStorage.getItem('token') && mutation.current === request
+      && !sessionAbort.current.signal.aborted
+    return promise.unwrap().then(result => {
       if (!isCurrent()) throw new Error('La sesión cambió.')
       apply?.(result)
       return result
-    } catch (error) {
-      if (isCurrent()) {
-        if (error.status === 401) { logout(); setSessionError(error.message) }
-        else setOperationError(operationMessage(error))
+    }).catch(error => {
+      if (isCurrent() && error.status === 401) {
+        logout()
+        setSessionError(error.message)
       }
-      throw Object.assign(new Error(operationMessage(error)), { status: error.status })
-    } finally {
-      if (isCurrent()) { mutation.current = null; setBusyId(null) }
-    }
+      const message = error.status === 404 ? 'La publicación ya no está disponible. Actualizá el listado.'
+        : error.status === 403 ? 'No tenés permiso para modificar esta publicación.' : error.message
+      throw Object.assign(new Error(message), { status: error.status })
+    }).finally(() => {
+      if (isCurrent()) mutation.current = null
+    })
   }
 
   function syncPublication(saved) {
     refreshPendingCatalog()
-    setListing(current => ({ ...current, userId: user.id, error: '',
-      items: [saved, ...(current.userId === user.id ? current.items : []).filter(product => product.id !== saved.id)].sort(newestFirst),
-    }))
     upsertProduct(saved)
   }
   function save(body, id) {
-    return runOperation(id ?? 'new', options => savePublication(body, id, options), saved => {
-      syncPublication(saved)
-      onSaved()
-    })
+    return runOperation(id ?? 'new',
+      scope => saveOwnPublication({ ...scope, body, id }),
+      saved => { syncPublication(saved); onSaved() })
   }
   function uploadPhoto(file) {
-    return runOperation('image', options => uploadPublicationPhoto(file, options))
+    return runOperation('image', scope => uploadOwnPublicationPhoto({ ...scope, file }))
   }
-  async function change(product, action) {
-    if (!user?.id || !token || mutation.current || listing.loading || product.sellerId !== user.id) return false
-    try {
-      await runOperation(product.id, options => action === 'delete'
-        ? deletePublication(product.id, options) : changePublicationStatus(product.id, action, options), saved => {
-        if (action === 'delete') {
-          refreshPendingCatalog()
-          setListing(current => ({ ...current, items: current.items.filter(item => item.id !== product.id) }))
-          removeProduct(product.id)
-        } else syncPublication(saved)
-      })
-      return true
-    } catch { return false } // El error ya está publicado; los handlers de la lista no rechazan.
+  function change(product, action) {
+    if (!userId || !token || mutation.current || listing.loading || product.sellerId !== userId) return Promise.resolve(false)
+    return runOperation(product.id, scope => action === 'delete'
+      ? removeOwnPublication({ ...scope, id: product.id })
+      : setOwnPublicationStatus({ ...scope, id: product.id, action }), saved => {
+      if (action === 'delete') {
+        refreshPendingCatalog()
+        removeProduct(product.id)
+      } else syncPublication(saved)
+    }).then(() => true).catch(() => false)
   }
   function toggle(product) {
     if (!['ACTIVO', 'INACTIVO'].includes(product.status)) return false
     if (product.status === 'INACTIVO' && product.stock <= 0) {
-      setOperationError('No se puede reactivar una publicación sin stock disponible.')
+      dispatch(publicationLocalError('No se puede reactivar una publicación sin stock disponible.'))
       return false
     }
     return change(product, product.status === 'ACTIVO' ? 'pause' : 'resume')
   }
-
-  return { publications: listing.userId === user?.id ? listing.items : [],
-    loading: listing.loading || Boolean(active && user && listing.userId !== user.id),
-    loadError: listing.error, error: listing.error || operationError, busyId,
-    refresh: () => load(true), save, uploadPhoto, toggle, remove: product => change(product, 'delete') }
+  const ownsListing = listing.ownerId === userId
+  return {
+    publications: ownsListing ? listing.items : [],
+    loading: listing.loading || Boolean(active && userId && !ownsListing),
+    loadError: ownsListing ? listing.loadError : '',
+    error: ownsListing ? listing.loadError || listing.operationError : '',
+    busyId: ownsListing ? listing.busyId : null,
+    refresh: () => load(true), save, uploadPhoto, toggle,
+    remove: product => change(product, 'delete'),
+  }
 }

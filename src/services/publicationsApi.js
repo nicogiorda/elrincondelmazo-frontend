@@ -1,12 +1,33 @@
-import { request, readResponse } from './httpClient.js'
+import axios from 'axios'
+import { API_BASE_URL } from './httpClient.js'
 import { productIdFrom } from '../utils/productId.js'
 
+// El servicio es transporte HTTP puro: Axios, autenticación por llamada y
+// contratos de Spring. Redux decide cuándo solicitar y dónde guardar datos.
+function httpError(error) {
+  if (!error?.response) return error
+  const status = error.response.status
+  const body = error.response.data
+  const message = status === 401 ? 'Tu sesión venció. Volvé a ingresar.'
+    : body?.message || body?.detail || 'No se pudo completar la operación (HTTP ' + status + ').'
+  return Object.assign(new Error(message), { status })
+}
+
 async function responseData(path, options, status, message) {
-  const response = await request(path, options)
-  // Los errores HTTP conservan el mensaje y status del cliente compartido.
-  if (!response.ok) await readResponse(response)
+  const { token, method = 'GET', body, signal } = options
+  const config = {
+    url: API_BASE_URL + path, method, signal,
+    headers: token ? { Authorization: 'Bearer ' + token } : {},
+  }
+  if (body !== undefined) config.data = body
+  let response
+  try {
+    response = await axios.request(config)
+  } catch (error) {
+    throw httpError(error)
+  }
   if (response.status !== status) throw new Error(message)
-  return status === 204 ? undefined : readResponse(response)
+  return status === 204 ? undefined : response.data
 }
 
 function publicationPath(id) {
@@ -53,10 +74,11 @@ export async function deletePublication(id, { token, signal }) {
 export async function uploadPublicationPhoto(file, { token, signal }) {
   const body = new FormData()
   body.append('file', file)
+  // Axios detecta el FormData y deja que el navegador agregue el boundary.
   const data = await responseData('/products/images', { method: 'POST', body, token, signal }, 201,
     'El servidor no confirmó la subida de la imagen.')
   let url
-  try { url = new URL(data?.url) } catch { /* La respuesta inválida usa el mismo error que un protocolo inseguro. */ }
+  try { url = new URL(data?.url) } catch { /* La respuesta inválida comparte el error de protocolo inseguro. */ }
   if (typeof data?.url !== 'string' || !['http:', 'https:'].includes(url?.protocol)) {
     throw new Error('La subida no devolvió una URL de imagen válida.')
   }

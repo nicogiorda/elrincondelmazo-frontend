@@ -4,6 +4,7 @@ import productsReducer, { cachedProduct, removedCachedProduct,
   clearedCachedProducts } from './productsSlice.js'
 import cartReducer from './cartSlice.js'
 import ordersReducer from './ordersSlice.js'
+import publicationsReducer from './publicationsSlice.js'
 import { createProductCache } from '../utils/productCache.js'
 
 // Adaptador Map compatible: la caché organiza la red, pero las entidades viven
@@ -37,10 +38,14 @@ export const store = configureStore({
     products: productsReducer,
     cart: cartReducer,
     orders: ordersReducer,
+    publications: publicationsReducer,
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware({
     // Las operaciones HTTP se realizan desde el coordinador existente.
     // AbortControllers, Map y promesas nunca se escriben en el estado Redux.
-    thunk: { extraArgument: { productCache: catalogProductCache } },
+    thunk: { extraArgument: {
+      productCache: catalogProductCache,
+      publicationToken: () => globalThis.localStorage?.getItem('token'),
+    } },
   }),
 })
