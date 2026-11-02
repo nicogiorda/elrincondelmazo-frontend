@@ -6,6 +6,16 @@ import { getCart, addCartItem, updateCartItemQuantity, removeCartItem } from '..
 
 // El JWT nunca forma parte de meta.arg, las acciones ni el estado serializado.
 // useCart conserva el bloqueo sincrono y pasa el AbortSignal de la sesion.
+// createAsyncThunk omite por defecto campos adicionales del Error, incluido
+// `status`. Conservarlo es imprescindible para que useCart detecte HTTP 401
+// al hacer .unwrap(), invalide el JWT y proteja la sesion.
+const serializeCartError = (error) => ({
+  name: typeof error?.name === 'string' ? error.name : 'Error',
+  message: typeof error?.message === 'string' ? error.message : 'No se pudo actualizar el carrito.',
+  ...(typeof error?.status === 'number' ? { status: error.status } : {}),
+  ...(typeof error?.code === 'string' ? { code: error.code } : {}),
+})
+
 const cartRequest = (type, perform) => createAsyncThunk(type, async (args, { extra, signal }) => {
   const token = extra?.cartToken?.()
   if (!token) throw new Error('No hay una sesion activa para el carrito.')
@@ -14,7 +24,7 @@ const cartRequest = (type, perform) => createAsyncThunk(type, async (args, { ext
     throw new Error('El carrito recibido no tiene una lista de ítems.')
   }
   return data
-})
+}, { serializeError: serializeCartError })
 
 export const fetchCart = cartRequest('cart/fetch', (_, options) => getCart(options))
 export const addItemToCart = cartRequest('cart/add', (args, options) =>
