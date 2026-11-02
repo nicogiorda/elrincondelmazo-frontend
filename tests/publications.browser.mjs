@@ -306,6 +306,10 @@ try {
     await settled(s.page)
     assert.equal(await s.page.getByText('Cargando publicaciones…', { exact: true }).count(), 0)
     assert.equal(s.count('/products/mine'), 1)
+    const saveAt = s.state.calls.findIndex(call => call.path === '/products' && call.method === 'POST')
+    const listAt = s.state.calls.findIndex(call => call.path === '/products/mine')
+    assert.ok(saveAt >= 0 && listAt > saveAt,
+      'El GET privado debe ejecutarse después del guardado, nunca entre foto y POST')
     await s.close()
   })
   await test('Guardado fallido conserva subidas exitosas', async () => {
