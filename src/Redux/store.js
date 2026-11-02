@@ -62,6 +62,7 @@ export const store = configureStore({
       productCache: catalogProductCache,
       publicationToken: () => globalThis.localStorage?.getItem('token'),
       authToken: () => globalThis.localStorage?.getItem('token'),
+      cartToken: () => globalThis.localStorage?.getItem('token'),
     } },
   }),
 })
