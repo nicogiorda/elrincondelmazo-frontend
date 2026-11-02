@@ -164,3 +164,27 @@ test('Publicaciones administra GET, POST, PUT, PATCH, DELETE y fotos mediante Re
   assert.match(store, /publicationToken: \(\) =>/)
   assert.doesNotMatch(slice, /\buseState\s*\(|\blocalStorage\s*\(/)
 })
+
+test('Usuarios replica el flujo Redux Toolkit + Axios del demo de Gisele', () => {
+  const hook = modules.get(resolve(root, 'hooks/useSession.js'))
+  const slice = modules.get(resolve(root, 'Redux/userSlice.js'))
+  const api = modules.get(resolve(root, 'services/authApi.js'))
+  const store = modules.get(resolve(root, 'Redux/store.js'))
+  assert.match(store, /users:\s*userReducer/)
+  assert.match(hook, /useSelector\(/)
+  assert.match(hook, /dispatch\(fetchAuthenticatedUser\(\)\)/)
+  assert.match(hook, /dispatch\(operation\(requestId\)\)/)
+  assert.doesNotMatch(hook, /\buseState\s*\(|getCurrentUser\s*\(|authenticate\s*\(/)
+  for (const name of ['fetchAuthenticatedUser', 'loginUser', 'registerUser']) {
+    assert.ok(slice.includes('export const ' + name + ' = createAsyncThunk('), name)
+    for (const stage of ['pending', 'fulfilled', 'rejected']) {
+      assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
+    }
+  }
+  assert.match(api, /import axios from 'axios'/)
+  assert.match(api, /axios\.request\(/)
+  assert.doesNotMatch(api, /\bfetch\s*\(|requestJson\s*\(/)
+  assert.match(slice, /stageAuthCredentials/)
+  assert.match(store, /stateSanitizer:/)
+  assert.doesNotMatch(slice, /password:\s*[^,]+/)
+})
