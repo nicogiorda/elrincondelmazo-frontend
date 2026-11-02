@@ -8,7 +8,7 @@ const emptyState = () => ({
   ownerId: null, generation: null,
   items: [], updatedAt: 0, loading: false, loadError: '',
   busyId: null, operationError: '',
-  listRequestId: null, mutationRequestId: null,
+  listRequestId: null, mutationRequestId: null, operationRevision: 0,
 })
 const sameSession = (state, arg) => state.ownerId === arg.userId && state.generation === arg.generation
 const isCurrent = (state, action, field) => sameSession(state, action.meta.arg)
@@ -109,6 +109,7 @@ const publicationsSlice = createSlice({
   reducers: {
     publicationsSessionCleared: emptyState,
     publicationLocalError(state, action) { state.operationError = action.payload },
+    publicationMutationReleased(state) { state.operationRevision += 1 },
   },
   extraReducers: builder => {
     builder
@@ -149,9 +150,10 @@ const publicationsSlice = createSlice({
       })
       .addCase(removeOwnPublication.rejected, mutationFailed)
       .addCase(uploadOwnPublicationPhoto.pending, mutationStarted)
-      .addCase(uploadOwnPublicationPhoto.fulfilled, mutationFinished)
+      .addCase(uploadOwnPublicationPhoto.fulfilled, (state, action) => { mutationFinished(state, action) })
       .addCase(uploadOwnPublicationPhoto.rejected, mutationFailed)
   },
 })
-export const { publicationsSessionCleared, publicationLocalError } = publicationsSlice.actions
+export const { publicationsSessionCleared, publicationLocalError,
+  publicationMutationReleased } = publicationsSlice.actions
 export default publicationsSlice.reducer
