@@ -18,7 +18,7 @@ function Login({ cartCount, onLogin }) {
       await onLogin({ email: form.email, password: form.password }, { signal: controller.signal })
     } catch (error) {
       if (controller.signal.aborted) return
-      setError(error instanceof TypeError
+      setError(error instanceof TypeError || error?.name === 'TypeError'
         ? 'No pudimos conectar con el servidor. Revisá tu conexión y volvé a intentar.' : error.message)
     } finally {
       request.current = null
