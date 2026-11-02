@@ -179,10 +179,9 @@ test('logout limpia intento ambiguo, cotización y confirmación; respuestas tar
   const store = createStore()
   const old = store.dispatch(confirmCheckoutOrder(attempt))
   store.dispatch(checkoutSessionCleared())
-  await store.dispatch(fetchCheckoutQuote(quoteArgs('b', scope(2, 4))))
-    .catch(() => {})
+  const next = store.dispatch(fetchCheckoutQuote(quoteArgs('b', scope(2, 4))))
   gate.resolve(reply(order, 201))
-  await old
+  await Promise.all([old, next])
   assert.equal(state(store).ownerId, 2)
   assert.equal(state(store).confirmation.confirmedOrder, null)
   assert.equal(state(store).confirmation.unresolved, null)
