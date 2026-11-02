@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getCart, addCartItem, updateCartItemQuantity, removeCartItem } from '../services/cartApi.js'
 import {
   cartSessionCleared, cartOperationStarted, cartReceived, cartUpdated,
   cartQuantityChanged, cartQuantitySyncStarted, cartOperationReleased,
   cartFailed, cartRetryRequested, cartCheckoutCompleted,
+  fetchCart, addItemToCart, changeCartItemQuantity, deleteCartItem,
 } from '../Redux/cartSlice.js'
 
 // App conserva una sola instancia: el store administra datos y estado visual.
@@ -69,37 +69,30 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
       const request = startOperation('load')
       if (!request) return
       requested.current = key
-      getCart({ token, signal: request.signal })
-        .then((data) => {
-          if (!request.isCurrent()) return
-          if (!Array.isArray(data.items)) throw new Error('El carrito recibido no tiene una lista de ítems.')
-          dispatch(cartReceived({ ownerId: request.ownerId, generation: request.generation, cart: data }))
-        })
+      dispatch(fetchCart({ ownerId: request.ownerId, generation: request.generation },
+        { signal: request.signal })).unwrap()
+        .then(() => {})
         .catch((error) => { if (request.isCurrent()) reportError(error) })
         .finally(request.release)
     })
     return () => { active = false }
   }, [user?.id, token, cartAttempt, sessionVersion, startOperation, reportError, dispatch])
 
-  function changeCart(mutation, onStart) {
+  function changeCart(operation, args, onStart) {
     if (!user || !token) { onLoginRequired(); return Promise.resolve(false) }
     if (!cart) return Promise.resolve(false)
     const request = startOperation('mutation')
     if (!request) return Promise.resolve(false)
     onStart?.()
-    return mutation({ token, signal: request.signal }).then((data) => {
-      if (!request.isCurrent()) return false
-      if (!Array.isArray(data.items)) throw new Error('El carrito recibido no tiene una lista de ítems.')
-      dispatch(cartUpdated({ ownerId: request.ownerId, generation: request.generation, cart: data }))
-      return true
-    }).catch((error) => {
+    return dispatch(operation({ ...args, ownerId: request.ownerId, generation: request.generation },
+      { signal: request.signal })).unwrap().then(() => request.isCurrent()).catch((error) => {
       if (request.isCurrent()) reportError(error)
       return false
     }).finally(request.release)
   }
 
   function addToCart(product, quantity = 1) {
-    return changeCart((options) => addCartItem({ productId: product.id, quantity }, options),
+    return changeCart(addItemToCart, { productId: product.id, quantity },
       () => onProductAdded(product))
   }
 
@@ -108,7 +101,9 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
     try {
       while (request.isCurrent()) {
         const quantity = request.desiredQuantity
-        const data = await updateCartItemQuantity(request.id, quantity, { token, signal: request.signal })
+        const data = await dispatch(changeCartItemQuantity({
+          id: request.id, quantity, ownerId: request.ownerId, generation: request.generation,
+        }, { signal: request.signal })).unwrap()
         if (!request.isCurrent()) return false
         if (!Array.isArray(data.items)) throw new Error('El servidor devolvió un carrito inválido.')
         confirmedCart = data
@@ -154,7 +149,7 @@ export default function useCart({ user, token, sessionVersion, sessionAbort,
   }
 
   function removeItem(id) {
-    return changeCart((options) => removeCartItem(id, options))
+    return changeCart(deleteCartItem, { id })
   }
 
   function retryCart() {
