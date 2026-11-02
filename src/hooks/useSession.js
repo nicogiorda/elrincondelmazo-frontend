@@ -77,7 +77,7 @@ export default function useSession({ onSessionChange = noop } = {}) {
       if (!isCurrent() || !fetchAuthenticatedUser.rejected.match(action) || action.meta.aborted) return
       const error = action.error
       if (error.status === 401 || error.status === 403 || error.code === 'INVALID_USER') logout()
-      setSessionError(error.code === 'ERR_NETWORK'
+      setSessionError(error.name === 'TypeError' || error.code === 'ERR_NETWORK'
         ? 'No pudimos conectar con el servidor. Revisá tu conexión y volvé a intentar.'
         : error.message)
     })
