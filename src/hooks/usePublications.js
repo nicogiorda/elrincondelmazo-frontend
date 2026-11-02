@@ -3,7 +3,7 @@ import { useDispatch, useSelector, useStore } from 'react-redux'
 import {
   PUBLICATIONS_TTL, fetchOwnPublications, saveOwnPublication,
   setOwnPublicationStatus, removeOwnPublication, uploadOwnPublicationPhoto,
-  publicationsSessionCleared, publicationLocalError,
+  publicationsSessionCleared, publicationLocalError, publicationMutationReleased,
 } from '../Redux/publicationsSlice.js'
 
 // Redux es dueño de los datos y del estado de carga; el hook conserva los
@@ -78,7 +78,7 @@ export default function usePublications({ user, token, active, sessionVersion, s
     let current = true
     queueMicrotask(() => { if (current) load() })
     return () => { current = false }
-  }, [active, load, listing.busyId])
+  }, [active, load, listing.busyId, listing.operationRevision])
 
   function runOperation(busyId, action, apply) {
     if (!mounted.current || !userId || !token || token !== localStorage.getItem('token')) {
@@ -107,7 +107,12 @@ export default function usePublications({ user, token, active, sessionVersion, s
         : error.status === 403 ? 'No tenés permiso para modificar esta publicación.' : error.message
       throw Object.assign(new Error(message), { status: error.status })
     }).finally(() => {
-      if (isCurrent()) mutation.current = null
+      if (isCurrent()) {
+        mutation.current = null
+        // La navegación puede ocurrir antes del finally: este cambio permite
+        // cargar el listado al salir de Publicar sin hacer un GET redundante.
+        dispatch(publicationMutationReleased())
+      }
     })
   }
 
