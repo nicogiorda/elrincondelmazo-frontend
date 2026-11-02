@@ -25,7 +25,7 @@ async function setup(options = {}) {
       return xhrOpen.call(this, method, url, ...rest)
     }
     XMLHttpRequest.prototype.send = function (...args) {
-      if (/\\/(carts|orders|products\\/7)/.test(this.__cartTrackedUrl || '')) {
+      if (['/carts', '/orders', '/products/7'].some(path => (this.__cartTrackedUrl || '').includes(path))) {
         const record = { path: new URL(this.__cartTrackedUrl, location.origin).pathname,
           aborted: false, settled: false }
         window.cartRequests.push(record)
