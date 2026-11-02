@@ -73,12 +73,16 @@ export default function usePublications({ user, token, active, sessionVersion, s
   }, [userId, token, sessionVersion, sessionAbort, store, dispatch,
     logout, setSessionError, syncPublicProducts])
 
+  // busyId cambia entre subir imágenes y guardar el producto. Usarlo como
+  // dependencia lanzaba un GET entre ambas operaciones y otro al finalizar.
+  // operationRevision se emite al liberar la reserva y reactiva la carga
+  // únicamente cuando la última mutación ya terminó.
   useEffect(() => {
     if (!active) return
     let current = true
     queueMicrotask(() => { if (current) load() })
     return () => { current = false }
-  }, [active, load, listing.busyId, listing.operationRevision])
+  }, [active, load, listing.operationRevision])
 
   function runOperation(busyId, action, apply) {
     if (!mounted.current || !userId || !token || token !== localStorage.getItem('token')) {
