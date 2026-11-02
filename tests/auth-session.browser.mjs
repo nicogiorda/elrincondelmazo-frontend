@@ -30,6 +30,31 @@ async function setup(options = {}) {
       return original(url, ignoreAbort ? { ...init, signal: undefined } : init)
         .finally(() => { record.settled = true })
     }
+    // Axios usa XMLHttpRequest en navegador. Sin este monitor las pruebas de
+    // cancelación de login/registro no observan la petición realmente enviada.
+    const xhrOpen = XMLHttpRequest.prototype.open
+    const xhrSend = XMLHttpRequest.prototype.send
+    const xhrAbort = XMLHttpRequest.prototype.abort
+    XMLHttpRequest.prototype.open = function (method, url, ...args) {
+      this.authUrl = String(url).startsWith('http://localhost:8080') ? String(url) : null
+      return xhrOpen.call(this, method, url, ...args)
+    }
+    XMLHttpRequest.prototype.send = function (...args) {
+      if (this.authUrl) {
+        const record = { path: new URL(this.authUrl).pathname, aborted: false, settled: false }
+        this.authRecord = record
+        window.sessionRequests.push(record)
+        this.addEventListener('loadend', () => { record.settled = true }, { once: true })
+      }
+      return xhrSend.apply(this, args)
+    }
+    XMLHttpRequest.prototype.abort = function (...args) {
+      if (this.authRecord) {
+        this.authRecord.aborted = true
+        if (ignoreAbort) return
+      }
+      return xhrAbort.apply(this, args)
+    }
   }, { initial: options.initial, ignoreAbort: options.ignoreAbort ?? false })
   const page = await context.newPage()
   page.setDefaultTimeout(10000)

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import axios from 'axios'
 import { authenticate, register, getCurrentUser } from '../src/services/authApi.js'
 
 const candidate = 'fixture-candidate'
@@ -10,61 +11,60 @@ for (const [name, operation, path, body] of [
   ['login', authenticate, '/api/v1/auth/authenticate', credentials],
   ['registro', register, '/api/v1/auth/register', { firstname: 'QA', lastname: 'Cuenta', ...credentials }],
 ]) {
-  test(`${name}: contrato exacto, verificación de identidad y misma señal en ambos requests`, async (t) => {
-    const signal = new AbortController().signal
-    const calls = []
-    t.mock.method(globalThis, 'fetch', async (url, options) => {
-      calls.push(url)
-      assert.equal(options.signal, signal)
-      if (url.endsWith(path)) {
-        assert.equal(options.method, 'POST')
-        assert.ok(JSON.stringify(body) === options.body, 'El cuerpo debe conservar el contrato')
-        assert.equal(options.headers['Content-Type'], 'application/json')
-        assert.ok(!options.headers.Authorization, 'Autenticación anónima')
-        return Response.json({ access_token: candidate })
+  test(`${name}: Axios hace POST, valida identidad mediante GET y conserva AbortSignal`, async (t) => {
+    const signal = new AbortController().signal, calls = []
+    t.mock.method(axios, 'request', async config => {
+      calls.push(config.url)
+      assert.equal(config.signal, signal)
+      if (config.url.endsWith(path)) {
+        assert.equal(config.method, 'POST')
+        assert.deepEqual(config.data, body)
+        assert.equal(config.headers, undefined, 'Autenticación anónima')
+        return { data: { access_token: candidate }, status: 200 }
       }
-      assert.equal(url, 'http://localhost:8080/users/me')
-      assert.equal(options.method, 'GET')
-      assert.ok(options.headers.Authorization === 'Bearer ' + candidate, 'Debe verificar el token candidato')
-      return Response.json(user)
+      assert.equal(config.url, 'http://localhost:8080/users/me')
+      assert.equal(config.method, 'GET')
+      assert.equal(config.headers.Authorization, 'Bearer ' + candidate)
+      return { data: user, status: 200 }
     })
-    const result = await operation(body, { signal })
-    assert.ok(result.token === candidate, 'Conserva el token sin modificarlo')
-    assert.deepEqual(result.user, user)
+    assert.deepEqual(await operation(body, { signal }), { token: candidate, user })
     assert.equal(calls.length, 2)
   })
 
   for (const invalid of [null, {}, { ...user, id: 0 }, { ...user, role: 'UNKNOWN' }, { ...user, active: false }]) {
-    test(`${name}: rechaza identidad inválida ${JSON.stringify(invalid)}`, async (t) => {
-      t.mock.method(globalThis, 'fetch', async url => Response.json(url.endsWith('/users/me') ? invalid : { access_token: candidate }))
+    test(`${name}: rechaza identidad inválida ${JSON.stringify(invalid)}`, async t => {
+      t.mock.method(axios, 'request', async config => ({
+        data: config.url.endsWith('/users/me') ? invalid : { access_token: candidate },
+        status: 200,
+      }))
       await assert.rejects(operation(body), { code: 'INVALID_USER', message: 'El servidor devolvió datos de usuario inválidos.' })
     })
   }
 
-  test(`${name}: no consulta identidad si la autenticación no devuelve token`, async (t) => {
-    const fetch = t.mock.method(globalThis, 'fetch', async () => Response.json({}))
+  test(`${name}: no consulta identidad si falta el token`, async t => {
+    const request = t.mock.method(axios, 'request', async () => ({ data: {}, status: 200 }))
     await assert.rejects(operation(body), /token válido/)
-    assert.equal(fetch.mock.callCount(), 1)
+    assert.equal(request.mock.callCount(), 1)
   })
 
-  test(`${name}: explica una respuesta de autenticación que no es JSON`, async (t) => {
-    t.mock.method(globalThis, 'fetch', async () => new Response('invalid'))
+  test(`${name}: rechaza una respuesta de autenticación que no es JSON`, async t => {
+    t.mock.method(axios, 'request', async () => ({ data: 'invalid', status: 200 }))
     await assert.rejects(operation(body), { message: 'El servidor devolvió una respuesta de autenticación inválida.' })
   })
 
-  test(`${name}: aborto tras el POST impide enviar GET de identidad aunque el transporte responda`, async (t) => {
+  test(`${name}: abortar después del POST impide consultar el usuario`, async t => {
     const controller = new AbortController()
-    const fetch = t.mock.method(globalThis, 'fetch', async () => {
+    const request = t.mock.method(axios, 'request', async () => {
       controller.abort()
-      return Response.json({ access_token: candidate })
+      return { data: { access_token: candidate }, status: 200 }
     })
     await assert.rejects(operation(body, { signal: controller.signal }), { name: 'AbortError' })
-    assert.equal(fetch.mock.callCount(), 1)
+    assert.equal(request.mock.callCount(), 1)
   })
 
-  test(`${name}: propaga errores de red sin registrar credenciales`, async (t) => {
+  test(`${name}: un fallo de red se propaga sin registrar credenciales`, async t => {
     const failure = new TypeError('Network failed')
-    t.mock.method(globalThis, 'fetch', async () => { throw failure })
+    t.mock.method(axios, 'request', async () => { throw failure })
     await assert.rejects(operation(body), error => error === failure)
   })
 }
@@ -75,28 +75,42 @@ for (const [operation, status, message] of [
   [register, 409, 'Ya existe un usuario con este correo'],
   [register, 500, 'No se pudo registrar el usuario'],
 ]) {
-  test(`error de autenticación ${status}: mensaje y código HTTP conservados`, async (t) => {
-    const fetch = t.mock.method(globalThis, 'fetch', async () => new Response(null, { status }))
+  test(`error de autenticación HTTP ${status}: conserva mensaje y status`, async t => {
+    const request = t.mock.method(axios, 'request', async () => {
+      throw { response: { status, data: {} } }
+    })
     await assert.rejects(operation(credentials), { status, message })
-    assert.equal(fetch.mock.callCount(), 1)
+    assert.equal(request.mock.callCount(), 1)
   })
 }
 
 for (const status of [401, 403]) {
-  test(`recuperación: HTTP ${status} se propaga para invalidar la sesión`, async (t) => {
-    t.mock.method(globalThis, 'fetch', async () => Response.json({}, { status }))
+  test(`recuperación HTTP ${status} invalida sesión`, async t => {
+    t.mock.method(axios, 'request', async () => {
+      throw { response: { status, data: {} } }
+    })
     await assert.rejects(getCurrentUser({ token: candidate }), { status })
   })
 }
 
-test('verificación: conserva mensajes de login y registro ante HTTP fallido de /users/me', async (t) => {
-  t.mock.method(globalThis, 'fetch', async url => url.endsWith('/users/me')
-    ? Response.json({}, { status: 403 }) : Response.json({ access_token: candidate }))
+test('verificación de identidad: conserva mensajes de login y registro al fallar GET', async t => {
+  t.mock.method(axios, 'request', async config => {
+    if (config.url.endsWith('/users/me')) throw { response: { status: 403, data: {} } }
+    return { data: { access_token: candidate }, status: 200 }
+  })
   await assert.rejects(authenticate(credentials), { status: 403, message: 'No pudimos verificar tu cuenta (HTTP 403). Volvé a ingresar.' })
   await assert.rejects(register(credentials), { status: 403, message: 'No se pudo obtener el usuario' })
 })
 
-test('verificación: JSON inválido o vacío no permite una sesión', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => new Response('invalid'))
+test('respuesta no JSON o vacía de /users/me nunca habilita sesión', async t => {
+  t.mock.method(axios, 'request', async () => ({ data: 'invalid', status: 200 }))
   await assert.rejects(getCurrentUser({ token: candidate }), { code: 'INVALID_USER' })
+})
+
+test('Axios cancela y propaga fallos de red con las mismas semánticas de UI', async t => {
+  const mock = t.mock.method(axios, 'request')
+  mock.mock.mockImplementation(async () => { throw { code: 'ERR_NETWORK', message: 'Network Error' } })
+  await assert.rejects(getCurrentUser({ token: candidate }), TypeError)
+  mock.mock.mockImplementation(async () => { throw { code: 'ERR_CANCELED' } })
+  await assert.rejects(getCurrentUser({ token: candidate }), { name: 'AbortError' })
 })
