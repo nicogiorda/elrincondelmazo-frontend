@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector, useStore } from 'react-redux'
 import { fetchCheckoutQuote } from '../Redux/checkoutSlice.js'
 
 // La validacion pura del contrato sigue disponible para las pruebas anteriores.
@@ -10,6 +10,7 @@ export { validateQuote } from '../services/ordersApi.js'
 export default function useCheckoutQuote({ active, cart, blocked, paymentMethod, userId, token,
   sessionVersion, sessionAbort, subscribeSessionChange, logout, setSessionError }) {
   const dispatch = useDispatch()
+  const store = useStore()
   const quoteState = useSelector(state => state.checkout.quote)
   const [attempt, setAttempt] = useState(0)
   const request = useRef(null)
@@ -30,7 +31,11 @@ export default function useCheckoutQuote({ active, cart, blocked, paymentMethod,
 
   useEffect(() => subscribeSessionChange(resetQuote), [subscribeSessionChange, resetQuote])
   useEffect(() => {
-    if (!active || !userId || !token || !cart?.items.length || blocked || current) return
+    // Leer la solicitud actual desde el store, sin hacer que la transicion
+    // idle -> pending vuelva a ejecutar el efecto y aborte su propio HTTP.
+    const stored = store.getState().checkout.quote
+    if (!active || !userId || !token || !cart?.items.length || blocked
+      || (stored.key === quoteKey && stored.status !== 'idle')) return
     let mounted = true
     const controller = new AbortController()
     request.current = controller
@@ -50,8 +55,8 @@ export default function useCheckoutQuote({ active, cart, blocked, paymentMethod,
       })
     })
     return () => { mounted = false; controller.abort() }
-  }, [active, userId, token, cart, blocked, current, paymentMethod, quoteKey,
-    sessionVersion, sessionAbort, logout, setSessionError, dispatch])
+  }, [active, userId, token, cart, blocked, paymentMethod, quoteKey,
+    sessionVersion, sessionAbort, logout, setSessionError, dispatch, store])
 
   return {
     quote: current?.status === 'succeeded' ? current.data : null,
