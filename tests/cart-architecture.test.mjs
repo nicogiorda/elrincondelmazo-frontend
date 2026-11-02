@@ -141,3 +141,26 @@ test('Redux administra el historial privado y detalles de pedidos sin caches dup
   assert.match(slice, /generation/)
   assert.match(store, /orders:\s*ordersReducer/)
 })
+
+test('Publicaciones administra GET, POST, PUT, PATCH, DELETE y fotos mediante Redux y Axios', () => {
+  const hook = modules.get(resolve(root, 'hooks/usePublications.js'))
+  const slice = modules.get(resolve(root, 'Redux/publicationsSlice.js'))
+  const service = modules.get(resolve(root, 'services/publicationsApi.js'))
+  const store = modules.get(resolve(root, 'Redux/store.js'))
+  assert.match(hook, /useSelector\(/)
+  assert.match(hook, /dispatch\(/)
+  assert.doesNotMatch(hook, /\buseState\s*\(|getPublications\s*\(|savePublication\s*\(/)
+  for (const name of ['fetchOwnPublications', 'saveOwnPublication', 'setOwnPublicationStatus',
+    'removeOwnPublication', 'uploadOwnPublicationPhoto']) {
+    assert.ok(slice.includes('export const ' + name + ' = createAsyncThunk('), name)
+    for (const stage of ['pending', 'fulfilled', 'rejected']) {
+      assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
+    }
+  }
+  assert.match(service, /import axios from 'axios'/)
+  assert.match(service, /axios\.request\(/)
+  assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\(/)
+  assert.match(store, /publications:\s*publicationsReducer/)
+  assert.match(store, /publicationToken: \(\) =>/)
+  assert.doesNotMatch(slice, /\buseState\s*\(|\blocalStorage\s*\(/)
+})

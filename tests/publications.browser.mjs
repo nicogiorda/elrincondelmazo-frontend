@@ -24,6 +24,31 @@ async function setup(options = {}) {
       init.signal?.addEventListener('abort', () => { record.aborted = true }, { once: true })
       return original(url, ignoreAbort ? { ...init, signal: undefined } : init).finally(() => { record.settled = true })
     }
+    // Las publicaciones usan Axios, que normalmente envía XMLHttpRequest.
+    // El monitor observa tanto fetch como XHR y prueba respuestas que ignoran abort.
+    const xhrOpen = XMLHttpRequest.prototype.open
+    const xhrSend = XMLHttpRequest.prototype.send
+    const xhrAbort = XMLHttpRequest.prototype.abort
+    XMLHttpRequest.prototype.open = function (method, url, ...args) {
+      this.publicationUrl = String(url).startsWith('http://localhost:8080') ? String(url) : null
+      return xhrOpen.call(this, method, url, ...args)
+    }
+    XMLHttpRequest.prototype.send = function (...args) {
+      if (this.publicationUrl) {
+        const record = { path: new URL(this.publicationUrl).pathname, settled: false, aborted: false }
+        this.publicationRecord = record
+        window.publicationRequests.push(record)
+        this.addEventListener('loadend', () => { record.settled = true }, { once: true })
+      }
+      return xhrSend.apply(this, args)
+    }
+    XMLHttpRequest.prototype.abort = function (...args) {
+      if (this.publicationRecord) {
+        this.publicationRecord.aborted = true
+        if (ignoreAbort) return
+      }
+      return xhrAbort.apply(this, args)
+    }
   }, { ignoreAbort: options.ignoreAbort ?? false, authenticated: options.authenticated ?? true })
   const page = await context.newPage()
   page.setDefaultTimeout(10000)
@@ -125,6 +150,8 @@ try {
     if (size) await row(s.page, 'Publicación ' + size).waitFor()
     else await s.page.getByText('Todavía no tenés publicaciones', { exact: true }).waitFor()
     await settled(s.page)
+    assert.ok(await s.page.evaluate(() => window.publicationRequests.some(r => r.path === '/products/mine')),
+      'El monitor debe registrar también los GET de publicaciones enviados con Axios')
     assert.equal(s.count('/products/mine'), Math.max(1, Math.ceil(size / 20)))
     if (!size) await s.page.getByText('Todavía no tenés publicaciones', { exact: true }).waitFor()
     const names = await s.page.getByRole('row').locator('p.font-extrabold, p[class*="font-extrabold"]').allTextContents()
