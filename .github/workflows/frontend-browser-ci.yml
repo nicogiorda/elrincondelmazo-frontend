@@ -1,0 +1,44 @@
+name: Frontend browser checks
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/*.browser.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/frontend-browser-ci.yml'
+
+jobs:
+  checkout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias del frontend
+        run: npm ci
+      - name: Instalar Playwright para pruebas aisladas
+        run: npm install --no-save --package-lock=false playwright
+      - name: Confirmar Microsoft Edge del runner
+        run: command -v microsoft-edge
+      - name: Iniciar Vite
+        run: |
+          npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/mazo-vite.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/mazo-vite.log
+          exit 1
+      - name: Carrito - escenarios HTTP simulados
+        run: node tests/cart-api.browser.mjs
+      - name: Checkout - idempotencia y flujos React simulados
+        run: node tests/checkout.browser.mjs
