@@ -54,6 +54,10 @@ const checkoutSlice = createSlice({
   initialState: initialState(),
   reducers: {
     checkoutSessionCleared: initialState,
+    checkoutSubmitErrorSet(state, action) {
+      if (!sameSession(state, action.payload)) return
+      state.confirmation.submitError = action.payload.message
+    },
   },
   extraReducers: builder => {
     builder
@@ -118,5 +122,5 @@ const checkoutSlice = createSlice({
   },
 })
 
-export const { checkoutSessionCleared } = checkoutSlice.actions
+export const { checkoutSessionCleared, checkoutSubmitErrorSet } = checkoutSlice.actions
 export default checkoutSlice.reducer
