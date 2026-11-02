@@ -73,12 +73,14 @@ export default function usePublications({ user, token, active, sessionVersion, s
   }, [userId, token, sessionVersion, sessionAbort, store, dispatch,
     logout, setSessionError, syncPublicProducts])
 
+  // busyId cambia entre subir fotos y guardar el producto. No iniciar GET
+  // entre esas etapas; la revisión se dispara al liberar la mutación final.
   useEffect(() => {
     if (!active) return
     let current = true
     queueMicrotask(() => { if (current) load() })
     return () => { current = false }
-  }, [active, load, listing.busyId, listing.operationRevision])
+  }, [active, load, listing.operationRevision])
 
   function runOperation(busyId, action, apply) {
     if (!mounted.current || !userId || !token || token !== localStorage.getItem('token')) {
@@ -97,6 +99,7 @@ export default function usePublications({ user, token, active, sessionVersion, s
     return promise.unwrap().then(result => {
       if (!isCurrent()) throw new Error('La sesión cambió.')
       apply?.(result)
+      request.succeeded = true
       return result
     }).catch(error => {
       if (isCurrent() && error.status === 401) {
@@ -109,9 +112,12 @@ export default function usePublications({ user, token, active, sessionVersion, s
     }).finally(() => {
       if (isCurrent()) {
         mutation.current = null
-        // La navegación puede ocurrir antes del finally: este cambio permite
-        // cargar el listado al salir de Publicar sin hacer un GET redundante.
-        dispatch(publicationMutationReleased())
+        // Una foto subida no modifica el listado. En PublishProduct la subida
+        // continúa inmediatamente con otra foto o con el POST del producto.
+        // Si falla, sí reactivar la carga al volver a Mis publicaciones.
+        if (busyId !== 'image' || !request.succeeded) {
+          dispatch(publicationMutationReleased())
+        }
       }
     })
   }
