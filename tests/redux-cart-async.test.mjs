@@ -101,6 +101,7 @@ test('HTTP 401 via rejected conserva status, logout limpia datos y respuesta tar
   const failed = await store.dispatch(addItemToCart({ ...scope(), productId: 40, quantity: 1 }))
   assert.ok(addItemToCart.rejected.match(failed))
   assert.equal(failed.error.status, 401)
+  assert.equal(failed.error.message, 'Tu sesión venció. Volvé a ingresar.')
   assert.equal(state(store).cartError, 'Tu sesión venció. Volvé a ingresar.')
   mock.mock.mockImplementation(async () => gate.promise)
   const old = store.dispatch(fetchCart(scope()))
@@ -110,6 +111,17 @@ test('HTTP 401 via rejected conserva status, logout limpia datos y respuesta tar
   await old
   assert.equal(state(store).ownerId, 2)
   assert.equal(state(store).cart, null)
+})
+
+test('HTTP 409 mantiene status en rejected y en unwrap para mostrar el error real', async t => {
+  t.mock.method(axios, 'request', async () => {
+    throw { response: { status: 409, data: { message: 'Stock insuficiente' } } }
+  })
+  const store = create()
+  store.dispatch(cartOperationStarted({ ...scope(), kind: 'mutation' }))
+  const pending = store.dispatch(addItemToCart({ ...scope(), productId: 40, quantity: 5 }))
+  await assert.rejects(pending.unwrap(), { status: 409, message: 'Stock insuficiente' })
+  assert.equal(state(store).cartError, 'Stock insuficiente')
 })
 
 test('AbortSignal cancela el thunk y no deja error visible al cerrar sesion', async t => {
