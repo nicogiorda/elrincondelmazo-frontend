@@ -1,7 +1,61 @@
-import { request, requestJson, readResponse } from './httpClient.js'
+import axios from 'axios'
+import { API_BASE_URL } from './httpClient.js'
 
-export function previewOrder(paymentMethod, { token, signal } = {}) {
-  return requestJson('/orders/preview', { method: 'POST', token, signal, body: { paymentMethod } })
+// El servicio solo hace HTTP y valida los contratos del backend. Ni el token ni
+// los intentos de compra se conservan en este modulo.
+function normalizeError(error, signal) {
+  if (signal?.aborted) return signal.reason ?? new DOMException('Solicitud cancelada', 'AbortError')
+  if (error?.name === 'AbortError') return error
+  if (error?.code === 'ERR_CANCELED') return new DOMException('Solicitud cancelada', 'AbortError')
+  const status = error?.response?.status ?? error?.status
+  if (status != null) {
+    const data = error?.response?.data
+    const message = status === 401 ? 'Tu sesión venció. Volvé a ingresar.'
+      : data?.message || data?.detail || error?.message
+        || 'No se pudo completar la operación (HTTP ' + status + ').'
+    return Object.assign(new Error(message), { status })
+  }
+  if (error?.code === 'ERR_NETWORK') {
+    return Object.assign(new TypeError(error.message || 'Network Error', { cause: error }), {
+      code: error.code,
+    })
+  }
+  return error
+}
+
+async function orderRequest(path, { method = 'GET', token, signal, body } = {}) {
+  try {
+    const response = await axios.request({
+      url: API_BASE_URL + path, method, signal,
+      ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
+      ...(body !== undefined ? { data: body } : {}),
+    })
+    signal?.throwIfAborted()
+    if (response.status < 200 || response.status >= 300) {
+      throw { response: { status: response.status, data: response.data } }
+    }
+    return {
+      status: response.status,
+      data: response.data == null || response.data === '' ? {} : response.data,
+    }
+  } catch (error) {
+    throw normalizeError(error, signal)
+  }
+}
+
+export async function previewOrder(paymentMethod, { token, signal } = {}) {
+  const { data } = await orderRequest('/orders/preview', {
+    method: 'POST', token, signal, body: { paymentMethod },
+  })
+  return data
+}
+
+export function validateQuote(quote) {
+  if (!quote || !['subtotal', 'totalDiscount', 'total'].every(field => Number.isFinite(quote[field]) && quote[field] >= 0)
+    || !Array.isArray(quote.promotions)
+    || !quote.promotions.every(promotion => promotion && typeof promotion.promotionName === 'string'
+      && Number.isFinite(promotion.discountApplied))) throw new Error('Cotización inválida.')
+  return quote
 }
 
 const money = value => Number.isFinite(value) && value >= 0
@@ -19,36 +73,39 @@ function isConfirmedOrder(order, paymentMethod, expectedTotal) {
       && positiveId(promotion.promotionId) && hasText(promotion.promotionName) && money(promotion.discountApplied))
 }
 
-// Un fallo de transporte o una respuesta que no confirma el contrato no prueba
-// que la transacción haya fallado. El llamador conserva el mismo intento lógico.
+// Un HTTP 5xx, aborto, error de red o 201 invalido no demuestra que la orden
+// NO se haya creado. Mantener la misma requestKey evita compras duplicadas.
 function ambiguousFailure(error) {
   const copy = error instanceof TypeError
     ? new TypeError(error.message, { cause: error }) : new Error(error.message, { cause: error })
-  return Object.assign(copy, { name: error.name, status: error.status, code: error.code, ambiguous: true })
+  return Object.assign(copy, {
+    name: error.name, status: error.status, code: error.code, ambiguous: true,
+  })
 }
 
 export async function createOrder({ paymentMethod, expectedTotal, requestKey }, { token, signal } = {}) {
   try {
-    const response = await request('/orders', {
+    const { status, data } = await orderRequest('/orders', {
       method: 'POST', token, signal, body: { paymentMethod, expectedTotal, requestKey },
     })
-    const order = await readResponse(response)
-    if (response.status !== 201 || !isConfirmedOrder(order, paymentMethod, expectedTotal)) {
+    if (status !== 201 || !isConfirmedOrder(data, paymentMethod, expectedTotal)) {
       throw Object.assign(new Error('La respuesta no contiene el detalle del pedido. Revisá tus pedidos antes de reintentar.'), {
-        status: response.status, ambiguous: true,
+        status, ambiguous: true,
       })
     }
-    return order
+    return data
   } catch (error) {
     if (error.ambiguous || !error.status || error.status >= 500) throw ambiguousFailure(error)
     throw error
   }
 }
 
-export function getOrders({ token, signal } = {}) {
-  return requestJson('/orders', { token, signal })
+export async function getOrders({ token, signal } = {}) {
+  const { data } = await orderRequest('/orders', { token, signal })
+  return data
 }
 
-export function getOrderDetail(orderId, { token, signal } = {}) {
-  return requestJson('/orders/' + orderId, { token, signal })
+export async function getOrderDetail(orderId, { token, signal } = {}) {
+  const { data } = await orderRequest('/orders/' + orderId, { token, signal })
+  return data
 }
