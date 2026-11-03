@@ -68,6 +68,7 @@ await page.route('http://localhost:8080/**', async route => {
     const card = cards.find(item => item.id === Number(path.split('/').pop()))
     assert.ok(card, 'an owned card can be moved')
     const target = req.postDataJSON()
+    assert.equal(target.slotIndex, 3, 'move targets the selected zero-based slot')
     Object.assign(card, { section: target.section, pageNumber: target.pageNumber, slotIndex: target.slotIndex })
     return reply(card)
   }
@@ -99,12 +100,14 @@ try {
 
   await page.getByRole('button', { name: 'Ver carta Carta comprada, posición 2' }).click()
   await page.getByLabel('Sección').selectOption('CARS')
-  await page.getByLabel('Posición', { exact: true }).selectOption('3')
+  await page.getByLabel('Posición', { exact: true }).selectOption({ value: '3' })
+  assert.equal(await page.getByLabel('Posición', { exact: true }).inputValue(), '3')
   await page.getByRole('button', { name: 'Mover carta' }).click()
   try {
     await page.getByRole('button', { name: 'Ver carta Carta comprada, posición 4' }).waitFor({ timeout: 5000 })
   } catch (error) {
     console.error('Album move failure calls:', JSON.stringify(calls.slice(-15)))
+    console.error('Album move failure mock cards:', JSON.stringify(cards))
     console.error('Album move failure UI:', (await page.locator('body').innerText()).slice(-5000))
     console.error('Album move failure errors:', JSON.stringify(errors))
     throw error
