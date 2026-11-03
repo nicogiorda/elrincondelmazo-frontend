@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { updateProfile, deactivateAccount } from '../services/accountApi.js'
+import { useDispatch } from 'react-redux'
+import { updateAccountProfile, deactivateAccountUser } from '../Redux/userSlice.js'
 
 export default function useAccount({ user, token, setUser, logout, setSessionError,
   sessionVersion, sessionAbort, subscribeSessionChange }) {
+  const dispatch = useDispatch()
   const [busy, setBusy] = useState(null)
   const [deactivateError, setDeactivateError] = useState('')
   const request = useRef(null)
@@ -26,7 +28,7 @@ export default function useAccount({ user, token, setUser, logout, setSessionErr
     }
   }, [subscribeSessionChange, reset, cancel])
 
-  async function run(kind, operation) {
+  async function run(kind, form) {
     if (!mounted.current || !user || !token || token !== localStorage.getItem('token')) return null
     if (request.current) return null
     const pending = { controller: new AbortController() }
@@ -39,7 +41,9 @@ export default function useAccount({ user, token, setUser, logout, setSessionErr
     setBusy(kind)
     setDeactivateError('')
     try {
-      const updated = await operation({ userId, token, signal })
+      const updated = await dispatch(kind === 'deactivate'
+        ? deactivateAccountUser({ userId }, { signal })
+        : updateAccountProfile({ userId, form }, { signal })).unwrap()
       if (!isCurrent()) return null
       if (kind === 'deactivate' || updated.email !== previousEmail) {
         logout()
@@ -55,7 +59,8 @@ export default function useAccount({ user, token, setUser, logout, setSessionErr
         setSessionError(error.message)
         return null
       }
-      const message = error instanceof TypeError || error.code === 'ACCOUNT_UNCONFIRMED'
+      const message = error instanceof TypeError || error?.name === 'TypeError'
+        || error?.code === 'ERR_NETWORK' || error.code === 'ACCOUNT_UNCONFIRMED'
         ? 'No pudimos confirmar el resultado. La operación puede haberse aplicado. Verificá el estado de tu cuenta antes de volver a enviar.'
         : error.message
       if (kind === 'deactivate') { setDeactivateError(message); return null }
@@ -66,6 +71,6 @@ export default function useAccount({ user, token, setUser, logout, setSessionErr
   }
 
   return { profileSaving: busy === 'save', deactivating: busy === 'deactivate', deactivateError,
-    saveProfile: form => run('save', options => updateProfile(form, options)),
-    deactivateAccount: () => run('deactivate', deactivateAccount) }
+    saveProfile: form => run('save', form),
+    deactivateAccount: () => run('deactivate') }
 }
