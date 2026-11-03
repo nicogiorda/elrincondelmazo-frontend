@@ -92,6 +92,12 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
     const cached = existing.ownerId === userId && existing.generation === version
       ? existing.details[orderId] : undefined
     if (cached?.data && Date.now() - cached.updatedAt < ORDERS_CACHE_TTL) return Promise.resolve(cached.data)
+    // La vista puede pedir un detalle nuevo justo después del fulfilled del
+    // historial, antes de que su .then() libere/cancele las lecturas anteriores.
+    // Esperar el final de ese refresh evita abortar la consulta nueva por error.
+    if (historyRequest.current) {
+      return historyRequest.current.promise.then(() => loadOrderDetail(orderId))
+    }
     if (detailRequests.current.has(orderId)) return detailRequests.current.get(orderId).promise
     const scope = { ownerId: userId, generation: version }
     const request = { controller: new AbortController() }
