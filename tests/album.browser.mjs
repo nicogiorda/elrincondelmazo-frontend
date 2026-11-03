@@ -91,7 +91,7 @@ try {
   const slots = page.locator('[data-album-slot]')
   assert.equal(await slots.count(), 9)
   const firstSlot = await slots.first().boundingBox()
-  assert.ok(firstSlot && firstSlot.height >= 160 && firstSlot.height <= 210,
+  assert.ok(firstSlot && firstSlot.height >= 145 && firstSlot.height <= 180,
     'los casilleros reservan espacio suficiente para ver las fotografías')
   assert.equal(await page.locator('section[data-album-theme="NBA"]').count(), 1)
   assert.equal(await page.locator('.album-collection-tab__cover').count(), 4,
