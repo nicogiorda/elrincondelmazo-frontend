@@ -1,3 +1,4 @@
+import './fixtures/axios-verb-test-bridge.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import axios from 'axios'

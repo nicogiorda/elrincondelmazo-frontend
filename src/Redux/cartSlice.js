@@ -1,5 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { getCart, addCartItem, updateCartItemQuantity, removeCartItem } from '../services/cartApi.js'
+import axios from 'axios'
+import { API_BASE_URL } from '../services/httpClient.js'
+import { normalizeCartError } from '../services/cartApi.js'
 
 // Solo estado serializable del carrito. El token, los bloqueos síncronos,
 // AbortController y las promesas permanecen en useCart/useSession.
@@ -16,23 +18,55 @@ const serializeCartError = (error) => ({
   ...(typeof error?.code === 'string' ? { code: error.code } : {}),
 })
 
-const cartRequest = (type, perform) => createAsyncThunk(type, async (args, { extra, signal }) => {
-  const token = extra?.cartToken?.()
-  if (!token) throw new Error('No hay una sesion activa para el carrito.')
-  const data = await perform(args, { token, signal })
+// Mantener el chequeo de contrato igual para los cuatro endpoints.
+function validCart(data) {
   if (!data || !Array.isArray(data.items)) {
     throw new Error('El carrito recibido no tiene una lista de ítems.')
   }
   return data
+}
+function cartHeaders(extra) {
+  const token = extra?.cartToken?.()
+  if (!token) throw new Error('No hay una sesion activa para el carrito.')
+  return { Authorization: 'Bearer ' + token }
+}
+
+export const fetchCart = createAsyncThunk('cart/fetch', async (_, { extra, signal }) => {
+  const headers = cartHeaders(extra)
+  const { data } = await axios.get(API_BASE_URL + '/carts', { headers, signal })
+    .catch(error => { throw normalizeCartError(error, signal) })
+  signal.throwIfAborted()
+  return validCart(data)
 }, { serializeError: serializeCartError })
 
-export const fetchCart = cartRequest('cart/fetch', (_, options) => getCart(options))
-export const addItemToCart = cartRequest('cart/add', (args, options) =>
-  addCartItem({ productId: args.productId, quantity: args.quantity }, options))
-export const changeCartItemQuantity = cartRequest('cart/quantity', (args, options) =>
-  updateCartItemQuantity(args.id, args.quantity, options))
-export const deleteCartItem = cartRequest('cart/delete', (args, options) =>
-  removeCartItem(args.id, options))
+export const addItemToCart = createAsyncThunk('cart/add',
+  async ({ productId, quantity }, { extra, signal }) => {
+    const headers = cartHeaders(extra)
+    const { data } = await axios.post(
+      API_BASE_URL + '/carts/items', { productId, quantity }, { headers, signal },
+    ).catch(error => { throw normalizeCartError(error, signal) })
+    signal.throwIfAborted()
+    return validCart(data)
+  }, { serializeError: serializeCartError })
+
+export const changeCartItemQuantity = createAsyncThunk('cart/quantity',
+  async ({ id, quantity }, { extra, signal }) => {
+    const headers = cartHeaders(extra)
+    const { data } = await axios.put(
+      API_BASE_URL + '/carts/items/' + id, { quantity }, { headers, signal },
+    ).catch(error => { throw normalizeCartError(error, signal) })
+    signal.throwIfAborted()
+    return validCart(data)
+  }, { serializeError: serializeCartError })
+
+export const deleteCartItem = createAsyncThunk('cart/delete',
+  async ({ id }, { extra, signal }) => {
+    const headers = cartHeaders(extra)
+    const { data } = await axios.delete(API_BASE_URL + '/carts/items/' + id, { headers, signal })
+      .catch(error => { throw normalizeCartError(error, signal) })
+    signal.throwIfAborted()
+    return validCart(data)
+  }, { serializeError: serializeCartError })
 
 const initialCart = () => ({
   ownerId: null,

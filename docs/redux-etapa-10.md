@@ -1,5 +1,8 @@
 # Etapa 10 — Pedidos y checkout con Redux Toolkit + Axios
 
+> **Actualización de la etapa 12:** para seguir el estilo de `postSlice.js` de la profesora, los métodos `axios.get/post/put/patch/delete` se ejecutan **directamente dentro de los `createAsyncThunk`**. Las referencias de este documento a solicitudes desde `services/*Api.js` describen la implementación histórica anterior. Ver [etapa 12](redux-etapa-12.md) para el circuito vigente.
+
+
 ## Patrón de la cursada
 
 Siguiendo la estructura de la demo Redux de Gisele y el énfasis de la clase del 27/10, las operaciones HTTP del historial, detalle, cotización y confirmación ahora siguen el circuito:

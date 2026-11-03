@@ -1,8 +1,8 @@
+import './fixtures/axios-verb-test-bridge.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import axios from 'axios'
 import { getCart, addCartItem, updateCartItemQuantity, removeCartItem } from '../src/services/cartApi.js'
-import { readResponse, requestJson } from '../src/services/httpClient.js'
 
 const cart = { id: 1, items: [{ id: 11, productId: 7, quantity: 2 }], subtotal: 200 }
 const controller = new AbortController()
@@ -57,11 +57,9 @@ for (const [status, data, message] of [
   })
 }
 
-test('sin contenido conserva objeto vacio y errores de otro servicio no cambian', async t => {
+test('sin contenido conserva objeto vacío sin depender de fetch', async t => {
   t.mock.method(axios, 'request', async () => ({ status: 204, data: undefined }))
   assert.deepEqual(await getCart(options), {})
-  assert.deepEqual(await readResponse(new Response(null, { status: 204 })), {})
-  assert.equal(typeof requestJson, 'function')
 })
 
 test('AbortSignal propaga AbortError sin reintentar', async t => {

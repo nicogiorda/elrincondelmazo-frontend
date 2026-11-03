@@ -30,14 +30,14 @@ export function createProductCache({ now = Date.now, api = { getProducts, getPro
     return materialize(page)
   })
 
-  function loadPage(query) {
+  function loadPage(query, fetchPage = api.getProducts) {
     const cached = pages.get(query)
     if (cached && (cached.pending || (now() - cached.time < PRODUCT_CACHE_TTL && cached.ids.every(isFresh)))) {
       return readPage(cached)
     }
     const controller = new AbortController(), version = generation, stamp = ++sequence
     const entry = { controller, version, pending: true, time: 0 }
-    entry.promise = api.getProducts(query, { signal: controller.signal }).then(data => {
+    entry.promise = fetchPage(query, { signal: controller.signal }).then(data => {
       if (version !== generation || controller.signal.aborted || pages.get(query) !== entry) throw changed()
       data.content.forEach(product => save(product, stamp))
       entry.pending = false
@@ -57,14 +57,14 @@ export function createProductCache({ now = Date.now, api = { getProducts, getPro
 
   // Cada consumidor cancela su participación; la red se aborta cuando no queda
   // ninguno. Una respuesta que ignore AbortSignal tampoco puede poblar la caché.
-  function loadProduct(id, { signal, isCurrent = () => true, onlyMissing = false, context = 'detail', revalidate = false } = {}) {
+  function loadProduct(id, { signal, isCurrent = () => true, onlyMissing = false, context = 'detail', revalidate = false, fetchProduct = api.getProduct } = {}) {
     if (signal?.aborted || !isCurrent()) return Promise.reject(aborted())
     if (!revalidate && isFresh(id)) return Promise.resolve(products.get(id))
     let entry = details.get(id)
     if (!entry) {
       const controller = new AbortController()
       entry = { controller, version: generation, stamp: ++sequence, consumers: new Set() }
-      entry.promise = api.getProduct(id, { signal: controller.signal })
+      entry.promise = fetchProduct(id, { signal: controller.signal })
       details.set(id, entry)
     }
     const consumer = {}

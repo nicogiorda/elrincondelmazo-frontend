@@ -1,5 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { getOrders, getOrderDetail } from '../services/ordersApi.js'
+import axios from 'axios'
+import { API_BASE_URL } from '../services/httpClient.js'
+import { normalizeOrderError } from '../services/ordersApi.js'
 
 // Las respuestas privadas y el estado de las solicitudes viven en Redux.
 // Los AbortController y el JWT se mantienen fuera del store.
@@ -38,7 +40,14 @@ export const fetchOrdersHistory = createAsyncThunk('orders/fetchHistory',
   async (_, { extra, signal }) => {
     const token = extra?.ordersToken?.()
     if (!token) throw new Error('No hay una sesion activa para consultar pedidos.')
-    const items = await getOrders({ token, signal })
+    const response = await axios.get(API_BASE_URL + '/orders', {
+      signal, headers: { Authorization: 'Bearer ' + token },
+    }).catch(error => { throw normalizeOrderError(error, signal) })
+    signal.throwIfAborted()
+    if (response.status < 200 || response.status >= 300) {
+      throw normalizeOrderError({ response }, signal)
+    }
+    const items = response.data
     if (!Array.isArray(items) || !items.every(order => order && Number.isSafeInteger(order.id)
       && typeof order.orderDate === 'string' && typeof order.state === 'string' && Number.isFinite(order.total))) {
       throw new Error('La respuesta de pedidos no contiene una lista válida.')
@@ -50,7 +59,14 @@ export const fetchOrderDetail = createAsyncThunk('orders/fetchDetail',
   async ({ orderId }, { extra, signal }) => {
     const token = extra?.ordersToken?.()
     if (!token) throw new Error('No hay una sesion activa para consultar pedidos.')
-    const data = await getOrderDetail(orderId, { token, signal })
+    const response = await axios.get(API_BASE_URL + '/orders/' + orderId, {
+      signal, headers: { Authorization: 'Bearer ' + token },
+    }).catch(error => { throw normalizeOrderError(error, signal) })
+    signal.throwIfAborted()
+    if (response.status < 200 || response.status >= 300) {
+      throw normalizeOrderError({ response }, signal)
+    }
+    const data = response.data
     if (data?.id !== orderId || !Array.isArray(data.items)) {
       throw new Error('El detalle recibido no corresponde al pedido.')
     }

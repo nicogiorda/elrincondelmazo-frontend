@@ -1,7 +1,10 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { createReview, getReviews } from '../services/reviewsApi.js'
+import axios from 'axios'
+import { API_BASE_URL } from '../services/httpClient.js'
+import { reviewPath, normalizeReviewError } from '../services/reviewsApi.js'
 
-// Los datos públicos se guardan por productId; una sesión solo interviene en POST.
+// El método HTTP se lee donde se define el thunk, igual que en postSlice.js.
+// Las reseñas GET son públicas; solo POST utiliza JWT.
 const serializeReviewError = error => ({
   name: typeof error?.name === 'string' ? error.name : 'Error',
   message: typeof error?.message === 'string' ? error.message : 'No pudimos completar la operación.',
@@ -9,15 +12,30 @@ const serializeReviewError = error => ({
   ...(typeof error?.code === 'string' ? { code: error.code } : {}),
 })
 
-export const fetchProductReviews = createAsyncThunk('reviews/fetchProduct', async ({ productId }, { signal }) => {
-  return getReviews(productId, { signal })
-}, { serializeError: serializeReviewError })
+export const fetchProductReviews = createAsyncThunk('reviews/fetchProduct',
+  async ({ productId }, { signal }) => {
+    const { data } = await axios.get(API_BASE_URL + reviewPath(productId), { signal })
+      .catch(error => { throw normalizeReviewError(error, signal) })
+    signal.throwIfAborted()
+    if (!Array.isArray(data)) throw new Error('La respuesta de reseñas no es una lista')
+    return data
+  }, { serializeError: serializeReviewError })
 
 export const publishProductReview = createAsyncThunk('reviews/publishProduct',
   async ({ productId, rating, comment }, { extra, signal }) => {
     const token = extra?.reviewsToken?.()
     if (!token) throw new Error('Ingresá para publicar una reseña.')
-    return createReview(productId, { rating, comment }, { token, signal })
+    const { data, status } = await axios.post(
+      API_BASE_URL + reviewPath(productId),
+      { rating, comment },
+      { signal, headers: { Authorization: 'Bearer ' + token } },
+    ).catch(error => { throw normalizeReviewError(error, signal) })
+    signal.throwIfAborted()
+    if (status !== 201 || !Number.isSafeInteger(data?.id) || data.id <= 0
+      || data.productId !== Number(productId)) {
+      throw new Error('La respuesta no contiene la reseña esperada.')
+    }
+    return data
   }, { serializeError: serializeReviewError })
 
 const emptyPublication = () => ({

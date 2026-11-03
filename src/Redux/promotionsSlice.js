@@ -1,9 +1,13 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { getPromotions, getPublicPromotions, savePromotion, setPromotionActive } from '../services/promotionsApi.js'
-import { promotionFromBackend, promotionToBackend } from '../utils/promotionMapper.js'
+import axios from 'axios'
+import { API_BASE_URL } from '../services/httpClient.js'
+import { normalizePromotionError, validatePromotion, promotionPath } from '../services/promotionsApi.js'
+import { promotionFromBackend, promotionToBackend, publicPromotionFromBackend } from '../utils/promotionMapper.js'
 
-// La clase de Gisele: cada operación HTTP es una acción asíncrona del dominio;
-// Axios hace transporte y extraReducers controla pending / fulfilled / rejected.
+// Como en postSlice.js de la clase: cada thunk muestra explícitamente
+// el verbo HTTP de Axios; extraReducers maneja pending/fulfilled/rejected.
+const URL = API_BASE_URL + '/promotions'
+
 const serializePromotionError = error => ({
   name: typeof error?.name === 'string' ? error.name : 'Error',
   message: typeof error?.message === 'string' ? error.message : 'No pudimos completar la operación.',
@@ -18,29 +22,71 @@ const adminToken = extra => {
 }
 
 export const fetchAdminPromotions = createAsyncThunk('promotions/fetchAdmin', async (_, { extra, signal }) => {
-  const data = await getPromotions({ token: adminToken(extra), signal })
-  return data.map(promotionFromBackend)
+  const token = adminToken(extra)
+  const { data, status } = await axios.get(URL, {
+    signal, headers: { Authorization: 'Bearer ' + token },
+  }).catch(error => { throw normalizePromotionError(error, signal) })
+  signal.throwIfAborted()
+  if (status !== 200) throw new Error('El servidor no confirmó la operación de promociones.')
+  if (!Array.isArray(data)) throw new Error('La respuesta de promociones no es una lista.')
+  return data.map(promotion => promotionFromBackend(validatePromotion(promotion)))
 }, { serializeError: serializePromotionError })
 
 export const saveAdminPromotion = createAsyncThunk('promotions/saveAdmin',
   async ({ promotion }, { extra, signal }) => {
     const token = adminToken(extra)
-    const data = await savePromotion(promotionToBackend(promotion), promotion.id, { token, signal })
-    return promotionFromBackend(data)
+    const body = promotionToBackend(promotion)
+    const config = { signal, headers: { Authorization: 'Bearer ' + token } }
+    const { data, status } = await (promotion.id == null
+      ? axios.post(URL, body, config)
+      : axios.put(API_BASE_URL + promotionPath(promotion.id), body, config)
+    ).catch(error => { throw normalizePromotionError(error, signal) })
+    signal.throwIfAborted()
+    if (status !== (promotion.id == null ? 201 : 200)) {
+      throw new Error('El servidor no confirmó la operación de promociones.')
+    }
+    return promotionFromBackend(validatePromotion(data, promotion.id))
   }, { serializeError: serializePromotionError })
 
 export const toggleAdminPromotion = createAsyncThunk('promotions/toggleAdmin',
   async ({ promotionId, active }, { extra, signal }) => {
-    const data = await setPromotionActive(promotionId, active, { token: adminToken(extra), signal })
-    return promotionFromBackend(data)
+    const token = adminToken(extra)
+    if (typeof active !== 'boolean') throw new Error('El estado de la promoción no es válido.')
+    const { data, status } = await axios.patch(
+      API_BASE_URL + promotionPath(promotionId) + (active ? '/activate' : '/deactivate'),
+      undefined, { signal, headers: { Authorization: 'Bearer ' + token } },
+    ).catch(error => { throw normalizePromotionError(error, signal) })
+    signal.throwIfAborted()
+    if (status !== 200) throw new Error('El servidor no confirmó la operación de promociones.')
+    const saved = validatePromotion(data, promotionId)
+    if (saved.active !== active) throw new Error('El servidor no confirmó el estado de la promoción.')
+    return promotionFromBackend(saved)
   }, { serializeError: serializePromotionError })
 
 export const fetchPublicPromotions = createAsyncThunk('promotions/fetchPublic',
-  async (_, { signal }) => getPublicPromotions({ signal }),
+  async (_, { signal }) => {
+    let response
+    try {
+      // Este GET es público y NO lleva el token de sesión.
+      response = await axios.get(URL + '/public', { signal })
+    } catch (error) {
+      const normalized = normalizePromotionError(error, signal)
+      if (typeof normalized?.status === 'number') {
+        throw Object.assign(new Error('No pudimos cargar las promociones (HTTP ' + normalized.status + ').'),
+          { status: normalized.status })
+      }
+      throw normalized
+    }
+    signal.throwIfAborted()
+    if (response.status !== 200) {
+      throw new Error('El servidor no confirmó la operación de promociones.')
+    }
+    if (!Array.isArray(response.data)) throw new Error('La respuesta de promociones no es una lista.')
+    return response.data.map(publicPromotionFromBackend)
+  },
   {
     serializeError: serializePromotionError,
-    // Una segunda lectura simultanea del Home comparte la primera; invalidar
-    // una visita reinicia el estado y permite su nuevo GET.
+    // Una segunda lectura simultánea comparte la primera.
     condition: (_, { getState }) => getState()?.promotions?.public?.status !== 'loading',
   })
 

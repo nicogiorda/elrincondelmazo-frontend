@@ -13,6 +13,33 @@ async function setup(options = {}) {
     if (!sessionStorage.getItem('initialized')) { localStorage.setItem('token', 'fixture-a'); sessionStorage.setItem('initialized', '1') }
     const original = window.fetch.bind(window)
     window.accountRequests = []
+    // El nuevo thunk ejecuta axios.put(), que utiliza XMLHttpRequest en Edge.
+    const xhrOpen = XMLHttpRequest.prototype.open
+    const xhrSend = XMLHttpRequest.prototype.send
+    const xhrSetHeader = XMLHttpRequest.prototype.setRequestHeader
+    XMLHttpRequest.prototype.open = function (method, url, ...args) {
+      this.__accountUrl = String(url)
+      this.__accountMethod = method
+      return xhrOpen.call(this, method, url, ...args)
+    }
+    XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+      if (name.toLowerCase() === 'authorization') this.__accountAuth = String(value)
+      return xhrSetHeader.call(this, name, value)
+    }
+    XMLHttpRequest.prototype.send = function (...args) {
+      if ((this.__accountUrl || '').startsWith('http://localhost:8080')) {
+        const record = {
+          path: new URL(this.__accountUrl).pathname, method: this.__accountMethod,
+          settled: false, aborted: false,
+          owner: this.__accountAuth?.endsWith('-b') ? 'b' : 'a',
+        }
+        window.accountRequests.push(record)
+        this.addEventListener('abort', () => { record.aborted = true }, { once: true })
+        this.addEventListener('loadend', () => { record.settled = true }, { once: true })
+        if (ignoreAbort) this.abort = () => { record.aborted = true }
+      }
+      return xhrSend.apply(this, args)
+    }
     window.fetch = (url, init = {}) => {
       if (!String(url).startsWith('http://localhost:8080')) return original(url, init)
       const record = { path: new URL(url).pathname, method: init.method || 'GET', settled: false, aborted: false,

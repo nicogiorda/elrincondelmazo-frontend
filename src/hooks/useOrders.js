@@ -88,25 +88,38 @@ export default function useOrders({ user, token, sessionVersion, sessionAbort,
   const loadOrderDetail = useCallback((orderId) => {
     if (!mounted.current || !userId || !token) return
     const version = sessionVersion.current
-    const existing = store.getState().orders
-    const cached = existing.ownerId === userId && existing.generation === version
-      ? existing.details[orderId] : undefined
-    if (cached?.data && Date.now() - cached.updatedAt < ORDERS_CACHE_TTL) return Promise.resolve(cached.data)
-    if (detailRequests.current.has(orderId)) return detailRequests.current.get(orderId).promise
-    const scope = { ownerId: userId, generation: version }
-    const request = { controller: new AbortController() }
-    const signal = AbortSignal.any([request.controller.signal, sessionAbort.current.signal])
-    detailRequests.current.set(orderId, request)
-    const isCurrent = () => mounted.current && !signal.aborted
-      && version === sessionVersion.current && detailRequests.current.get(orderId) === request
-    request.promise = dispatch(fetchOrderDetail({ ...scope, orderId }, { signal })).unwrap()
-      .then(({ data }) => isCurrent() ? data : undefined)
-      .catch(error => {
-        if (isCurrent() && error.status === 401) { logout(); setSessionError(error.message) }
-      }).finally(() => {
-        if (detailRequests.current.get(orderId) === request) detailRequests.current.delete(orderId)
-      })
-    return request.promise
+
+    const perform = () => {
+      if (!mounted.current || version !== sessionVersion.current) return
+      const existing = store.getState().orders
+      const cached = existing.ownerId === userId && existing.generation === version
+        ? existing.details[orderId] : undefined
+      if (cached?.data && Date.now() - cached.updatedAt < ORDERS_CACHE_TTL) {
+        return Promise.resolve(cached.data)
+      }
+      if (detailRequests.current.has(orderId)) return detailRequests.current.get(orderId).promise
+
+      const scope = { ownerId: userId, generation: version }
+      const request = { controller: new AbortController() }
+      const signal = AbortSignal.any([request.controller.signal, sessionAbort.current.signal])
+      detailRequests.current.set(orderId, request)
+      const isCurrent = () => mounted.current && !signal.aborted
+        && version === sessionVersion.current && detailRequests.current.get(orderId) === request
+      request.promise = dispatch(fetchOrderDetail({ ...scope, orderId }, { signal })).unwrap()
+        .then(({ data }) => isCurrent() ? data : undefined)
+        .catch(error => {
+          if (isCurrent() && error.status === 401) { logout(); setSessionError(error.message) }
+        }).finally(() => {
+          if (detailRequests.current.get(orderId) === request) detailRequests.current.delete(orderId)
+        })
+      return request.promise
+    }
+
+    // Redux ya publico el nuevo historial, pero el .then() de loadOrders
+    // puede estar cerrando todavía las lecturas antiguas. Un detalle nuevo
+    // debe empezar después de ese cierre o será abortado por equivocación.
+    if (historyRequest.current) return historyRequest.current.promise.then(perform)
+    return perform()
   }, [userId, token, logout, dispatch, store, sessionAbort, sessionVersion, setSessionError])
 
   // El checkout ya validó que la confirmación pertenece a la sesión vigente.

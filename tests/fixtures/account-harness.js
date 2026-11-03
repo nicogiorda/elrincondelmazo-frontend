@@ -1,5 +1,8 @@
 import React, { StrictMode, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Provider } from 'react-redux'
+import { store } from '../../src/Redux/store.js'
+import { sessionAuthenticated } from '../../src/Redux/userSlice.js'
 import useAccount from '../../src/hooks/useAccount.js'
 const noop = () => {}
 const subscribeSessionChange = () => noop
@@ -15,4 +18,5 @@ function Harness() {
   return React.createElement('div', {}, visible && React.createElement(Account, { onApply: () => setApplied(n => n + 1) }),
     React.createElement('button', { onClick: () => setVisible(false) }, 'Desmontar'), React.createElement('span', { id: 'applied' }, applied))
 }
-createRoot(document.getElementById('root')).render(React.createElement(StrictMode, {}, React.createElement(Harness)))
+store.dispatch(sessionAuthenticated({ user, token: 'fixture-a' }))
+createRoot(document.getElementById('root')).render(React.createElement(Provider, { store }, React.createElement(StrictMode, {}, React.createElement(Harness))))

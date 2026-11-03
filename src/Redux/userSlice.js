@@ -1,5 +1,8 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { authenticate, getCurrentUser, register } from '../services/authApi.js'
+import axios from 'axios'
+import { API_BASE_URL } from '../services/httpClient.js'
+import { authHttpError, normalizeAuthError, validateUser } from '../services/authApi.js'
+import { accountUnconfirmed, normalizeAccountError, validateAccountResponse } from '../services/accountApi.js'
 
 // Redux DevTools no debe registrar contraseñas en meta.arg.
 // El formulario registra credenciales temporalmente; las acciones llevan solo un ID.
@@ -25,25 +28,125 @@ const serializeError = error => ({
   status: error?.status ?? null, code: error?.code ?? null,
 })
 
+// El GET y los POST quedan explícitos como en postSlice.js. Las contraseñas
+// se consumen de un Map efímero y nunca se escriben en acciones Redux.
 export const fetchAuthenticatedUser = createAsyncThunk(
   'users/fetchCurrent',
-  (_unused, { extra, signal }) => {
+  async (_unused, { extra, signal }) => {
     const token = extra.authToken()
     if (!token) throw new Error('No hay una sesión para recuperar.')
-    return getCurrentUser({ token, signal })
+    const { data } = await axios.get(API_BASE_URL + '/users/me', {
+      signal, headers: { Authorization: 'Bearer ' + token },
+    }).catch(error => { throw normalizeAuthError(error, signal) })
+    signal.throwIfAborted()
+    return validateUser(data)
   },
   { serializeError },
 )
 
 export const loginUser = createAsyncThunk(
   'users/login',
-  (requestId, { signal }) => authenticate(consumeAuthCredentials(requestId), { signal }),
+  async (requestId, { signal }) => {
+    const { email, password } = consumeAuthCredentials(requestId)
+    let response
+    try {
+      response = await axios.post(API_BASE_URL + '/api/v1/auth/authenticate',
+        { email, password }, { signal })
+    } catch (error) {
+      if (!error?.response) throw normalizeAuthError(error, signal)
+      const status = error.response.status
+      throw authHttpError(status === 401 ? 'El correo o la contraseña son incorrectos'
+        : 'No pudimos iniciar sesión (HTTP ' + status + '). Volvé a intentar.', status)
+    }
+    const token = response.data?.access_token
+    if (!response.data || typeof response.data !== 'object' || Array.isArray(response.data)) {
+      throw new Error('El servidor devolvió una respuesta de autenticación inválida.')
+    }
+    if (typeof token !== 'string' || !token.trim()) {
+      throw new Error('La autenticación no devolvió un token válido.')
+    }
+    signal.throwIfAborted()
+    try {
+      // No publicar un token candidato antes de verificar /users/me.
+      const { data } = await axios.get(API_BASE_URL + '/users/me', {
+        signal, headers: { Authorization: 'Bearer ' + token },
+      }).catch(error => { throw normalizeAuthError(error, signal) })
+      signal.throwIfAborted()
+      return { token, user: validateUser(data) }
+    } catch (error) {
+      if (error.status) {
+        throw authHttpError('No pudimos verificar tu cuenta (HTTP ' + error.status + '). Volvé a ingresar.', error.status)
+      }
+      throw error
+    }
+  },
   { serializeError },
 )
+
 export const registerUser = createAsyncThunk(
   'users/register',
-  (requestId, { signal }) => register(consumeAuthCredentials(requestId), { signal }),
+  async (requestId, { signal }) => {
+    const { firstname, lastname, email, password } = consumeAuthCredentials(requestId)
+    let response
+    try {
+      response = await axios.post(API_BASE_URL + '/api/v1/auth/register',
+        { firstname, lastname, email, password }, { signal })
+    } catch (error) {
+      if (!error?.response) throw normalizeAuthError(error, signal)
+      const status = error.response.status
+      throw authHttpError(status === 409 ? 'Ya existe un usuario con este correo'
+        : 'No se pudo registrar el usuario', status)
+    }
+    const token = response.data?.access_token
+    if (!response.data || typeof response.data !== 'object' || Array.isArray(response.data)) {
+      throw new Error('El servidor devolvió una respuesta de autenticación inválida.')
+    }
+    if (typeof token !== 'string' || !token.trim()) {
+      throw new Error('El servidor no devolvió un token válido.')
+    }
+    signal.throwIfAborted()
+    try {
+      const { data } = await axios.get(API_BASE_URL + '/users/me', {
+        signal, headers: { Authorization: 'Bearer ' + token },
+      }).catch(error => { throw normalizeAuthError(error, signal) })
+      signal.throwIfAborted()
+      return { token, user: validateUser(data) }
+    } catch (error) {
+      if (error.status) throw authHttpError('No se pudo obtener el usuario', error.status)
+      throw error
+    }
+  },
   { serializeError },
+)
+
+export const updateAccountProfile = createAsyncThunk(
+  'users/updateProfile',
+  async ({ userId, form }, { extra, signal }) => {
+    const token = extra.authToken()
+    if (!token) throw new Error('Ingresá para modificar tus datos.')
+    const { firstName, lastName, email } = form
+    const response = await axios.put(API_BASE_URL + '/users/me',
+      { firstName, lastName, email },
+      { signal, headers: { Authorization: 'Bearer ' + token } },
+    ).catch(error => { throw normalizeAccountError(error, signal) })
+    signal.throwIfAborted()
+    if (response.status !== 200) throw accountUnconfirmed('El servidor no confirmó la operación de cuenta.')
+    return validateAccountResponse(response.data, userId)
+  }, { serializeError },
+)
+
+export const deactivateAccountUser = createAsyncThunk(
+  'users/deactivate',
+  async ({ userId }, { extra, signal }) => {
+    const token = extra.authToken()
+    if (!token) throw new Error('Ingresá para desactivar tu cuenta.')
+    const response = await axios.put(API_BASE_URL + '/users/me/deactivate',
+      undefined, { signal, headers: { Authorization: 'Bearer ' + token } },
+    ).catch(error => { throw normalizeAccountError(error, signal) })
+    signal.throwIfAborted()
+    if (response.status !== 200) throw accountUnconfirmed('El servidor no confirmó la operación de cuenta.')
+    return validateAccountResponse(response.data, userId, true)
+  }, { serializeError },
 )
 
 const savedToken = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null
@@ -56,6 +159,9 @@ const initialState = {
   authError: '',
   restoreRequestId: null,
   authRequestId: null,
+  accountStatus: 'idle',
+  accountError: '',
+  accountRequestId: null,
 }
 
 const userSlice = createSlice({
@@ -71,6 +177,9 @@ const userSlice = createSlice({
       state.authStatus = 'succeeded'
       state.restoreRequestId = null
       state.authRequestId = null
+      state.accountStatus = 'idle'
+      state.accountError = ''
+      state.accountRequestId = null
     },
     sessionEnded(state) {
       state.user = null
@@ -81,6 +190,9 @@ const userSlice = createSlice({
       state.authError = ''
       state.restoreRequestId = null
       state.authRequestId = null
+      state.accountStatus = 'idle'
+      state.accountError = ''
+      state.accountRequestId = null
     },
     sessionErrorChanged(state, action) {
       state.sessionError = action.payload
@@ -141,6 +253,46 @@ const userSlice = createSlice({
         state.authStatus = 'failed'
         state.authError = action.meta.aborted ? '' : action.error.message
         state.authRequestId = null
+      })
+      .addCase(updateAccountProfile.pending, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId) return
+        state.accountStatus = 'loading'
+        state.accountError = ''
+        state.accountRequestId = action.meta.requestId
+      })
+      .addCase(updateAccountProfile.fulfilled, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId
+          || state.accountRequestId !== action.meta.requestId) return
+        state.user = action.payload
+        state.accountStatus = 'succeeded'
+        state.accountRequestId = null
+      })
+      .addCase(updateAccountProfile.rejected, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId
+          || state.accountRequestId !== action.meta.requestId) return
+        state.accountStatus = action.meta.aborted ? 'idle' : 'failed'
+        state.accountError = action.meta.aborted ? '' : action.error.message
+        state.accountRequestId = null
+      })
+      .addCase(deactivateAccountUser.pending, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId) return
+        state.accountStatus = 'loading'
+        state.accountError = ''
+        state.accountRequestId = action.meta.requestId
+      })
+      .addCase(deactivateAccountUser.fulfilled, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId
+          || state.accountRequestId !== action.meta.requestId) return
+        state.accountStatus = 'succeeded'
+        state.accountRequestId = null
+        // El hook cierra la sesión solo después del PUT confirmado.
+      })
+      .addCase(deactivateAccountUser.rejected, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId
+          || state.accountRequestId !== action.meta.requestId) return
+        state.accountStatus = action.meta.aborted ? 'idle' : 'failed'
+        state.accountError = action.meta.aborted ? '' : action.error.message
+        state.accountRequestId = null
       })
   },
 })

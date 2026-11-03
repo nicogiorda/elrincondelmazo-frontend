@@ -1,5 +1,8 @@
 # Etapa 09 — Carrito: Redux Toolkit + Axios
 
+> **Actualización de la etapa 12:** para seguir el estilo de `postSlice.js` de la profesora, los métodos `axios.get/post/put/patch/delete` se ejecutan **directamente dentro de los `createAsyncThunk`**. Las referencias de este documento a solicitudes desde `services/*Api.js` describen la implementación histórica anterior. Ver [etapa 12](redux-etapa-12.md) para el circuito vigente.
+
+
 ## Referencia de cursada
 
 Se mantiene el flujo explicado por la profesora Gisele en la clase del 27/10 y en su demo: componente React → `dispatch(createAsyncThunk)` → Axios → `extraReducers` (`pending`, `fulfilled`, `rejected`) → `useSelector`. No se reemplaza Redux por un estado local ni se deja la peticion HTTP dentro de los hooks.

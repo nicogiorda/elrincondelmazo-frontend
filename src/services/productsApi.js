@@ -4,7 +4,7 @@ import { productIdFrom } from '../utils/productId.js'
 
 // Un solo transporte Axios para los GET públicos. Las vistas no invocan estas
 // funciones: las acciones asíncronas y el coordinador de caché las consumen.
-function httpError(error) {
+export function normalizeProductHttpError(error) {
   if (!error?.response?.status) return error
   const status = error.response.status
   const body = error.response.data
@@ -13,14 +13,27 @@ function httpError(error) {
   return Object.assign(new Error(message), { status })
 }
 
-export async function getProducts(query, { signal } = {}) {
-  const { data } = await axios.get(API_BASE_URL + '/products?' + query, { signal })
-    .catch(error => { throw httpError(error) })
+export function validateProductsPage(data) {
   if (!Array.isArray(data?.content) || !Number.isInteger(data.totalPages)
     || !Number.isInteger(data.totalElements) || !Number.isInteger(data.number)) {
     throw new Error('La respuesta de productos no contiene una página válida.')
   }
   return data
+}
+
+export function validateProductDetail(data, id) {
+  if (data?.id !== Number(id)) {
+    throw Object.assign(new Error('El producto recibido no coincide con el seleccionado.'), {
+      code: 'INVALID_PRODUCT',
+    })
+  }
+  return data
+}
+
+export async function getProducts(query, { signal } = {}) {
+  const { data } = await axios.get(API_BASE_URL + '/products?' + query, { signal })
+    .catch(error => { throw normalizeProductHttpError(error) })
+  return validateProductsPage(data)
 }
 
 export function productError(error, context = 'detail') {
@@ -40,11 +53,8 @@ export async function getProduct(id, { signal, context = 'detail' } = {}) {
   if (productIdFrom(id) === null) throw new Error('La URL del producto no es válida.')
   try {
     const { data } = await axios.get(API_BASE_URL + '/products/' + id, { signal })
-    if (data?.id !== Number(id)) {
-      throw Object.assign(new Error('El producto recibido no coincide con el seleccionado.'), { code: 'INVALID_PRODUCT' })
-    }
-    return data
-  } catch (error) { throw productError(httpError(error), context) }
+    return validateProductDetail(data, id)
+  } catch (error) { throw productError(normalizeProductHttpError(error), context) }
 }
 
 export async function getCollections({ signal } = {}) {
