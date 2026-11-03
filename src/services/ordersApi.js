@@ -23,13 +23,9 @@ export function normalizeOrderError(error, signal) {
   return error
 }
 
-async function orderRequest(path, { method = 'GET', token, signal, body } = {}) {
+async function readOrderResponse(request, signal) {
   try {
-    const response = await axios.request({
-      url: API_BASE_URL + path, method, signal,
-      ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
-      ...(body !== undefined ? { data: body } : {}),
-    })
+    const response = await request
     signal?.throwIfAborted()
     if (response.status < 200 || response.status >= 300) {
       throw { response: { status: response.status, data: response.data } }
@@ -44,9 +40,9 @@ async function orderRequest(path, { method = 'GET', token, signal, body } = {}) 
 }
 
 export async function previewOrder(paymentMethod, { token, signal } = {}) {
-  const { data } = await orderRequest('/orders/preview', {
-    method: 'POST', token, signal, body: { paymentMethod },
-  })
+  const { data } = await readOrderResponse(axios.post(API_BASE_URL + '/orders/preview',
+    { paymentMethod }, { signal, ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}) },
+  ), signal)
   return data
 }
 
@@ -85,9 +81,10 @@ export function ambiguousFailure(error) {
 
 export async function createOrder({ paymentMethod, expectedTotal, requestKey }, { token, signal } = {}) {
   try {
-    const { status, data } = await orderRequest('/orders', {
-      method: 'POST', token, signal, body: { paymentMethod, expectedTotal, requestKey },
-    })
+    const { status, data } = await readOrderResponse(axios.post(API_BASE_URL + '/orders',
+      { paymentMethod, expectedTotal, requestKey },
+      { signal, ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}) },
+    ), signal)
     if (status !== 201 || !isConfirmedOrder(data, paymentMethod, expectedTotal)) {
       throw Object.assign(new Error('La respuesta no contiene el detalle del pedido. Revisá tus pedidos antes de reintentar.'), {
         status, ambiguous: true,
@@ -101,11 +98,15 @@ export async function createOrder({ paymentMethod, expectedTotal, requestKey }, 
 }
 
 export async function getOrders({ token, signal } = {}) {
-  const { data } = await orderRequest('/orders', { token, signal })
+  const { data } = await readOrderResponse(axios.get(API_BASE_URL + '/orders', {
+    signal, ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
+  }), signal)
   return data
 }
 
 export async function getOrderDetail(orderId, { token, signal } = {}) {
-  const { data } = await orderRequest('/orders/' + orderId, { token, signal })
+  const { data } = await readOrderResponse(axios.get(API_BASE_URL + '/orders/' + orderId, {
+    signal, ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
+  }), signal)
   return data
 }
