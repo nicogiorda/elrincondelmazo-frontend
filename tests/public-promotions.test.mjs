@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, { fetchPublicPromotions, publicPromotionsInvalidated } from '../src/Redux/promotionsSlice.js'
-import { invalidatePublicPromotions, subscribePublicPromotionsInvalidation } from '../src/services/publicPromotions.js'
+import { invalidatePublicPromotions, subscribePublicPromotionsInvalidation } from '../src/utils/publicPromotionEvents.js'
 
 const promo = { id: 8, type: 'COLECCION', discountPercentage: '15.50', active: true,
   description: null, startDate: null, endDate: null }
