@@ -24,7 +24,7 @@ export default function PublicAlbum({ viewer, cartCount, onLogout }) {
   return (
     <>
       <Header cartCount={cartCount} isLoggedIn />
-      <main className="mx-auto flex w-full max-w-[85rem] flex-col gap-6 px-6 pt-9 pb-18 text-bordo lg:px-10">
+      <main className="mx-auto flex w-full max-w-[85rem] flex-col gap-4 px-6 pt-6 pb-18 text-bordo lg:px-10">
         <nav aria-label="Ruta del álbum" className="flex flex-wrap gap-3 text-sm font-semibold">
           <Link to="/" className="underline">Inicio</Link>
           <span>/</span>
@@ -33,8 +33,8 @@ export default function PublicAlbum({ viewer, cartCount, onLogout }) {
           <span>Álbum público</span>
         </nav>
         <header>
-          <h1 className="font-display text-[3.5rem] leading-none font-black uppercase sm:text-[4.5rem]">Álbum público</h1>
-          {validOwner && <p className="mt-2 font-semibold">Colección del usuario #{ownerId} · Solo lectura</p>}
+          <h1 className="font-display text-[2.6rem] leading-none font-black uppercase sm:text-[3.3rem]">Álbum público</h1>
+          {validOwner && <p className="mt-1 text-sm font-semibold">Colección del usuario #{ownerId} · Solo lectura</p>}
         </header>
         {!validOwner && <p role="alert" className="rounded-xl border-2 border-rojo p-4 font-bold">El enlace del álbum no es válido.</p>}
         {validOwner && view.loading && !view.album && <p role="status">Cargando álbum público…</p>}

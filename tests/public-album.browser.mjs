@@ -60,6 +60,8 @@ try {
   await page.goto(base + '/album/usuario/13')
   await page.getByRole('heading', { name: 'Álbum público', exact: true }).waitFor()
   await page.locator('[aria-label="Ver carta Carta compartida, posición 1"]').waitFor()
+  assert.equal(await page.locator('section[data-album-theme="NBA"]').count(), 1)
+  assert.equal(await page.locator('[data-album-slot]').count(), 9)
   assert.equal(await page.getByRole('button', { name: 'Ver carta Carta compartida, posición 1' }).count(), 0)
   assert.equal(await page.getByRole('button', { name: 'Espacio 2 vacío' }).count(), 0)
   assert.equal(await page.getByRole('button', { name: 'Guardar carta' }).count(), 0)

@@ -83,6 +83,17 @@ try {
   await page.goto((process.env.BASE_URL || 'http://127.0.0.1:5173') + '/mi-album')
   await page.getByRole('heading', { name: 'Mi álbum', exact: true }).waitFor()
   assert.equal(await page.getByRole('link', { name: 'Mi álbum', exact: true }).count(), 1)
+  // Diseño compacto: las nueve posiciones siguen visibles y los temas cambian.
+  const slots = page.locator('[data-album-slot]')
+  assert.equal(await slots.count(), 9)
+  const firstSlot = await slots.first().boundingBox()
+  assert.ok(firstSlot && firstSlot.height >= 90 && firstSlot.height <= 165,
+    'los casilleros mantienen una altura compacta')
+  assert.equal(await page.locator('section[data-album-theme="NBA"]').count(), 1)
+  await page.getByRole('button', { name: 'Cars', exact: true }).click()
+  assert.equal(await page.locator('section[data-album-theme="CARS"]').count(), 1)
+  assert.equal(await slots.count(), 9)
+  await page.getByRole('button', { name: 'NBA', exact: true }).click()
   await page.getByRole('button', { name: 'Espacio 1 vacío' }).click()
   await page.getByRole('button', { name: 'Carta física' }).click()
   await page.getByLabel('Nombre de la carta').fill('QA física')

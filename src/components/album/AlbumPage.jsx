@@ -1,4 +1,4 @@
-import { sectionLabel } from '../../data/albumThemes.js'
+import { ALBUM_THEMES, sectionLabel } from '../../data/albumThemes.js'
 
 export default function AlbumPage({ section, pageNumber, onPageChange, readOnly = false,
   onEmptySlot, onSelectedCard }) {
@@ -7,60 +7,76 @@ export default function AlbumPage({ section, pageNumber, onPageChange, readOnly 
     slotIndex: index,
     card: current.find(card => card.slotIndex === index),
   }))
+  const theme = ALBUM_THEMES.find(item => item.key === section.key)
+  const themeStyle = {
+    '--album-accent': theme?.accent ?? '#66060e',
+    '--album-paper': theme?.paper ?? '#fbf3e6',
+  }
 
   return (
-    <section aria-label={`Página ${pageNumber} de ${sectionLabel(section.key)}`}
-      className="rounded-[1.75rem] border-[2.4px] border-bordo bg-papel p-4 shadow-product sm:p-7">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-[2.25rem] font-black uppercase leading-none">
-          {sectionLabel(section.key)}
-        </h2>
-        <span className="rounded-full border-2 border-bordo bg-crema px-4 py-1 text-sm font-extrabold">
-          Página {pageNumber} / {section.pageCount}
-        </span>
-      </div>
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
-        {cells.map(({ slotIndex, card }) => {
-          const label = card ? `Ver carta ${card.name}, posición ${slotIndex + 1}`
-            : `Espacio ${slotIndex + 1} vacío`
-          const style = 'relative flex min-h-36 min-w-0 flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-bordo p-2 text-center sm:min-h-52'
-          const content = card ? <>
-            {card.imageUrl
-              ? <img src={card.imageUrl} alt={card.name} className="h-25 w-full object-contain sm:h-39" />
-              : <span className="font-display text-xl font-black">Carta</span>}
-            <span className="mt-2 w-full truncate text-xs font-extrabold sm:text-sm">{card.name}</span>
-            <span className="text-[0.625rem] font-bold uppercase sm:text-xs">
-              {card.origin === 'PURCHASE' ? 'Compra en la plataforma' : 'Registro personal'}
-            </span>
-          </> : <>
-            <span className="font-display text-3xl font-black opacity-40">{slotIndex + 1}</span>
-            <span className="mt-1 text-xs font-bold sm:text-sm">{readOnly ? 'Vacío' : '+ Agregar carta'}</span>
-          </>
-          return readOnly ? (
-            <div key={slotIndex} aria-label={label} className={style + ' border-dashed bg-crema/60'}>
-              {content}
-            </div>
-          ) : (
-            <button key={slotIndex} type="button" aria-label={label}
-              onClick={() => card ? onSelectedCard(card) : onEmptySlot(slotIndex)}
-              className={style + (card ? ' bg-crema hover:bg-amarillo/20' : ' border-dashed bg-crema/60 hover:bg-amarillo/20')}>
-              {content}
-            </button>
-          )
-        })}
-      </div>
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <button type="button" disabled={pageNumber <= 1}
-          onClick={() => onPageChange(pageNumber - 1)}
-          className="rounded-full border-2 border-bordo px-5 py-2 font-extrabold disabled:opacity-40">
-          Anterior
-        </button>
-        <span className="text-sm font-bold">{current.length} de 9 cartas</span>
-        <button type="button" disabled={pageNumber >= section.pageCount}
-          onClick={() => onPageChange(pageNumber + 1)}
-          className="rounded-full border-2 border-bordo px-5 py-2 font-extrabold disabled:opacity-40">
-          Siguiente
-        </button>
+    <section aria-label={'Página ' + pageNumber + ' de ' + sectionLabel(section.key)}
+      data-album-theme={section.key} data-watermark={theme?.watermark ?? ''}
+      className="album-sheet" style={themeStyle}>
+      <div className="album-sheet__content">
+        <header className="album-sheet__header">
+          <div className="min-w-0">
+            <p className="album-sheet__eyebrow">{theme?.detail ?? 'TU COLECCIÓN'}</p>
+            <h2 className="album-sheet__title">{sectionLabel(section.key)}</h2>
+          </div>
+          <span className="album-sheet__counter">Página {pageNumber} / {section.pageCount}</span>
+        </header>
+
+        <div className="album-sheet__grid">
+          {cells.map(({ slotIndex, card }) => {
+            const label = card ? 'Ver carta ' + card.name + ', posición ' + (slotIndex + 1)
+              : 'Espacio ' + (slotIndex + 1) + ' vacío'
+            const className = 'album-slot' + (card ? ' album-slot--filled' : ' album-slot--empty')
+              + (readOnly ? ' album-slot--read-only' : '')
+            const content = card ? (
+              <>
+                <span className="album-slot__media">
+                  {card.imageUrl
+                    ? <img src={card.imageUrl} alt={card.name} className="album-slot__image" />
+                    : <span className="album-slot__fallback">CARTA</span>}
+                </span>
+                <span className="album-slot__caption">
+                  <span className="album-slot__name" title={card.name}>{card.name}</span>
+                  <span className="album-slot__origin">
+                    {card.origin === 'PURCHASE' ? 'Comprada' : 'Carta física'}
+                  </span>
+                </span>
+              </>
+            ) : (
+              <span className="album-slot__placeholder">
+                <span className="album-slot__number" aria-hidden="true">{slotIndex + 1}</span>
+                <span className="album-slot__action">{readOnly ? 'Vacío' : '+ Agregar carta'}</span>
+              </span>
+            )
+            return readOnly ? (
+              <div key={slotIndex} data-album-slot={slotIndex} aria-label={label} className={className}>
+                {content}
+              </div>
+            ) : (
+              <button key={slotIndex} data-album-slot={slotIndex} type="button" aria-label={label}
+                onClick={() => card ? onSelectedCard(card) : onEmptySlot(slotIndex)}
+                className={className}>
+                {content}
+              </button>
+            )
+          })}
+        </div>
+
+        <footer className="album-sheet__footer">
+          <button type="button" disabled={pageNumber <= 1}
+            onClick={() => onPageChange(pageNumber - 1)} className="album-sheet__page-button">
+            <span aria-hidden="true">‹</span> Anterior
+          </button>
+          <span className="album-sheet__progress">{current.length} de 9 cartas</span>
+          <button type="button" disabled={pageNumber >= section.pageCount}
+            onClick={() => onPageChange(pageNumber + 1)} className="album-sheet__page-button">
+            Siguiente <span aria-hidden="true">›</span>
+          </button>
+        </footer>
       </div>
     </section>
   )
