@@ -39,7 +39,7 @@ export const saveAdminPromotion = createAsyncThunk('promotions/saveAdmin',
     const config = { signal, headers: { Authorization: 'Bearer ' + token } }
     const { data, status } = await (promotion.id == null
       ? axios.post(URL, body, config)
-      : axios.put(URL + promotionPath(promotion.id), body, config)
+      : axios.put(API_BASE_URL + promotionPath(promotion.id), body, config)
     ).catch(error => { throw normalizePromotionError(error, signal) })
     signal.throwIfAborted()
     if (status !== (promotion.id == null ? 201 : 200)) {
@@ -53,7 +53,7 @@ export const toggleAdminPromotion = createAsyncThunk('promotions/toggleAdmin',
     const token = adminToken(extra)
     if (typeof active !== 'boolean') throw new Error('El estado de la promoción no es válido.')
     const { data, status } = await axios.patch(
-      URL + promotionPath(promotionId) + (active ? '/activate' : '/deactivate'),
+      API_BASE_URL + promotionPath(promotionId) + (active ? '/activate' : '/deactivate'),
       undefined, { signal, headers: { Authorization: 'Bearer ' + token } },
     ).catch(error => { throw normalizePromotionError(error, signal) })
     signal.throwIfAborted()
