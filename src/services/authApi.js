@@ -37,9 +37,8 @@ export function validateUser(user) {
 export async function getCurrentUser({ token, signal } = {}) {
   let response
   try {
-    response = await axios.request({
-      url: API_BASE_URL + '/users/me', method: 'GET', signal,
-      headers: token ? { Authorization: 'Bearer ' + token } : {},
+    response = await axios.get(API_BASE_URL + '/users/me', {
+      signal, headers: token ? { Authorization: 'Bearer ' + token } : {},
     })
   } catch (error) { throw normalizeAuthError(error, signal) }
   signal?.throwIfAborted()
@@ -50,9 +49,7 @@ export async function getCurrentUser({ token, signal } = {}) {
 async function authenticateAccount(path, body, { signal } = {}, registering = false) {
   let response
   try {
-    response = await axios.request({
-      url: API_BASE_URL + path, method: 'POST', data: body, signal,
-    })
+    response = await axios.post(API_BASE_URL + path, body, { signal })
   } catch (error) {
     if (!error?.response) throw normalizeAuthError(error, signal)
     const status = error.response.status
