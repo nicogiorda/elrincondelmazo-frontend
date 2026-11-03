@@ -13,16 +13,11 @@ export function normalizePublicationError(error) {
   return Object.assign(new Error(message), { status })
 }
 
-async function responseData(path, options, status, message) {
-  const { token, method = 'GET', body, signal } = options
-  const config = {
-    url: API_BASE_URL + path, method, signal,
-    headers: token ? { Authorization: 'Bearer ' + token } : {},
-  }
-  if (body !== undefined) config.data = body
+async function readPublication(request, status, message, signal) {
   let response
   try {
-    response = await axios.request(config)
+    response = await request
+    signal?.throwIfAborted()
   } catch (error) {
     throw normalizePublicationError(error)
   }
@@ -60,35 +55,44 @@ export function validatePublicationPhoto(data) {
 }
 
 export async function getPublications(page, { userId, token, signal }) {
-  const data = await responseData('/products/mine?page=' + page + '&size=20', { token, signal }, 200,
-    'El servidor no confirmó la consulta de publicaciones.')
+  const data = await readPublication(axios.get(
+    API_BASE_URL + '/products/mine?page=' + page + '&size=20',
+    { signal, headers: { Authorization: 'Bearer ' + token } },
+  ), 200, 'El servidor no confirmó la consulta de publicaciones.', signal)
   return validatePublicationsPage(data, page, userId)
 }
 
 export async function savePublication(body, id, { userId, token, signal }) {
-  const data = await responseData(id == null ? '/products' : publicationPath(id), {
-    method: id == null ? 'POST' : 'PUT', body, token, signal,
-  }, id == null ? 201 : 200, 'El servidor no confirmó el guardado de la publicación.')
+  const config = { signal, headers: { Authorization: 'Bearer ' + token } }
+  const request = id == null
+    ? axios.post(API_BASE_URL + '/products', body, config)
+    : axios.put(API_BASE_URL + publicationPath(id), body, config)
+  const data = await readPublication(request, id == null ? 201 : 200,
+    'El servidor no confirmó el guardado de la publicación.', signal)
   return validatePublication(data, userId, id)
 }
 
 export async function changePublicationStatus(id, action, { userId, token, signal }) {
   if (!['pause', 'resume'].includes(action)) throw new Error('La acción de publicación no es válida.')
-  const data = await responseData(publicationPath(id) + '/' + action, { method: 'PATCH', token, signal }, 200,
-    'El servidor no confirmó el cambio de estado.')
+  const data = await readPublication(axios.patch(
+    API_BASE_URL + publicationPath(id) + '/' + action,
+    undefined, { signal, headers: { Authorization: 'Bearer ' + token } },
+  ), 200, 'El servidor no confirmó el cambio de estado.', signal)
   return validatePublication(data, userId, id)
 }
 
 export async function deletePublication(id, { token, signal }) {
-  return responseData(publicationPath(id), { method: 'DELETE', token, signal }, 204,
-    'El servidor no confirmó la eliminación.')
+  return readPublication(axios.delete(API_BASE_URL + publicationPath(id), {
+    signal, headers: { Authorization: 'Bearer ' + token },
+  }), 204, 'El servidor no confirmó la eliminación.', signal)
 }
 
 export async function uploadPublicationPhoto(file, { token, signal }) {
   const body = new FormData()
   body.append('file', file)
-  // Axios detecta el FormData y deja que el navegador agregue el boundary.
-  const data = await responseData('/products/images', { method: 'POST', body, token, signal }, 201,
-    'El servidor no confirmó la subida de la imagen.')
+  // Axios detecta FormData y deja que el navegador agregue el boundary.
+  const data = await readPublication(axios.post(API_BASE_URL + '/products/images', body, {
+    signal, headers: { Authorization: 'Bearer ' + token },
+  }), 201, 'El servidor no confirmó la subida de la imagen.', signal)
   return validatePublicationPhoto(data)
 }
