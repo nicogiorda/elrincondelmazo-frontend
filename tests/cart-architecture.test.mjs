@@ -14,10 +14,10 @@ const modules = new Map(sources(root).map(path => [path, readFileSync(path, 'utf
 
 test('El frontend de producción no conserva fetch ni clientes HTTP paralelos', () => {
   for (const [path, source] of modules) {
-    const name = relative(root, path).replaceAll('\\\\', '/')
-    assert.doesNotMatch(source, /\\b(?:window\\.|globalThis\\.)?fetch\\s*\\(/,
+    const name = relative(root, path)
+    assert.doesNotMatch(source, /\b(?:window\.|globalThis\.)?fetch\s*\(/,
       name + ': usar Axios desde Redux, no fetch')
-    assert.doesNotMatch(source, /\\bnew\\s+XMLHttpRequest\\s*\\(/,
+    assert.doesNotMatch(source, /\bnew\s+XMLHttpRequest\s*\(/,
       name + ': no crear transporte XHR paralelo')
   }
   assert.equal(existsSync(resolve(root, 'services')), false,
