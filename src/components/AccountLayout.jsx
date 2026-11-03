@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import Header from './Header.jsx'
 import Footer from './Footer.jsx'
 
-const links = [{ view: 'orders', to: '/mis-pedidos', label: 'Mis pedidos' }, { view: 'profile', to: '/mi-perfil', label: 'Mi perfil' }, { view: 'publications', to: '/mis-publicaciones', label: 'Mis publicaciones' }]
+const links = [{ view: 'orders', to: '/mis-pedidos', label: 'Mis pedidos' }, { view: 'profile', to: '/mi-perfil', label: 'Mi perfil' }, { view: 'album', to: '/mi-album', label: 'Mi álbum' }, { view: 'publications', to: '/mis-publicaciones', label: 'Mis publicaciones' }]
 
 function AccountLayout({ user, activeView, cartCount, onLogout, children }) {
   const isAdmin = user.role === 'ADMIN'

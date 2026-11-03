@@ -9,6 +9,7 @@ import publicationsReducer from './publicationsSlice.js'
 import userReducer from './userSlice.js'
 import promotionsReducer from './promotionsSlice.js'
 import reviewsReducer from './reviewsSlice.js'
+import albumReducer from './albumSlice.js'
 import { createProductCache } from '../utils/productCache.js'
 
 // Adaptador Map compatible: la caché organiza la red, pero las entidades viven
@@ -47,6 +48,7 @@ export const store = configureStore({
     users: userReducer,
     promotions: promotionsReducer,
     reviews: reviewsReducer,
+    album: albumReducer,
   },
   // DevTools representa el flujo de Redux sin exponer contraseñas o JWT.
   devTools: {
@@ -72,6 +74,7 @@ export const store = configureStore({
       ordersToken: () => globalThis.localStorage?.getItem('token'),
       promotionToken: () => globalThis.localStorage?.getItem('token'),
       reviewsToken: () => globalThis.localStorage?.getItem('token'),
+      albumToken: () => globalThis.localStorage?.getItem('token'),
     } },
   }),
 })
