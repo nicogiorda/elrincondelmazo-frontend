@@ -91,7 +91,7 @@ try {
   const slots = page.locator('[data-album-slot]')
   assert.equal(await slots.count(), 9)
   const firstSlot = await slots.first().boundingBox()
-  assert.ok(firstSlot && firstSlot.height >= 130 && firstSlot.height <= 200,
+  assert.ok(firstSlot && firstSlot.height >= 160 && firstSlot.height <= 210,
     'los casilleros reservan espacio suficiente para ver las fotografías')
   assert.equal(await page.locator('section[data-album-theme="NBA"]').count(), 1)
   assert.equal(await page.locator('.album-collection-tab__cover').count(), 4,
@@ -122,7 +122,8 @@ try {
   }))
   assert.equal(imageLayout.fit, 'contain', 'el contenido no se recorta')
   assert.equal(imageLayout.naturalHeight, 240, 'se carga la foto vertical')
-  assert.ok(imageLayout.mediaHeight >= 100, 'la foto dispone de espacio vertical legible')
+  assert.ok(imageLayout.mediaHeight >= 115,
+    'la foto dispone de espacio vertical legible: ' + JSON.stringify(imageLayout))
   assert.ok(imageLayout.imageHeight >= imageLayout.mediaHeight - 1, 'la imagen ocupa el área disponible')
 
   await page.getByRole('button', { name: 'Espacio 2 vacío' }).click()
