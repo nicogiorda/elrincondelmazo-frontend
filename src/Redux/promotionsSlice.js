@@ -37,7 +37,12 @@ export const toggleAdminPromotion = createAsyncThunk('promotions/toggleAdmin',
 
 export const fetchPublicPromotions = createAsyncThunk('promotions/fetchPublic',
   async (_, { signal }) => getPublicPromotions({ signal }),
-  { serializeError: serializePromotionError })
+  {
+    serializeError: serializePromotionError,
+    // Una segunda lectura simultanea del Home comparte la primera; invalidar
+    // una visita reinicia el estado y permite su nuevo GET.
+    condition: (_, { getState }) => getState()?.promotions?.public?.status !== 'loading',
+  })
 
 const emptyAdmin = () => ({
   ownerId: null, generation: null, items: [], status: 'idle', loaded: false,
