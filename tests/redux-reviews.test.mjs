@@ -1,7 +1,6 @@
-import './fixtures/axios-verb-test-bridge.mjs'
+import { mockAxios } from './fixtures/mockAxios.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import axios from 'axios'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, {
   fetchProductReviews, publishProductReview, reviewSessionCleared, reviewRetryRequested,
@@ -28,7 +27,7 @@ const deferred = () => {
 
 test('GET público sin JWT publica pending/fulfilled y almacena por producto', async t => {
   const gate = deferred()
-  const mock = t.mock.method(axios, 'request', async config => {
+  const mock = mockAxios(t, async config => {
     assert.equal(config.url, 'http://localhost:8080/products/42/reviews')
     assert.equal(config.headers, undefined)
     assert.equal(config.method, 'GET')
@@ -46,7 +45,7 @@ test('GET público sin JWT publica pending/fulfilled y almacena por producto', a
 })
 
 test('GET acepta lista vacía y fracaso conserva datos del otro producto', async t => {
-  const mock = t.mock.method(axios, 'request', async () => reply([review(20, 42)]))
+  const mock = mockAxios(t, async () => reply([review(20, 42)]))
   const store = create()
   await store.dispatch(fetchProductReviews({ productId: 42 }))
   mock.mock.mockImplementation(async () => {
@@ -66,7 +65,7 @@ test('GET acepta lista vacía y fracaso conserva datos del otro producto', async
 
 test('POST añade reseña confirmada sin segundo GET ni duplicar IDs', async t => {
   const calls = []
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     calls.push(config)
     return reply(review(), 201)
   })
@@ -85,7 +84,7 @@ test('POST añade reseña confirmada sin segundo GET ni duplicar IDs', async t =
 })
 
 test('POST no admite 403 ni 409 y conserva reseña previa', async t => {
-  const mock = t.mock.method(axios, 'request', async () => reply([review()]))
+  const mock = mockAxios(t, async () => reply([review()]))
   const store = create()
   await store.dispatch(fetchProductReviews({ productId: 42 }))
   for (const code of [403, 409]) {
@@ -103,7 +102,7 @@ test('POST no admite 403 ni 409 y conserva reseña previa', async t => {
 })
 
 test('POST 401 preserva status en rejected y unwrap para cierre de sesión', async t => {
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     throw { response: { status: 401, data: {} } }
   })
   const store = create()
@@ -114,7 +113,7 @@ test('POST 401 preserva status en rejected y unwrap para cierre de sesión', asy
 
 test('GET anterior a POST no borra una reseña confirmada al llegar tarde', async t => {
   const gate = deferred()
-  t.mock.method(axios, 'request', async config => config.method === 'GET'
+  mockAxios(t, async config => config.method === 'GET'
     ? gate.promise : reply(review(), 201))
   const store = create()
   const old = store.dispatch(fetchProductReviews({ productId: 42 }))
@@ -128,7 +127,7 @@ test('GET anterior a POST no borra una reseña confirmada al llegar tarde', asyn
 
 test('logout conserva reseñas públicas pero bloquea POST tardío de sesión previa', async t => {
   const gate = deferred()
-  const mock = t.mock.method(axios, 'request', async () => reply([review(11)]))
+  const mock = mockAxios(t, async () => reply([review(11)]))
   const store = create()
   await store.dispatch(fetchProductReviews({ productId: 42 }))
   mock.mock.mockImplementation(async () => gate.promise)
@@ -144,7 +143,7 @@ test('logout conserva reseñas públicas pero bloquea POST tardío de sesión pr
 
 test('una nueva sesión no acepta el éxito de un POST anterior', async t => {
   const gate = deferred()
-  const mock = t.mock.method(axios, 'request', async () => gate.promise)
+  const mock = mockAxios(t, async () => gate.promise)
   const store = create()
   const old = store.dispatch(publishProductReview({
     ...scope(), productId: 42, rating: 5, comment: 'QA',
@@ -162,7 +161,7 @@ test('una nueva sesión no acepta el éxito de un POST anterior', async t => {
 
 test('AbortSignal no publica error visible ni respuesta tardía', async t => {
   const gate = deferred()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = create(), controller = new AbortController()
   const pending = store.dispatch(fetchProductReviews({ productId: 42 },
     { signal: controller.signal }))
