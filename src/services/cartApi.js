@@ -3,7 +3,7 @@ import { API_BASE_URL } from './httpClient.js'
 
 // Axios no hace reintentos automaticos. El JWT se recibe por solicitud:
 // ninguna cuenta puede heredar el token de una sesion anterior.
-function normalizeCartError(error, signal) {
+export function normalizeCartError(error, signal) {
   if (signal?.aborted) return signal.reason ?? new DOMException('Solicitud cancelada', 'AbortError')
   if (error?.name === 'AbortError') return error
   if (error?.code === 'ERR_CANCELED') return new DOMException('Solicitud cancelada', 'AbortError')
