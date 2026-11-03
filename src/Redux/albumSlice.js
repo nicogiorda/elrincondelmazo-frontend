@@ -16,6 +16,8 @@ const initialState = () => ({
   requestId: null,
   purchasesRequestId: null,
   mutationRequestId: null,
+  publicView: { viewerId: null, ownerId: null, album: null,
+    loading: false, error: '', requestId: null },
 })
 
 function scoped(state, ownerId) {
@@ -135,6 +137,27 @@ export const changeAlbumVisibility = createAsyncThunk('album/changeVisibility',
     return response.data
   }, { serializeError })
 
+// La vista ajena tiene un scope independiente: nunca se mezcla con /albums/me.
+export const loadPublicAlbum = createAsyncThunk('album/loadPublic',
+  async ({ ownerId }, { extra, signal }) => {
+    const response = await axios.get(API_BASE_URL + '/albums/users/' + ownerId, {
+      signal, headers: tokenHeader(extra),
+    }).catch(error => {
+      const normalized = albumError(error)
+      if (normalized.status === 404) {
+        throw Object.assign(new Error('Este álbum no está disponible.'), { status: 404 })
+      }
+      throw normalized
+    })
+    signal.throwIfAborted()
+    const data = validateAlbum(response.data, ownerId)
+    // Defensive validation: an owner-only PRIVATE response must never appear in a visitor's UI.
+    if (data.visibility !== 'PUBLIC') {
+      throw Object.assign(new Error('Este álbum no está disponible.'), { status: 404 })
+    }
+    return data
+  }, { serializeError })
+
 const mutations = [addAlbumPurchase, addAlbumManual, moveAlbumCard, removeAlbumCard, changeAlbumVisibility]
 const albumSlice = createSlice({
   name: 'album',
@@ -142,11 +165,41 @@ const albumSlice = createSlice({
   reducers: {
     albumCleared: initialState,
     albumMutationErrorCleared(state) { state.mutationError = '' },
+    publicAlbumCleared(state) {
+      state.publicView = initialState().publicView
+    },
   },
   extraReducers: builder => {
     builder
       .addCase(sessionEnded, () => initialState())
       .addCase(sessionAuthenticated, () => initialState())
+      .addCase(loadPublicAlbum.pending, (state, action) => {
+        const { viewerId, ownerId } = action.meta.arg
+        if (state.publicView.viewerId !== viewerId || state.publicView.ownerId !== ownerId) {
+          state.publicView = { ...initialState().publicView, viewerId, ownerId }
+        }
+        state.publicView.album = null
+        state.publicView.loading = true
+        state.publicView.error = ''
+        state.publicView.requestId = action.meta.requestId
+      })
+      .addCase(loadPublicAlbum.fulfilled, (state, action) => {
+        const view = state.publicView
+        if (view.viewerId !== action.meta.arg.viewerId || view.ownerId !== action.meta.arg.ownerId
+          || view.requestId !== action.meta.requestId) return
+        view.album = action.payload
+        view.loading = false
+        view.requestId = null
+      })
+      .addCase(loadPublicAlbum.rejected, (state, action) => {
+        const view = state.publicView
+        if (view.viewerId !== action.meta.arg.viewerId || view.ownerId !== action.meta.arg.ownerId
+          || view.requestId !== action.meta.requestId) return
+        view.album = null
+        view.loading = false
+        view.requestId = null
+        if (!action.meta.aborted && !action.meta.condition) view.error = action.error.message
+      })
       .addCase(loadOwnAlbum.pending, (state, action) => {
         scoped(state, action.meta.arg.ownerId)
         state.loading = true
@@ -207,5 +260,5 @@ const albumSlice = createSlice({
   },
 })
 
-export const { albumCleared, albumMutationErrorCleared } = albumSlice.actions
+export const { albumCleared, albumMutationErrorCleared, publicAlbumCleared } = albumSlice.actions
 export default albumSlice.reducer

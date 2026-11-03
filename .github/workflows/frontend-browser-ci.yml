@@ -41,6 +41,8 @@ jobs:
           done
           cat /tmp/mazo-vite.log
           exit 1
+      - name: Álbum público de solo lectura y privacidad
+        run: node tests/public-album.browser.mjs
       - name: Álbum personal con Redux y Axios
         run: node tests/album.browser.mjs
       - name: Carrito - escenarios HTTP simulados

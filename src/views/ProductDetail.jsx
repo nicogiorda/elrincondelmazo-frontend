@@ -91,6 +91,12 @@ function ProductDetail({ cartBusy, cartError, cartMessage, cartItems = [], cartQ
                 </div>
               ))}
             </dl>
+            {Number.isSafeInteger(product.sellerId) && product.sellerId > 0 && (
+              <Link to={isOwnProduct ? '/mi-album' : '/album/usuario/' + product.sellerId}
+                className="self-start font-extrabold underline underline-offset-4">
+                {isOwnProduct ? 'Ir a mi álbum' : 'Ver álbum del vendedor'}
+              </Link>
+            )}
           </div>
         </section>
 
