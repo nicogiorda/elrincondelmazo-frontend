@@ -56,6 +56,7 @@ test('Pedidos y checkout muestran los métodos Axios en los slices, sin HTTP en 
 
 test('Cada thunk hace explícito el método Axios igual que postSlice de la cursada', () => {
   const methods = {
+    'albumSlice.js': ['get', 'post', 'patch', 'delete'],
     'catalogSlice.js': ['get'],
     'productsSlice.js': ['get'],
     'cartSlice.js': ['get', 'post', 'put', 'delete'],
