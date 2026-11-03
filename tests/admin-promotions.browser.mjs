@@ -15,6 +15,27 @@ async function setup(options = {}) {
     }
     const original = window.fetch.bind(window)
     window.adminRequests = []
+    const xhrOpen = XMLHttpRequest.prototype.open
+    const xhrSend = XMLHttpRequest.prototype.send
+    XMLHttpRequest.prototype.open = function (method, url, ...args) {
+      this.__adminUrl = String(url)
+      this.__adminMethod = method
+      return xhrOpen.call(this, method, url, ...args)
+    }
+    XMLHttpRequest.prototype.send = function (...args) {
+      if ((this.__adminUrl || '').startsWith('http://localhost:8080')) {
+        const record = { path: new URL(this.__adminUrl).pathname,
+          method: this.__adminMethod, settled: false, aborted: false }
+        window.adminRequests.push(record)
+        this.addEventListener('abort', () => { record.aborted = true }, { once: true })
+        this.addEventListener('loadend', () => { record.settled = true }, { once: true })
+        if (ignoreAbort) {
+          // Una respuesta vieja puede llegar aunque la solicitud se haya cancelado.
+          this.abort = () => { record.aborted = true }
+        }
+      }
+      return xhrSend.apply(this, args)
+    }
     window.fetch = (url, init = {}) => {
       if (!String(url).startsWith('http://localhost:8080')) return original(url, init)
       const record = { path: new URL(url).pathname, method: init.method || 'GET', settled: false, aborted: false }
