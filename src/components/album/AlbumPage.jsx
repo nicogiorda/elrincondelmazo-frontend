@@ -1,4 +1,4 @@
-import { sectionLabel } from './AlbumSections.jsx'
+import { sectionLabel } from '../../data/albumThemes.js'
 
 export default function AlbumPage({ section, pageNumber, onPageChange, readOnly = false,
   onEmptySlot, onSelectedCard }) {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ALBUM_THEMES } from './AlbumSections.jsx'
+import { ALBUM_THEMES } from '../../data/albumThemes.js'
 
 export default function AlbumCardActions({ card, album, saving, error, onMove, onRemove, onCancel }) {
   const [section, setSection] = useState(card.section)
