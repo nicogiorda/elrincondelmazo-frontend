@@ -2,13 +2,13 @@ import axios from 'axios'
 import { API_BASE_URL } from './httpClient.js'
 import { productIdFrom } from '../utils/productId.js'
 
-function reviewPath(productId) {
+export function reviewPath(productId) {
   const id = productIdFrom(productId)
   if (id === null) throw new Error('El producto no tiene un ID válido.')
   return '/products/' + id + '/reviews'
 }
 
-function normalizeError(error, signal) {
+export function normalizeReviewError(error, signal) {
   if (signal?.aborted) return signal.reason ?? new DOMException('Solicitud cancelada', 'AbortError')
   if (error?.name === 'AbortError') return error
   if (error?.code === 'ERR_CANCELED') return new DOMException('Solicitud cancelada', 'AbortError')
@@ -34,7 +34,7 @@ async function reviewRequest(path, { method = 'GET', token, body, signal } = {})
     })
     signal?.throwIfAborted()
   } catch (error) {
-    throw normalizeError(error, signal)
+    throw normalizeReviewError(error, signal)
   }
   return response
 }
