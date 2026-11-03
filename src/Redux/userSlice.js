@@ -2,6 +2,7 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
 import { API_BASE_URL } from '../services/httpClient.js'
 import { authHttpError, normalizeAuthError, validateUser } from '../services/authApi.js'
+import { accountUnconfirmed, normalizeAccountError, validateAccountResponse } from '../services/accountApi.js'
 
 // Redux DevTools no debe registrar contraseñas en meta.arg.
 // El formulario registra credenciales temporalmente; las acciones llevan solo un ID.
@@ -118,6 +119,36 @@ export const registerUser = createAsyncThunk(
   { serializeError },
 )
 
+export const updateAccountProfile = createAsyncThunk(
+  'users/updateProfile',
+  async ({ userId, form }, { extra, signal }) => {
+    const token = extra.authToken()
+    if (!token) throw new Error('Ingresá para modificar tus datos.')
+    const { firstName, lastName, email } = form
+    const response = await axios.put(API_BASE_URL + '/users/me',
+      { firstName, lastName, email },
+      { signal, headers: { Authorization: 'Bearer ' + token } },
+    ).catch(error => { throw normalizeAccountError(error, signal) })
+    signal.throwIfAborted()
+    if (response.status !== 200) throw accountUnconfirmed('El servidor no confirmó la operación de cuenta.')
+    return validateAccountResponse(response.data, userId)
+  }, { serializeError },
+)
+
+export const deactivateAccountUser = createAsyncThunk(
+  'users/deactivate',
+  async ({ userId }, { extra, signal }) => {
+    const token = extra.authToken()
+    if (!token) throw new Error('Ingresá para desactivar tu cuenta.')
+    const response = await axios.put(API_BASE_URL + '/users/me/deactivate',
+      undefined, { signal, headers: { Authorization: 'Bearer ' + token } },
+    ).catch(error => { throw normalizeAccountError(error, signal) })
+    signal.throwIfAborted()
+    if (response.status !== 200) throw accountUnconfirmed('El servidor no confirmó la operación de cuenta.')
+    return validateAccountResponse(response.data, userId, true)
+  }, { serializeError },
+)
+
 const savedToken = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null
 const initialState = {
   user: null,
@@ -128,6 +159,9 @@ const initialState = {
   authError: '',
   restoreRequestId: null,
   authRequestId: null,
+  accountStatus: 'idle',
+  accountError: '',
+  accountRequestId: null,
 }
 
 const userSlice = createSlice({
@@ -143,6 +177,9 @@ const userSlice = createSlice({
       state.authStatus = 'succeeded'
       state.restoreRequestId = null
       state.authRequestId = null
+      state.accountStatus = 'idle'
+      state.accountError = ''
+      state.accountRequestId = null
     },
     sessionEnded(state) {
       state.user = null
@@ -153,6 +190,9 @@ const userSlice = createSlice({
       state.authError = ''
       state.restoreRequestId = null
       state.authRequestId = null
+      state.accountStatus = 'idle'
+      state.accountError = ''
+      state.accountRequestId = null
     },
     sessionErrorChanged(state, action) {
       state.sessionError = action.payload
@@ -213,6 +253,46 @@ const userSlice = createSlice({
         state.authStatus = 'failed'
         state.authError = action.meta.aborted ? '' : action.error.message
         state.authRequestId = null
+      })
+      .addCase(updateAccountProfile.pending, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId) return
+        state.accountStatus = 'loading'
+        state.accountError = ''
+        state.accountRequestId = action.meta.requestId
+      })
+      .addCase(updateAccountProfile.fulfilled, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId
+          || state.accountRequestId !== action.meta.requestId) return
+        state.user = action.payload
+        state.accountStatus = 'succeeded'
+        state.accountRequestId = null
+      })
+      .addCase(updateAccountProfile.rejected, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId
+          || state.accountRequestId !== action.meta.requestId) return
+        state.accountStatus = action.meta.aborted ? 'idle' : 'failed'
+        state.accountError = action.meta.aborted ? '' : action.error.message
+        state.accountRequestId = null
+      })
+      .addCase(deactivateAccountUser.pending, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId) return
+        state.accountStatus = 'loading'
+        state.accountError = ''
+        state.accountRequestId = action.meta.requestId
+      })
+      .addCase(deactivateAccountUser.fulfilled, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId
+          || state.accountRequestId !== action.meta.requestId) return
+        state.accountStatus = 'succeeded'
+        state.accountRequestId = null
+        // El hook cierra la sesión solo después del PUT confirmado.
+      })
+      .addCase(deactivateAccountUser.rejected, (state, action) => {
+        if (state.user?.id !== action.meta.arg.userId
+          || state.accountRequestId !== action.meta.requestId) return
+        state.accountStatus = action.meta.aborted ? 'idle' : 'failed'
+        state.accountError = action.meta.aborted ? '' : action.error.message
+        state.accountRequestId = null
       })
   },
 })
