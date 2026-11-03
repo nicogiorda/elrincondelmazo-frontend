@@ -10,6 +10,7 @@ import ProductDetail from './views/ProductDetail.jsx'
 import Publications from './views/Publications.jsx'
 import PublishProduct from './views/PublishProduct.jsx'
 import Orders from './views/Orders.jsx'
+import MyAlbum from './views/MyAlbum.jsx'
 import Profile from './views/Profile.jsx'
 import Cart from './views/Cart.jsx'
 import Checkout from './views/Checkout.jsx'
@@ -192,6 +193,9 @@ function App() {
         <Orders key={user?.id + ':' + token} {...account} orders={orderHistory.items}
           loading={orderHistory.loading || (!orderHistory.updatedAt && !orderHistory.error)} error={orderHistory.error}
           onRefresh={() => loadOrders(true)} details={orderDetails} onLoadDetail={loadOrderDetail} />
+      </ProtectedRoute>} />
+      <Route path="/mi-album" element={<ProtectedRoute user={user}>
+        <MyAlbum user={user} cartCount={cartCount} onLogout={logout} />
       </ProtectedRoute>} />
       <Route path="/mi-perfil" element={<ProtectedRoute user={user}>
         <Profile key={JSON.stringify(user)} {...account} onSave={saveProfile} saving={profileSaving}
