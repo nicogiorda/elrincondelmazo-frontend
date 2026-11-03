@@ -1,5 +1,5 @@
-const kinds = { CANTIDAD: 'quantity', COLECCION: 'collection', TIPO_PRODUCTO: 'type', METODO_PAGO: 'payment', MONTO_MINIMO: 'minimum', PRODUCTO: 'product' }
-let pending
+// La invalidación es una notificación entre vistas, no un transporte HTTP.
+// Los datos, loading y error de promociones públicas viven en Redux.
 const invalidationListeners = new Set()
 
 export function subscribePublicPromotionsInvalidation(listener) {
@@ -8,33 +8,5 @@ export function subscribePublicPromotionsInvalidation(listener) {
 }
 
 export function invalidatePublicPromotions() {
-  pending = undefined
   for (const listener of invalidationListeners) listener()
-}
-
-// Comparte solamente requests en curso. Cada visita real a Home consulta la vigencia
-// del servidor; no conserva promociones vencidas ni una lista anterior a una edición.
-export function loadPublicPromotions() {
-  if (!pending) {
-    const request = fetch('http://localhost:8080/promotions/public')
-      .then((response) => {
-        if (!response.ok) throw new Error(`No pudimos cargar las promociones (HTTP ${response.status}).`)
-        return response.json()
-      })
-      .then((data) => {
-        if (!Array.isArray(data)) throw new Error('La respuesta de promociones no es una lista.')
-        return data.map((promotion) => ({
-          ...promotion,
-          kind: kinds[promotion.type],
-          discount: Number(promotion.discountPercentage),
-          enabled: promotion.active,
-          description: promotion.description ?? '',
-          startDate: promotion.startDate ?? '',
-          endDate: promotion.endDate ?? '',
-        }))
-      })
-      .finally(() => { if (pending === request) pending = undefined })
-    pending = request
-  }
-  return pending
 }
