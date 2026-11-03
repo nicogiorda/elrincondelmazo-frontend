@@ -61,3 +61,6 @@ jobs:
         run: node tests/catalog.browser.mjs
       - name: Pedidos e historial privado
         run: node tests/orders-cache.browser.mjs
+
+      - name: Álbum personal con Redux y Axios
+        run: node tests/album.browser.mjs
