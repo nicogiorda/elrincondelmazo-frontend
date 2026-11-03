@@ -13,7 +13,7 @@ on:
 jobs:
   checkout:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Obtener código
         uses: actions/checkout@v4
@@ -49,3 +49,13 @@ jobs:
         run: node tests/admin-promotions.browser.mjs
       - name: Reseñas públicas y publicación autenticada
         run: node tests/reviews.browser.mjs
+      - name: Restauración de sesión, login y registro
+        run: node tests/auth-session.browser.mjs
+      - name: Perfil, desactivación y cambios de sesión
+        run: node tests/account.browser.mjs
+      - name: Publicaciones propias y fotos
+        run: node tests/publications.browser.mjs
+      - name: Catálogo, productos y caché
+        run: node tests/catalog.browser.mjs
+      - name: Pedidos e historial privado
+        run: node tests/orders-cache.browser.mjs
