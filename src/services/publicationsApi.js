@@ -4,7 +4,7 @@ import { productIdFrom } from '../utils/productId.js'
 
 // El servicio es transporte HTTP puro: Axios, autenticación por llamada y
 // contratos de Spring. Redux decide cuándo solicitar y dónde guardar datos.
-function httpError(error) {
+export function normalizePublicationError(error) {
   if (!error?.response) return error
   const status = error.response.status
   const body = error.response.data
@@ -24,32 +24,45 @@ async function responseData(path, options, status, message) {
   try {
     response = await axios.request(config)
   } catch (error) {
-    throw httpError(error)
+    throw normalizePublicationError(error)
   }
   if (response.status !== status) throw new Error(message)
   return status === 204 ? undefined : response.data
 }
 
-function publicationPath(id) {
+export function publicationPath(id) {
   if (productIdFrom(id) === null) throw new Error('La publicación no tiene un ID válido.')
   return '/products/' + id
 }
 
-function validatePublication(data, userId, id) {
+export function validatePublication(data, userId, id) {
   if (!data || productIdFrom(data.id) === null || data.sellerId !== userId
     || (id != null && data.id !== id)) throw new Error('La respuesta no contiene la publicación esperada.')
   return data
 }
 
-export async function getPublications(page, { userId, token, signal }) {
-  const data = await responseData('/products/mine?page=' + page + '&size=20', { token, signal }, 200,
-    'El servidor no confirmó la consulta de publicaciones.')
+export function validatePublicationsPage(data, page, userId) {
   if (!Array.isArray(data?.content) || !Number.isInteger(data.totalPages) || data.totalPages < 0
     || (data.number != null && data.number !== page)
     || data.content.some(product => !product || productIdFrom(product.id) === null || product.sellerId !== userId)) {
     throw new Error('La respuesta de publicaciones no contiene una página válida del usuario.')
   }
   return data
+}
+
+export function validatePublicationPhoto(data) {
+  let url
+  try { url = new URL(data?.url) } catch { /* Invalid URL. */ }
+  if (typeof data?.url !== 'string' || !['http:', 'https:'].includes(url?.protocol)) {
+    throw new Error('La subida no devolvió una URL de imagen válida.')
+  }
+  return data.url
+}
+
+export async function getPublications(page, { userId, token, signal }) {
+  const data = await responseData('/products/mine?page=' + page + '&size=20', { token, signal }, 200,
+    'El servidor no confirmó la consulta de publicaciones.')
+  return validatePublicationsPage(data, page, userId)
 }
 
 export async function savePublication(body, id, { userId, token, signal }) {
@@ -77,10 +90,5 @@ export async function uploadPublicationPhoto(file, { token, signal }) {
   // Axios detecta el FormData y deja que el navegador agregue el boundary.
   const data = await responseData('/products/images', { method: 'POST', body, token, signal }, 201,
     'El servidor no confirmó la subida de la imagen.')
-  let url
-  try { url = new URL(data?.url) } catch { /* La respuesta inválida comparte el error de protocolo inseguro. */ }
-  if (typeof data?.url !== 'string' || !['http:', 'https:'].includes(url?.protocol)) {
-    throw new Error('La subida no devolvió una URL de imagen válida.')
-  }
-  return data.url
+  return validatePublicationPhoto(data)
 }
