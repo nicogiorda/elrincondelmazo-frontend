@@ -1,6 +1,8 @@
 name: Frontend browser checks
 
 on:
+  push:
+    branches: ['feature/album-*']
   pull_request:
     paths:
       - 'src/**'
