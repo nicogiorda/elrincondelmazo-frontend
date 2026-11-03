@@ -24,32 +24,27 @@ export function normalizeReviewError(error, signal) {
   return error
 }
 
-async function reviewRequest(path, { method = 'GET', token, body, signal } = {}) {
-  let response
+async function readReview(request, signal) {
   try {
-    response = await axios.request({
-      url: API_BASE_URL + path, method, signal,
-      ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
-      ...(body !== undefined ? { data: body } : {}),
-    })
+    const response = await request
     signal?.throwIfAborted()
+    return response
   } catch (error) {
     throw normalizeReviewError(error, signal)
   }
-  return response
 }
 
-// Las reseñas se consultan sin sesión. El backend determina si el producto es reseñable.
 export async function getReviews(productId, { signal } = {}) {
-  const response = await reviewRequest(reviewPath(productId), { signal })
+  const response = await readReview(axios.get(API_BASE_URL + reviewPath(productId), { signal }), signal)
   if (!Array.isArray(response.data)) throw new Error('La respuesta de reseñas no es una lista')
   return response.data
 }
 
 export async function createReview(productId, { rating, comment }, { token, signal } = {}) {
-  const response = await reviewRequest(reviewPath(productId), {
-    method: 'POST', token, signal, body: { rating, comment },
-  })
+  const response = await readReview(axios.post(API_BASE_URL + reviewPath(productId),
+    { rating, comment }, {
+      signal, ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
+    }), signal)
   const review = response.data
   if (response.status !== 201 || !Number.isSafeInteger(review?.id) || review.id <= 0
     || review.productId !== Number(productId)) {
