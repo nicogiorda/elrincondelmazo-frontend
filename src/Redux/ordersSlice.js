@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
-import { API_BASE_URL } from '../services/httpClient.js'
-import { normalizeOrderError } from '../services/ordersApi.js'
+import { API_BASE_URL } from '../config/api.js'
+import { normalizeOrderError } from '../utils/orderValidation.js'
 
 // Las respuestas privadas y el estado de las solicitudes viven en Redux.
 // Los AbortController y el JWT se mantienen fuera del store.
