@@ -11,6 +11,7 @@ import Publications from './views/Publications.jsx'
 import PublishProduct from './views/PublishProduct.jsx'
 import Orders from './views/Orders.jsx'
 import MyAlbum from './views/MyAlbum.jsx'
+import PublicAlbum from './views/PublicAlbum.jsx'
 import Profile from './views/Profile.jsx'
 import Cart from './views/Cart.jsx'
 import Checkout from './views/Checkout.jsx'
@@ -196,6 +197,9 @@ function App() {
       </ProtectedRoute>} />
       <Route path="/mi-album" element={<ProtectedRoute user={user}>
         <MyAlbum user={user} cartCount={cartCount} onLogout={logout} />
+      </ProtectedRoute>} />
+      <Route path="/album/usuario/:userId" element={<ProtectedRoute user={user}>
+        <PublicAlbum viewer={user} cartCount={cartCount} onLogout={logout} />
       </ProtectedRoute>} />
       <Route path="/mi-perfil" element={<ProtectedRoute user={user}>
         <Profile key={JSON.stringify(user)} {...account} onSave={saveProfile} saving={profileSaving}
