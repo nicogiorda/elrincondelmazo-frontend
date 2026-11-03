@@ -1,13 +1,13 @@
 import axios from 'axios'
 import { API_BASE_URL } from './httpClient.js'
 
-function httpError(message, status) {
+export function authHttpError(message, status) {
   const error = new Error(message)
   error.status = status
   return error
 }
 
-function normalizedError(error, signal) {
+export function normalizeAuthError(error, signal) {
   if (signal?.aborted || error?.code === 'ERR_CANCELED') {
     return new DOMException('Solicitud cancelada', 'AbortError')
   }
@@ -16,14 +16,14 @@ function normalizedError(error, signal) {
     const data = error.response.data
     const message = status === 401 ? 'Tu sesión venció. Volvé a ingresar.'
       : data?.message || data?.detail || 'No se pudo completar la operación (HTTP ' + status + ').'
-    return httpError(message, status)
+    return authHttpError(message, status)
   }
   if (error?.code === 'ERR_NETWORK') return new TypeError(error.message)
   return error
 }
 
 // La verificación se comparte entre recuperación, login y registro.
-function validateUser(user) {
+export function validateUser(user) {
   if (!user || !Number.isSafeInteger(user.id) || user.id < 1 || !user.email
     || typeof user.firstName !== 'string' || typeof user.lastName !== 'string'
     || !['USUARIO', 'ADMIN'].includes(user.role) || user.active === false) {
@@ -41,7 +41,7 @@ export async function getCurrentUser({ token, signal } = {}) {
       url: API_BASE_URL + '/users/me', method: 'GET', signal,
       headers: token ? { Authorization: 'Bearer ' + token } : {},
     })
-  } catch (error) { throw normalizedError(error, signal) }
+  } catch (error) { throw normalizeAuthError(error, signal) }
   signal?.throwIfAborted()
   return validateUser(response.data)
 }
@@ -54,13 +54,13 @@ async function authenticateAccount(path, body, { signal } = {}, registering = fa
       url: API_BASE_URL + path, method: 'POST', data: body, signal,
     })
   } catch (error) {
-    if (!error?.response) throw normalizedError(error, signal)
+    if (!error?.response) throw normalizeAuthError(error, signal)
     const status = error.response.status
     const message = registering
       ? status === 409 ? 'Ya existe un usuario con este correo' : 'No se pudo registrar el usuario'
       : status === 401 ? 'El correo o la contraseña son incorrectos'
         : 'No pudimos iniciar sesión (HTTP ' + status + '). Volvé a intentar.'
-    throw httpError(message, status)
+    throw authHttpError(message, status)
   }
 
   const data = response.data
@@ -77,7 +77,7 @@ async function authenticateAccount(path, body, { signal } = {}, registering = fa
     return { token, user }
   } catch (error) {
     if (error.status) {
-      throw httpError(registering ? 'No se pudo obtener el usuario'
+      throw authHttpError(registering ? 'No se pudo obtener el usuario'
         : 'No pudimos verificar tu cuenta (HTTP ' + error.status + '). Volvé a ingresar.', error.status)
     }
     throw error
