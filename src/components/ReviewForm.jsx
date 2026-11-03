@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 function ReviewForm({ onPublish, onCancel }) {
   const [rating, setRating] = useState(0)
+  // Bloquea dos submits dentro del mismo tick antes del siguiente render.
+  const submitLocked = useRef(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [comment, setComment] = useState('')
@@ -9,12 +11,16 @@ function ReviewForm({ onPublish, onCancel }) {
 
   function submitReview(event) {
     event.preventDefault()
-    if (!canPublish) return
+    if (!canPublish || submitLocked.current) return
+    submitLocked.current = true
     setSubmitting(true)
     setError('')
     Promise.resolve().then(() => onPublish({ rating, comment: comment.trim() }))
       .catch((error) => setError(error.message || 'No pudimos publicar la reseña.'))
-      .finally(() => setSubmitting(false))
+      .finally(() => {
+        submitLocked.current = false
+        setSubmitting(false)
+      })
   }
 
   return (

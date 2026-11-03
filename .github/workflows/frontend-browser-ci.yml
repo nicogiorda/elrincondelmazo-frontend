@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/**'
       - 'tests/*.browser.mjs'
+      - 'tests/*.browser.cjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/frontend-browser-ci.yml'
@@ -42,3 +43,9 @@ jobs:
         run: node tests/cart-api.browser.mjs
       - name: Checkout - idempotencia y flujos React simulados
         run: node tests/checkout.browser.mjs
+      - name: Promociones públicas y editor
+        run: node tests/promotions.browser.cjs
+      - name: Promociones administrativas y sesiones
+        run: node tests/admin-promotions.browser.mjs
+      - name: Reseñas públicas y publicación autenticada
+        run: node tests/reviews.browser.mjs
