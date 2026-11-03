@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { fetchHomeProducts } from '../Redux/productsSlice.js'
+import { fetchHomeProducts, fetchSelectionProducts, fetchCachedProduct } from '../Redux/productsSlice.js'
 import useProductCache from './useProductCache.js'
 import useCollections from './useCollections.js'
 import useCatalogFilters from './useCatalogFilters.js'
@@ -9,7 +9,23 @@ import useProductDetail from './useProductDetail.js'
 export default function useCatalog({ location, productId, isProductRoute }) {
   const dispatch = useDispatch()
   const cache = useProductCache()
-  const { products, cacheVersion, loadPage, loadProduct, isFresh } = cache
+  const { products, cacheVersion, isFresh } = cache
+  // Los selectores de promociones y el carrito despachan thunks, nunca
+  // llaman cache.loadPage/loadProduct con un servicio HTTP externo.
+  const loadProductsPage = useCallback(query =>
+    dispatch(fetchSelectionProducts({ query })).unwrap(), [dispatch])
+  const loadProduct = useCallback((productId, { signal, isCurrent, ...options } = {}) => {
+    if (isCurrent && !isCurrent()) {
+      return Promise.reject(new DOMException('La solicitud fue cancelada.', 'AbortError'))
+    }
+    return dispatch(fetchCachedProduct({ productId, ...options }, { signal })).unwrap()
+      .then(product => {
+        if (isCurrent && !isCurrent()) {
+          throw new DOMException('La solicitud fue cancelada.', 'AbortError')
+        }
+        return product
+      })
+  }, [dispatch])
   const home = useSelector((state) => state.products.home)
   const collections = useCollections()
   const filters = useCatalogFilters(location)
@@ -31,7 +47,7 @@ export default function useCatalog({ location, productId, isProductRoute }) {
     .filter(product => product?.status === 'ACTIVO')
     .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')).slice(0, 4)
 
-  return { products, cacheVersion, loadProductPage: loadPage, loadProduct,
+  return { products, cacheVersion, loadProductPage: loadProductsPage, loadProduct,
     recentProducts, productsLoading, productsError, ...collections, ...filters, ...detail,
     refreshPendingCatalog: cache.invalidate, rememberProduct: cache.rememberProduct,
     upsertProduct: cache.upsertProduct, removeProduct: cache.removeProduct,
