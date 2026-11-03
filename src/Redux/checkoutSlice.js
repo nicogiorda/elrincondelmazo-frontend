@@ -1,5 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { previewOrder, createOrder, validateQuote } from '../services/ordersApi.js'
+import axios from 'axios'
+import { API_BASE_URL } from '../services/httpClient.js'
+import { validateQuote, isConfirmedOrder, normalizeOrderError, ambiguousFailure } from '../services/ordersApi.js'
 
 // Un fallo de transporte / 201 sin detalle puede haber creado una orden.
 // Conservar ambiguous y status en rejected es esencial para no duplicar pagos.
@@ -15,14 +17,40 @@ export const fetchCheckoutQuote = createAsyncThunk('checkout/fetchQuote',
   async ({ paymentMethod }, { extra, signal }) => {
     const token = extra?.ordersToken?.()
     if (!token) throw new Error('No hay una sesion activa para cotizar.')
-    return validateQuote(await previewOrder(paymentMethod, { token, signal }))
+    const response = await axios.post(API_BASE_URL + '/orders/preview',
+      { paymentMethod }, { signal, headers: { Authorization: 'Bearer ' + token } },
+    ).catch(error => { throw normalizeOrderError(error, signal) })
+    signal.throwIfAborted()
+    if (response.status < 200 || response.status >= 300) {
+      throw normalizeOrderError({ response }, signal)
+    }
+    return validateQuote(response.data)
   }, { serializeError: serializeCheckoutError })
 
 export const confirmCheckoutOrder = createAsyncThunk('checkout/confirm',
   async ({ payload }, { extra, signal }) => {
     const token = extra?.ordersToken?.()
     if (!token) throw new Error('No hay una sesion activa para confirmar.')
-    return createOrder(payload, { token, signal })
+    try {
+      // Un solo POST por intento. El hook conserva el UUID para cualquier
+      // respuesta ambigua y no genera otra orden automáticamente.
+      const { data, status } = await axios.post(API_BASE_URL + '/orders', {
+        paymentMethod: payload.paymentMethod,
+        expectedTotal: payload.expectedTotal,
+        requestKey: payload.requestKey,
+      }, { signal, headers: { Authorization: 'Bearer ' + token } })
+      signal.throwIfAborted()
+      if (status !== 201 || !isConfirmedOrder(data, payload.paymentMethod, payload.expectedTotal)) {
+        throw Object.assign(new Error('La respuesta no contiene el detalle del pedido. Revisá tus pedidos antes de reintentar.'), {
+          status, ambiguous: true,
+        })
+      }
+      return data
+    } catch (failure) {
+      const error = normalizeOrderError(failure, signal)
+      if (error.ambiguous || !error.status || error.status >= 500) throw ambiguousFailure(error)
+      throw error
+    }
   }, { serializeError: serializeCheckoutError })
 
 const newQuote = () => ({ key: null, status: 'idle', data: null, error: '', requestId: null })
