@@ -19,7 +19,9 @@ export function mockAxios(t, initialImplementation) {
       if (typeof implementation !== 'function') {
         throw new Error('No hay respuesta Axios simulada para ' + method + ' ' + url)
       }
-      return implementation(request)
+      // Axios siempre devuelve una Promise, también cuando el fixture
+      // responde con un objeto inmediato.
+      return Promise.resolve().then(() => implementation(request))
     })
   }
   return { mock: {
