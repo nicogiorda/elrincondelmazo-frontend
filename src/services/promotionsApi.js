@@ -47,14 +47,10 @@ export function normalizePromotionError(error, signal) {
 
 // Axios realiza la unica solicitud; Redux Toolkit administra el ciclo asincrono.
 // Ningun interceptor ni token global puede filtrar datos entre cuentas.
-async function responseData(path, { method = 'GET', body, token, signal } = {}, expectedStatus = 200) {
+async function readPromotion(request, expectedStatus, signal) {
   let response
   try {
-    response = await axios.request({
-      url: API_BASE_URL + path, method, signal,
-      ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
-      ...(body !== undefined ? { data: body } : {}),
-    })
+    response = await request
     signal?.throwIfAborted()
   } catch (error) {
     throw normalizePromotionError(error, signal)
@@ -64,36 +60,47 @@ async function responseData(path, { method = 'GET', body, token, signal } = {}, 
 }
 
 export async function getPromotions({ token, signal } = {}) {
-  const data = await responseData('/promotions', { token, signal })
+  const data = await readPromotion(axios.get(API_BASE_URL + '/promotions', {
+    signal, ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
+  }), 200, signal)
   if (!Array.isArray(data)) throw new Error('La respuesta de promociones no es una lista.')
   return data.map(promotion => validatePromotion(promotion))
 }
 
 export async function getPromotion(id, { token, signal } = {}) {
-  return validatePromotion(await responseData(promotionPath(id), { token, signal }), id)
+  const data = await readPromotion(axios.get(API_BASE_URL + promotionPath(id), {
+    signal, ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
+  }), 200, signal)
+  return validatePromotion(data, id)
 }
 
 export async function savePromotion(body, id, { token, signal } = {}) {
-  const path = id == null ? '/promotions' : promotionPath(id)
-  return validatePromotion(await responseData(path, {
-    method: id == null ? 'POST' : 'PUT', body, token, signal,
-  }, id == null ? 201 : 200), id)
+  const config = {
+    signal, ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}),
+  }
+  const request = id == null
+    ? axios.post(API_BASE_URL + '/promotions', body, config)
+    : axios.put(API_BASE_URL + promotionPath(id), body, config)
+  const data = await readPromotion(request, id == null ? 201 : 200, signal)
+  return validatePromotion(data, id)
 }
 
 export async function setPromotionActive(id, active, { token, signal } = {}) {
   if (typeof active !== 'boolean') throw new Error('El estado de la promoción no es válido.')
-  const saved = validatePromotion(await responseData(promotionPath(id) + (active ? '/activate' : '/deactivate'), {
-    method: 'PATCH', token, signal,
-  }), id)
+  const data = await readPromotion(axios.patch(
+    API_BASE_URL + promotionPath(id) + (active ? '/activate' : '/deactivate'),
+    undefined, { signal, ...(token ? { headers: { Authorization: 'Bearer ' + token } } : {}) },
+  ), 200, signal)
+  const saved = validatePromotion(data, id)
   if (saved.active !== active) throw new Error('El servidor no confirmó el estado de la promoción.')
   return saved
 }
 
-// Las promociones del Home son públicas: nunca envían JWT.
 export async function getPublicPromotions({ signal } = {}) {
   let data
   try {
-    data = await responseData('/promotions/public', { signal })
+    // GET público: no se envía JWT ni siquiera si hay sesión en la aplicación.
+    data = await readPromotion(axios.get(API_BASE_URL + '/promotions/public', { signal }), 200, signal)
   } catch (error) {
     if (typeof error?.status === 'number') {
       throw Object.assign(new Error('No pudimos cargar las promociones (HTTP ' + error.status + ').'),
