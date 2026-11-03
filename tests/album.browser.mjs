@@ -15,6 +15,10 @@ const sections = [
   { id: 3, key: 'CARS', pageCount: 1 },
   { id: 4, key: 'MARVEL', pageCount: 1 },
 ]
+// Imagen vertical de prueba para detectar regresiones de escala y recortes.
+const portraitImage = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="240"><rect width="120" height="240" fill="#b53024"/></svg>',
+)
 const orderItem = { orderItemId: 110, orderId: 14, name: 'Carta comprada',
   imageUrl: 'https://example.invalid/album/purchased.webp', purchasedQuantity: 2 }
 const getAlbum = () => ({
@@ -52,7 +56,7 @@ await page.route('http://localhost:8080/**', async route => {
     const raw = req.postData()
     assert.ok(raw.includes('QA física'), 'multipart contains the manual card name')
     const card = { id: nextId++, name: 'QA física', origin: 'MANUAL',
-      imageUrl: '', section: 'NBA', pageNumber: 1, slotIndex: 0 }
+      imageUrl: portraitImage, section: 'NBA', pageNumber: 1, slotIndex: 0 }
     cards.push(card)
     return reply(card, 201)
   }
@@ -60,7 +64,7 @@ await page.route('http://localhost:8080/**', async route => {
     const { orderItemId, section, pageNumber, slotIndex } = req.postDataJSON()
     assert.equal(orderItemId, 110)
     const card = { id: nextId++, name: orderItem.name, origin: 'PURCHASE',
-      imageUrl: '', section, pageNumber, slotIndex }
+      imageUrl: portraitImage, section, pageNumber, slotIndex }
     cards.push(card)
     return reply(card, 201)
   }
@@ -106,7 +110,20 @@ try {
     buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLytQAAAABJRU5ErkJggg==', 'base64'),
   })
   await page.getByRole('button', { name: 'Guardar carta' }).click()
-  await page.getByRole('button', { name: 'Ver carta QA física, posición 1' }).waitFor()
+  const addedCard = page.getByRole('button', { name: 'Ver carta QA física, posición 1' })
+  await addedCard.waitFor()
+  const photo = addedCard.locator('.album-slot__image')
+  await photo.waitFor()
+  const imageLayout = await photo.evaluate(img => ({
+    fit: getComputedStyle(img).objectFit,
+    naturalHeight: img.naturalHeight,
+    imageHeight: img.getBoundingClientRect().height,
+    mediaHeight: img.parentElement.getBoundingClientRect().height,
+  }))
+  assert.equal(imageLayout.fit, 'contain', 'el contenido no se recorta')
+  assert.equal(imageLayout.naturalHeight, 240, 'se carga la foto vertical')
+  assert.ok(imageLayout.mediaHeight >= 100, 'la foto dispone de espacio vertical legible')
+  assert.ok(imageLayout.imageHeight >= imageLayout.mediaHeight - 1, 'la imagen ocupa el área disponible')
 
   await page.getByRole('button', { name: 'Espacio 2 vacío' }).click()
   await page.getByLabel('Carta disponible').selectOption('110')
