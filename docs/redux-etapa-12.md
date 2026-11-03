@@ -1,5 +1,8 @@
 # Etapa 12 — Axios explícito dentro de los thunks (alineación con Demo Redux)
 
+> **Arquitectura vigente desde etapa 13:** se eliminaron los servicios HTTP duplicados. Esta etapa 12 describe el estado intermedio de la migración; la estructura definitiva está en [etapa 13](redux-etapa-13.md): Axios solo en los thunks, validaciones puras en `utils` y URL en `config/api.js`.
+
+
 ## Por qué se cambió
 
 El ejemplo compartido por la profesora tiene dos archivos principales:
