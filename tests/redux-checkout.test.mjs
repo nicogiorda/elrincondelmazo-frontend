@@ -1,7 +1,6 @@
-import './fixtures/axios-verb-test-bridge.mjs'
+import { mockAxios } from './fixtures/mockAxios.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import axios from 'axios'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, {
   fetchCheckoutQuote, confirmCheckoutOrder, checkoutSessionCleared, checkoutSubmitErrorSet,
@@ -40,7 +39,7 @@ test('estado inicial no guarda cuentas, respuestas o claves de intento previas',
 
 test('POST /orders/preview usa Axios y publica pending/fulfilled sin JWT en Redux', async t => {
   const gate = delayed()
-  const request = t.mock.method(axios, 'request', async config => {
+  const request = mockAxios(t, async config => {
     assert.equal(config.method, 'POST')
     assert.equal(config.url, 'http://localhost:8080/orders/preview')
     assert.deepEqual(config.data, { paymentMethod: 'TRANSFERENCIA' })
@@ -62,7 +61,7 @@ test('POST /orders/preview usa Axios y publica pending/fulfilled sin JWT en Redu
 
 test('el backend no puede habilitar una cotización con importes o promociones inválidos', async t => {
   const invalid = { ...quote, total: '90' }
-  const mock = t.mock.method(axios, 'request', async () => reply(invalid))
+  const mock = mockAxios(t, async () => reply(invalid))
   const store = createStore()
   const rejected = await store.dispatch(fetchCheckoutQuote(quoteArgs()))
   assert.ok(fetchCheckoutQuote.rejected.match(rejected))
@@ -78,7 +77,7 @@ test('el backend no puede habilitar una cotización con importes o promociones i
 test('solicitud vieja de cotización no reemplaza la revisión más reciente', async t => {
   const gate = delayed()
   let count = 0
-  t.mock.method(axios, 'request', async () => ++count === 1 ? gate.promise : reply(quote))
+  mockAxios(t, async () => ++count === 1 ? gate.promise : reply(quote))
   const store = createStore()
   const first = store.dispatch(fetchCheckoutQuote(quoteArgs('revision-a')))
   await store.dispatch(fetchCheckoutQuote(quoteArgs('revision-b')))
@@ -90,7 +89,7 @@ test('solicitud vieja de cotización no reemplaza la revisión más reciente', a
 
 test('HTTP 201 confirma con los tres campos exactos y una sola solicitud', async t => {
   const requests = []
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     requests.push(config)
     return reply(order, 201)
   })
@@ -108,7 +107,7 @@ test('HTTP 201 confirma con los tres campos exactos y una sola solicitud', async
 })
 
 test('409 conserva rechazo explícito, no marca compra y exige nueva aceptación', async t => {
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     throw { response: { status: 409, data: { message: 'El total cambió' } } }
   })
   const store = createStore()
@@ -121,7 +120,7 @@ test('409 conserva rechazo explícito, no marca compra y exige nueva aceptación
 })
 
 test('503 es ambiguo, preserva requestKey para replay y no envía segundo POST automáticamente', async t => {
-  const mock = t.mock.method(axios, 'request', async () => {
+  const mock = mockAxios(t, async () => {
     throw { response: { status: 503, data: { message: 'Fallo QA' } } }
   })
   const store = createStore()
@@ -140,7 +139,7 @@ test('503 es ambiguo, preserva requestKey para replay y no envía segundo POST a
 })
 
 test('201 inválido es ambiguo incluso cuando el servidor creó una orden', async t => {
-  t.mock.method(axios, 'request', async () => reply({ id: 11 }, 201))
+  mockAxios(t, async () => reply({ id: 11 }, 201))
   const store = createStore()
   const result = await store.dispatch(confirmCheckoutOrder(attempt))
   assert.ok(confirmCheckoutOrder.rejected.match(result))
@@ -150,7 +149,7 @@ test('201 inválido es ambiguo incluso cuando el servidor creó una orden', asyn
 })
 
 test('422 guarda el error sin marcar una orden como creada', async t => {
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     throw { response: { status: 422, data: { message: 'Stock insuficiente' } } }
   })
   const store = createStore()
@@ -163,7 +162,7 @@ test('422 guarda el error sin marcar una orden como creada', async t => {
 })
 
 test('401 de cotización o confirmación conserva status para logout', async t => {
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     throw { response: { status: 401, data: {} } }
   })
   const store = createStore()
@@ -176,7 +175,7 @@ test('401 de cotización o confirmación conserva status para logout', async t =
 
 test('logout limpia intento ambiguo, cotización y confirmación; respuestas tardías son ignoradas', async t => {
   const gate = delayed()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = createStore()
   const old = store.dispatch(confirmCheckoutOrder(attempt))
   store.dispatch(checkoutSessionCleared())
@@ -190,7 +189,7 @@ test('logout limpia intento ambiguo, cotización y confirmación; respuestas tar
 
 test('la respuesta tardía de un intento previo no confirma después de cerrar sesión', async t => {
   const gate = delayed()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = createStore()
   const pending = store.dispatch(confirmCheckoutOrder(attempt))
   store.dispatch(checkoutSessionCleared())
@@ -202,7 +201,7 @@ test('la respuesta tardía de un intento previo no confirma después de cerrar s
 
 test('cancelar un POST pendiente no fabrica una confirmación ni un mensaje falso', async t => {
   const gate = delayed()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = createStore(), controller = new AbortController()
   const pending = store.dispatch(confirmCheckoutOrder(attempt, { signal: controller.signal }))
   controller.abort()
@@ -217,7 +216,7 @@ test('cancelar un POST pendiente no fabrica una confirmación ni un mensaje fals
 })
 
 test('error local de reserva se aplica solo a la sesión correcta y no guarda datos no serializables', async t => {
-  t.mock.method(axios, 'request', async () => reply(quote))
+  mockAxios(t, async () => reply(quote))
   const store = createStore()
   await store.dispatch(fetchCheckoutQuote(quoteArgs()))
   store.dispatch(checkoutSubmitErrorSet({ ...scope(2, 3), message: 'ajeno' }))
