@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
-import { API_BASE_URL } from '../services/httpClient.js'
+import { API_BASE_URL } from '../config/api.js'
 
 export const emptyCatalogFilters = () => ({
   search: '', type: '', collection: '', minPrice: '', maxPrice: '', page: 0,
