@@ -73,3 +73,18 @@ export function promotionToBackend(promotion) {
       : null,
   };
 }
+
+
+// La respuesta pública conserva los campos del backend y añade los que
+// consumen las tarjetas del Home; no inventa descuentos ni períodos.
+export function publicPromotionFromBackend(promotion) {
+  return {
+    ...promotion,
+    kind: frontendPromotionTypes[promotion.type],
+    discount: Number(promotion.discountPercentage),
+    enabled: promotion.active,
+    description: promotion.description ?? '',
+    startDate: promotion.startDate ?? '',
+    endDate: promotion.endDate ?? '',
+  }
+}
