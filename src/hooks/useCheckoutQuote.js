@@ -3,7 +3,7 @@ import { useDispatch, useSelector, useStore } from 'react-redux'
 import { fetchCheckoutQuote } from '../Redux/checkoutSlice.js'
 
 // La validacion pura del contrato sigue disponible para las pruebas anteriores.
-export { validateQuote } from '../services/ordersApi.js'
+export { validateQuote } from '../utils/orderValidation.js'
 
 // Cotizacion y sus etapas pending/fulfilled/rejected viven en Redux.
 // Las revisiones locales son solo identificadores de cada visita y reintento.
