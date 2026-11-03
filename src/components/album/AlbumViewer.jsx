@@ -1,3 +1,4 @@
+import './album.css'
 import AlbumSections from './AlbumSections.jsx'
 import AlbumPage from './AlbumPage.jsx'
 
@@ -6,7 +7,7 @@ export default function AlbumViewer({ album, sectionKey, onSectionChange, pageNu
   const section = album.sections.find(item => item.key === sectionKey) ?? album.sections[0]
   if (!section) return <p>Este álbum todavía no tiene secciones.</p>
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-3 sm:gap-4">
       <AlbumSections activeSection={section.key} onChange={onSectionChange} />
       <AlbumPage section={section} pageNumber={pageNumber} onPageChange={onPageChange}
         readOnly={readOnly} onEmptySlot={onEmptySlot} onSelectedCard={onSelectedCard} />
