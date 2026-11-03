@@ -41,6 +41,8 @@ jobs:
           done
           cat /tmp/mazo-vite.log
           exit 1
+      - name: Álbum personal con Redux y Axios
+        run: node tests/album.browser.mjs
       - name: Carrito - escenarios HTTP simulados
         run: node tests/cart-api.browser.mjs
       - name: Checkout - idempotencia y flujos React simulados

@@ -101,7 +101,14 @@ try {
   await page.getByLabel('Sección').selectOption('CARS')
   await page.getByLabel('Posición', { exact: true }).selectOption('3')
   await page.getByRole('button', { name: 'Mover carta' }).click()
-  await page.getByRole('button', { name: 'Ver carta Carta comprada, posición 4' }).waitFor()
+  try {
+    await page.getByRole('button', { name: 'Ver carta Carta comprada, posición 4' }).waitFor({ timeout: 5000 })
+  } catch (error) {
+    console.error('Album move failure calls:', JSON.stringify(calls.slice(-15)))
+    console.error('Album move failure UI:', (await page.locator('body').innerText()).slice(-5000))
+    console.error('Album move failure errors:', JSON.stringify(errors))
+    throw error
+  }
 
   await page.getByRole('button', { name: 'Hacer público' }).click()
   await page.getByText('Álbum público', { exact: true }).waitFor()
