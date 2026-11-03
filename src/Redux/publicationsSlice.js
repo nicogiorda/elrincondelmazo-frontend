@@ -1,6 +1,10 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { getPublications, savePublication, changePublicationStatus,
-  deletePublication, uploadPublicationPhoto } from '../services/publicationsApi.js'
+import axios from 'axios'
+import { API_BASE_URL } from '../services/httpClient.js'
+import {
+  normalizePublicationError, publicationPath, validatePublicationsPage,
+  validatePublication, validatePublicationPhoto,
+} from '../services/publicationsApi.js'
 
 export const PUBLICATIONS_TTL = 60_000
 const newestFirst = (a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id - a.id
@@ -35,48 +39,87 @@ function credentials(extra, signal, userId) {
   return { userId, token, signal }
 }
 
-// Todas las llamadas HTTP privadas pasan por acciones asíncronas Redux.
-// El JWT se resuelve desde extraArgument: nunca entra en acciones ni en el store.
+// Cada createAsyncThunk muestra el verbo HTTP de Axios que realmente envía.
+// Solo se comparten validaciones y mensajes, no otras funciones que hagan red.
 export const fetchOwnPublications = createAsyncThunk(
   'publications/fetchOwn',
   async ({ userId }, { extra, signal }) => {
-    const options = credentials(extra, signal, userId)
+    const { token } = credentials(extra, signal, userId)
+    const headers = { Authorization: 'Bearer ' + token }
     const items = []
     let page = 0, totalPages
     do {
-      const result = await getPublications(page, options)
+      const response = await axios.get(API_BASE_URL + '/products/mine?page=' + page + '&size=20',
+        { headers, signal }).catch(error => { throw normalizePublicationError(error) })
+      signal.throwIfAborted()
+      if (response.status !== 200) throw new Error('El servidor no confirmó la consulta de publicaciones.')
+      const result = validatePublicationsPage(response.data, page, userId)
       items.push(...result.content)
       totalPages = result.totalPages
       page += 1
     } while (page < totalPages && !signal.aborted)
-    if (signal.aborted) throw new DOMException('Solicitud cancelada', 'AbortError')
+    signal.throwIfAborted()
     return { items: items.sort(newestFirst), updatedAt: Date.now() }
   }, { serializeError },
 )
 
 export const saveOwnPublication = createAsyncThunk(
   'publications/save',
-  ({ body, id, userId }, { extra, signal }) =>
-    savePublication(body, id, credentials(extra, signal, userId)),
-  { serializeError },
+  async ({ body, id, userId }, { extra, signal }) => {
+    const { token } = credentials(extra, signal, userId)
+    const config = { headers: { Authorization: 'Bearer ' + token }, signal }
+    const response = await (id == null
+      ? axios.post(API_BASE_URL + '/products', body, config)
+      : axios.put(API_BASE_URL + publicationPath(id), body, config)
+    ).catch(error => { throw normalizePublicationError(error) })
+    signal.throwIfAborted()
+    if (response.status !== (id == null ? 201 : 200)) {
+      throw new Error('El servidor no confirmó el guardado de la publicación.')
+    }
+    return validatePublication(response.data, userId, id)
+  }, { serializeError },
 )
+
 export const setOwnPublicationStatus = createAsyncThunk(
   'publications/changeStatus',
-  ({ id, action, userId }, { extra, signal }) =>
-    changePublicationStatus(id, action, credentials(extra, signal, userId)),
-  { serializeError },
+  async ({ id, action, userId }, { extra, signal }) => {
+    const { token } = credentials(extra, signal, userId)
+    if (!['pause', 'resume'].includes(action)) throw new Error('La acción de publicación no es válida.')
+    const response = await axios.patch(API_BASE_URL + publicationPath(id) + '/' + action,
+      undefined, { signal, headers: { Authorization: 'Bearer ' + token } },
+    ).catch(error => { throw normalizePublicationError(error) })
+    signal.throwIfAborted()
+    if (response.status !== 200) throw new Error('El servidor no confirmó el cambio de estado.')
+    return validatePublication(response.data, userId, id)
+  }, { serializeError },
 )
+
 export const removeOwnPublication = createAsyncThunk(
   'publications/delete',
-  ({ id, userId }, { extra, signal }) =>
-    deletePublication(id, credentials(extra, signal, userId)).then(() => id),
-  { serializeError },
+  async ({ id, userId }, { extra, signal }) => {
+    const { token } = credentials(extra, signal, userId)
+    const response = await axios.delete(API_BASE_URL + publicationPath(id), {
+      headers: { Authorization: 'Bearer ' + token }, signal,
+    }).catch(error => { throw normalizePublicationError(error) })
+    signal.throwIfAborted()
+    if (response.status !== 204) throw new Error('El servidor no confirmó la eliminación.')
+    return id
+  }, { serializeError },
 )
+
 export const uploadOwnPublicationPhoto = createAsyncThunk(
   'publications/uploadPhoto',
-  ({ file, userId }, { extra, signal }) =>
-    uploadPublicationPhoto(file, credentials(extra, signal, userId)),
-  { serializeError },
+  async ({ file, userId }, { extra, signal }) => {
+    const { token } = credentials(extra, signal, userId)
+    const body = new FormData()
+    body.append('file', file)
+    const response = await axios.post(API_BASE_URL + '/products/images', body, {
+      headers: { Authorization: 'Bearer ' + token }, signal,
+    }).catch(error => { throw normalizePublicationError(error) })
+    signal.throwIfAborted()
+    if (response.status !== 201) throw new Error('El servidor no confirmó la subida de la imagen.')
+    return validatePublicationPhoto(response.data)
+  }, { serializeError },
 )
 
 function mutationStarted(state, action) {
