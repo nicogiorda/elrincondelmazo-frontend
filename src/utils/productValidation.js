@@ -24,4 +24,15 @@ export function validateProductDetail(data, id) {
   return data
 }
 
-
+export function productError(error, context = 'detail') {
+  let message = error.message
+  if (error.code === 'INVALID_PRODUCT') message = context === 'cart'
+    ? 'El producto recibido no coincide con el del carrito.'
+    : context === 'selection' ? 'El producto recibido no coincide con la selección.'
+      : 'El producto recibido no coincide con el seleccionado.'
+  else if (context === 'selection' && error.status) {
+    message = 'No pudimos consultar el producto seleccionado (HTTP ' + error.status + ').'
+  }
+  if (message === error.message) return error
+  return Object.assign(new Error(message), { status: error.status, code: error.code, name: error.name })
+}
