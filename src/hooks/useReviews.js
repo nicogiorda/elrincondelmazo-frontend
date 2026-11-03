@@ -1,20 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { createReview, getReviews } from '../services/reviewsApi.js'
+import { useCallback, useEffect, useRef } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import {
+  fetchProductReviews, publishProductReview, reviewSessionCleared, reviewRetryRequested,
+} from '../Redux/reviewsSlice.js'
 
-// Las reseñas son públicas; solo publicar depende de la sesión autenticada.
+// Las lecturas son públicas; el POST de una reseña se vincula a la sesión.
+// Redux guarda las respuestas y estados, no hay caches locales duplicadas.
 export default function useReviews({ productId, user, token, sessionVersion, sessionAbort,
   subscribeSessionChange, logout, setSessionError }) {
-  const [reviewsByProduct, setReviewsByProduct] = useState({})
-  const [reviewErrors, setReviewErrors] = useState({})
-  const [reviewAttempt, setReviewAttempt] = useState(0)
-  const requestedReviews = useRef(new Set())
+  const dispatch = useDispatch()
+  const reviewsByProduct = useSelector(state => state.reviews.byProduct)
+  const reviewErrors = useSelector(state => state.reviews.errors)
   const reviewRequest = useRef(null)
   const mounted = useRef(false)
+  const currentReviews = productId ? reviewsByProduct[productId] : undefined
+  const currentError = productId ? reviewErrors[productId] : undefined
 
   const cancelPublication = useCallback(() => {
     reviewRequest.current?.controller.abort()
     reviewRequest.current = null
-  }, [])
+    dispatch(reviewSessionCleared())
+  }, [dispatch])
 
   useEffect(() => {
     mounted.current = true
@@ -27,45 +33,27 @@ export default function useReviews({ productId, user, token, sessionVersion, ses
   }, [subscribeSessionChange, cancelPublication])
 
   useEffect(() => {
-    if (!productId || requestedReviews.current.has(productId)) return
+    if (!productId || currentReviews !== undefined || currentError) return
     let active = true
-    let finished = false
     const controller = new AbortController()
+    // StrictMode descarta el primer montaje antes de despachar el GET.
     queueMicrotask(() => {
-      if (!active || requestedReviews.current.has(productId)) return
-      requestedReviews.current.add(productId)
-      getReviews(productId, { signal: controller.signal })
-        .then((reviews) => {
-          if (!active || controller.signal.aborted) return
-          finished = true
-          setReviewsByProduct((current) => ({ ...current, [productId]: reviews }))
-          setReviewErrors((current) => ({ ...current, [productId]: '' }))
-        })
-        .catch(() => {
-          if (!active || controller.signal.aborted) return
-          finished = true
-          setReviewErrors((current) => ({ ...current, [productId]: 'No pudimos cargar las reseñas.' }))
-        })
+      if (active) dispatch(fetchProductReviews({ productId }, { signal: controller.signal }))
     })
     return () => {
       active = false
-      if (!finished) {
-        controller.abort()
-        requestedReviews.current.delete(productId)
-      }
+      controller.abort()
     }
-  }, [productId, reviewAttempt])
+  }, [productId, currentReviews, currentError, dispatch])
 
   function retryReviews() {
-    if (!productId || !reviewErrors[productId]) return
-    requestedReviews.current.delete(productId)
-    setReviewErrors((current) => ({ ...current, [productId]: '' }))
-    setReviewAttempt((current) => current + 1)
+    if (!productId || !currentError) return
+    dispatch(reviewRetryRequested({ productId }))
   }
 
   function canReview(product) {
     return Boolean(user && reviewsByProduct[product.id]
-      && !reviewsByProduct[product.id].some((review) => review.userId === user.id))
+      && !reviewsByProduct[product.id].some(review => review.userId === user.id))
   }
 
   function publishReview(product, { rating, comment }) {
@@ -80,20 +68,19 @@ export default function useReviews({ productId, user, token, sessionVersion, ses
     const version = sessionVersion.current
     const operation = { controller: new AbortController() }
     const signal = AbortSignal.any([operation.controller.signal, sessionAbort.current.signal])
-    const sameSession = () => mounted.current && !signal.aborted && version === sessionVersion.current
-    const isCurrent = () => sameSession() && reviewRequest.current === operation
+    const isCurrent = () => mounted.current && !signal.aborted
+      && version === sessionVersion.current && reviewRequest.current === operation
     reviewRequest.current = operation
 
-    return createReview(product.id, { rating, comment: trimmedComment }, { token, signal })
-      .then((review) => {
+    return dispatch(publishProductReview({
+      productId: product.id, rating, comment: trimmedComment,
+      ownerId: user.id, generation: version,
+    }, { signal })).unwrap()
+      .then(() => {
         if (!isCurrent()) throw new Error('La sesión cambió.')
-        setReviewsByProduct((current) => sameSession() ? {
-          ...current,
-          [product.id]: [review, ...(current[product.id] ?? []).filter((item) => item.id !== review.id)],
-        } : current)
         return true
       })
-      .catch((error) => {
+      .catch(error => {
         if (isCurrent() && error.status === 401) {
           logout()
           setSessionError(error.message)
