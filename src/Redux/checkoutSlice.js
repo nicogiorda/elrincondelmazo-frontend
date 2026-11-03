@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
-import { API_BASE_URL } from '../services/httpClient.js'
-import { validateQuote, isConfirmedOrder, normalizeOrderError, ambiguousFailure } from '../services/ordersApi.js'
+import { API_BASE_URL } from '../config/api.js'
+import { validateQuote, isConfirmedOrder, normalizeOrderError, ambiguousFailure } from '../utils/orderValidation.js'
 
 // Un fallo de transporte / 201 sin detalle puede haber creado una orden.
 // Conservar ambiguous y status en rejected es esencial para no duplicar pagos.
