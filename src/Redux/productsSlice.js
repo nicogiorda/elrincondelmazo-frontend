@@ -12,6 +12,8 @@ const initialState = productsAdapter.getInitialState({
   page: null,
   detail: null,
   related: null,
+  selection: { status: 'idle', requestId: null, error: '' },
+  metadata: {},
 })
 
 const queryKey = ({ query, cacheVersion, attempt }) => `${query}:${cacheVersion}:${attempt}`
@@ -115,6 +117,40 @@ export const fetchRelatedProducts = createAsyncThunk(
   },
 )
 
+// El selector de promociones y los metadatos del carrito comparten la misma
+// caché. Sus GET también nacen en thunks; el coordinador no importa Axios.
+export const fetchSelectionProducts = createAsyncThunk(
+  'products/fetchSelection',
+  async ({ query }, { extra, signal }) => {
+    const page = await extra.productCache.loadPage(query, async (search, { signal: requestSignal }) => {
+      const { data } = await axios.get(API_BASE_URL + '/products?' + search, { signal: requestSignal })
+        .catch(error => { throw normalizeProductHttpError(error) })
+      requestSignal.throwIfAborted()
+      return validateProductsPage(data)
+    })
+    signal.throwIfAborted()
+    return page
+  },
+)
+
+export const fetchCachedProduct = createAsyncThunk(
+  'products/fetchCachedProduct',
+  async ({ productId, onlyMissing = false, context = 'detail', revalidate = false }, { extra, signal }) => {
+    const product = await extra.productCache.loadProduct(productId, {
+      signal, onlyMissing, context, revalidate,
+      fetchProduct: async (id, { signal: requestSignal }) => {
+        if (productIdFrom(id) === null) throw new Error('La URL del producto no es válida.')
+        const { data } = await axios.get(API_BASE_URL + '/products/' + id, { signal: requestSignal })
+          .catch(error => { throw normalizeProductHttpError(error) })
+        requestSignal.throwIfAborted()
+        return validateProductDetail(data, id)
+      },
+    })
+    signal.throwIfAborted()
+    return product
+  },
+)
+
 const productsSlice = createSlice({
   name: 'products',
   initialState,
@@ -125,6 +161,34 @@ const productsSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      .addCase(fetchSelectionProducts.pending, (state, action) => {
+        state.selection = { status: 'loading', requestId: action.meta.requestId, error: '' }
+      })
+      .addCase(fetchSelectionProducts.fulfilled, (state, action) => {
+        if (state.selection.requestId !== action.meta.requestId) return
+        state.selection = { status: 'succeeded', requestId: null, error: '' }
+      })
+      .addCase(fetchSelectionProducts.rejected, (state, action) => {
+        if (state.selection.requestId !== action.meta.requestId) return
+        state.selection = { status: action.meta.aborted ? 'idle' : 'failed',
+          requestId: null, error: action.meta.aborted ? '' : action.error.message }
+      })
+      .addCase(fetchCachedProduct.pending, (state, action) => {
+        state.metadata[action.meta.arg.productId] = {
+          status: 'loading', requestId: action.meta.requestId, error: '',
+        }
+      })
+      .addCase(fetchCachedProduct.fulfilled, (state, action) => {
+        const id = action.meta.arg.productId
+        if (state.metadata[id]?.requestId !== action.meta.requestId) return
+        state.metadata[id] = { status: 'succeeded', requestId: null, error: '' }
+      })
+      .addCase(fetchCachedProduct.rejected, (state, action) => {
+        const id = action.meta.arg.productId
+        if (state.metadata[id]?.requestId !== action.meta.requestId) return
+        state.metadata[id] = { status: action.meta.aborted ? 'idle' : 'failed',
+          requestId: null, error: action.meta.aborted ? '' : action.error.message }
+      })
       .addCase(fetchHomeProducts.pending, (state, action) => {
         state.home = {
           key: homeKey(action.meta.arg), requestId: action.meta.requestId,
