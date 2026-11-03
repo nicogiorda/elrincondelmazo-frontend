@@ -1,84 +1,91 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { invalidatePublicPromotions, loadPublicPromotions, subscribePublicPromotionsInvalidation } from '../src/services/publicPromotions.js'
+import axios from 'axios'
+import { configureStore } from '@reduxjs/toolkit'
+import reducer, { fetchPublicPromotions, publicPromotionsInvalidated } from '../src/Redux/promotionsSlice.js'
+import { invalidatePublicPromotions, subscribePublicPromotionsInvalidation } from '../src/services/publicPromotions.js'
 
-const promo = { id: 8, type: 'COLECCION', discountPercentage: '15.50', active: true, description: null, startDate: null, endDate: null }
-const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } })
+const promo = { id: 8, type: 'COLECCION', discountPercentage: '15.50', active: true,
+  description: null, startDate: null, endDate: null }
+const create = () => configureStore({ reducer: { promotions: reducer } })
+const pub = store => store.getState().promotions.public
+const reply = data => ({ status: 200, data })
 const deferred = () => {
   let resolve
-  const promise = new Promise((done) => { resolve = done })
+  const promise = new Promise(done => { resolve = done })
   return { promise, resolve }
 }
-async function withFetch(handler, fn) {
-  const original = globalThis.fetch
-  invalidatePublicPromotions()
-  globalThis.fetch = handler
-  try { await fn() } finally { globalThis.fetch = original; invalidatePublicPromotions() }
-}
 
-test('public promotions share one pending HTTP call and map data', async () => {
+test('Redux comparte GET público pendiente y mapea respuestas Axios sin JWT', async t => {
   const gate = deferred()
-  let count = 0
-  await withFetch((url) => {
-    assert.equal(url, 'http://localhost:8080/promotions/public')
-    count++
+  const mock = t.mock.method(axios, 'request', async config => {
+    assert.equal(config.url, 'http://localhost:8080/promotions/public')
+    assert.equal(config.method, 'GET')
+    assert.equal(config.headers, undefined)
     return gate.promise
-  }, async () => {
-    const first = loadPublicPromotions()
-    const second = loadPublicPromotions()
-    assert.strictEqual(first, second)
-    assert.equal(count, 1)
-    gate.resolve(json([promo]))
-    const list = await first
-    assert.deepEqual(list, [{ ...promo, kind: 'collection', discount: 15.5, enabled: true, description: '', startDate: '', endDate: '' }])
   })
+  const store = create()
+  const first = store.dispatch(fetchPublicPromotions())
+  assert.equal(pub(store).status, 'loading')
+  const second = store.dispatch(fetchPublicPromotions())
+  const ignored = await second
+  assert.ok(fetchPublicPromotions.rejected.match(ignored))
+  assert.equal(ignored.meta.condition, true)
+  assert.equal(mock.mock.callCount(), 1)
+  gate.resolve(reply([promo]))
+  await first
+  assert.deepEqual(pub(store).items, [{ ...promo, kind: 'collection', discount: 15.5,
+    enabled: true, description: '', startDate: '', endDate: '' }])
+  assert.equal(pub(store).status, 'succeeded')
 })
 
-test('a settled request is not used as a persistent cache', async () => {
+test('una nueva visita permite otro GET; no se guarda un caché persistente', async t => {
+  const mock = t.mock.method(axios, 'request', async () => reply([]))
+  const store = create()
+  await store.dispatch(fetchPublicPromotions())
+  store.dispatch(publicPromotionsInvalidated())
+  await store.dispatch(fetchPublicPromotions())
+  assert.equal(mock.mock.callCount(), 2)
+  assert.deepEqual(pub(store).items, [])
+})
+
+test('error HTTP e invalid JSON quedan en rejected y permiten reintentar', async t => {
   let calls = 0
-  await withFetch(() => {
-    calls++
-    return Promise.resolve(json([]))
-  }, async () => {
-    assert.deepEqual(await loadPublicPromotions(), [])
-    assert.deepEqual(await loadPublicPromotions(), [])
-    assert.equal(calls, 2)
+  t.mock.method(axios, 'request', async () => {
+    if (++calls === 1) throw { response: { status: 500, data: { message: 'Fallo' } } }
+    if (calls === 2) return reply({ promotions: [] })
+    return reply([promo])
   })
+  const store = create()
+  const first = await store.dispatch(fetchPublicPromotions())
+  assert.equal(first.error.status, 500)
+  assert.match(pub(store).error, /HTTP 500/)
+  await store.dispatch(fetchPublicPromotions())
+  assert.match(pub(store).error, /no es una lista/)
+  await store.dispatch(fetchPublicPromotions())
+  assert.equal(pub(store).items[0].id, 8)
+  assert.equal(pub(store).error, '')
+  assert.equal(calls, 3)
 })
 
-test('errors and invalid JSON shapes propagate and allow later retry', async () => {
+test('una respuesta vieja nunca borra ni reemplaza el GET posterior a invalidación', async t => {
+  const first = deferred(), second = deferred()
   let calls = 0
-  await withFetch(() => {
-    calls++
-    if (calls === 1) return Promise.resolve(json({ message: 'Server problem' }, 500))
-    if (calls === 2) return Promise.resolve(json({ promotions: [] }))
-    return Promise.resolve(json([promo]))
-  }, async () => {
-    await assert.rejects(loadPublicPromotions(), /HTTP 500/)
-    await assert.rejects(loadPublicPromotions(), /no es una lista/)
-    assert.equal((await loadPublicPromotions())[0].id, 8)
-    assert.equal(calls, 3)
-  })
+  t.mock.method(axios, 'request', async () => ++calls === 1 ? first.promise : second.promise)
+  const store = create()
+  const previous = store.dispatch(fetchPublicPromotions())
+  store.dispatch(publicPromotionsInvalidated())
+  const newer = store.dispatch(fetchPublicPromotions())
+  first.resolve(reply([promo]))
+  await previous
+  assert.equal(pub(store).status, 'loading')
+  second.resolve(reply([]))
+  await newer
+  assert.deepEqual(pub(store).items, [])
+  assert.equal(calls, 2)
 })
 
-test('a stale request completing cannot clear a newer pending request', async () => {
-  const first = deferred()
-  const second = deferred()
-  let calls = 0
-  await withFetch(() => (++calls === 1 ? first.promise : second.promise), async () => {
-    const previous = loadPublicPromotions()
-    invalidatePublicPromotions()
-    const newer = loadPublicPromotions()
-    first.resolve(json([promo]))
-    await previous
-    assert.strictEqual(loadPublicPromotions(), newer)
-    assert.equal(calls, 2)
-    second.resolve(json([]))
-    assert.deepEqual(await newer, [])
-  })
-})
-
-test('invalidations notify listeners and cleanup removes subscription', async () => {
+test('invalidación notifica a Home y cleanup elimina suscripción', () => {
   let called = 0
   const unsubscribe = subscribePublicPromotionsInvalidation(() => { called++ })
   invalidatePublicPromotions()
