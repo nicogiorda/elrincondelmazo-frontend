@@ -15,8 +15,13 @@ export default function useAlbum({ userId, onUnauthorized }) {
     if (!userId) return
     const own = dispatch(loadOwnAlbum({ ownerId: userId }))
     const purchases = dispatch(loadAlbumPurchases({ ownerId: userId }))
+    for (const task of [own, purchases]) {
+      task.unwrap().catch(error => {
+        if (error?.status === 401) onUnauthorized?.()
+      })
+    }
     return () => { own.abort(); purchases.abort() }
-  }, [dispatch, userId])
+  }, [dispatch, userId, onUnauthorized])
 
   const run = useCallback(async (action) => {
     if (!userId || state.saving) return false
@@ -54,5 +59,11 @@ export default function useAlbum({ userId, onUnauthorized }) {
 
   const clearError = useCallback(() => dispatch(albumMutationErrorCleared()), [dispatch])
 
-  return { ...state, addPurchase, addManual, moveCard, removeCard, setVisibility, retry, clearError }
+  // Never render album data from account A while account B is being restored.
+  const belongsToUser = state.ownerId === userId
+  return { ...state,
+    album: belongsToUser ? state.album : null,
+    purchases: belongsToUser ? state.purchases : [],
+    addPurchase, addManual, moveCard, removeCard, setVisibility, retry, clearError,
+  }
 }
