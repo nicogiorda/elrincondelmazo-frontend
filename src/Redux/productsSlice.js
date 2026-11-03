@@ -117,6 +117,15 @@ export const fetchRelatedProducts = createAsyncThunk(
   },
 )
 
+// createAsyncThunk descarta status/code al serializar Error por defecto.
+// El carrito y el editor necesitan distinguir HTTP 403/404 y conexión perdida.
+const serializeMetadataError = error => ({
+  name: error?.name || 'Error',
+  message: error?.message || 'No pudimos consultar el producto.',
+  ...(typeof error?.status === 'number' ? { status: error.status } : {}),
+  ...(typeof error?.code === 'string' ? { code: error.code } : {}),
+})
+
 // El selector de promociones y los metadatos del carrito comparten la misma
 // caché. Sus GET también nacen en thunks; el coordinador no importa Axios.
 export const fetchSelectionProducts = createAsyncThunk(
@@ -130,7 +139,7 @@ export const fetchSelectionProducts = createAsyncThunk(
     })
     signal.throwIfAborted()
     return page
-  },
+  }, { serializeError: serializeMetadataError },
 )
 
 export const fetchCachedProduct = createAsyncThunk(
@@ -148,7 +157,7 @@ export const fetchCachedProduct = createAsyncThunk(
     })
     signal.throwIfAborted()
     return product
-  },
+  }, { serializeError: serializeMetadataError },
 )
 
 const productsSlice = createSlice({
