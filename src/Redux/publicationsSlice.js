@@ -1,10 +1,10 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
-import { API_BASE_URL } from '../services/httpClient.js'
+import { API_BASE_URL } from '../config/api.js'
 import {
   normalizePublicationError, publicationPath, validatePublicationsPage,
   validatePublication, validatePublicationPhoto,
-} from '../services/publicationsApi.js'
+} from '../utils/publicationValidation.js'
 
 export const PUBLICATIONS_TTL = 60_000
 const newestFirst = (a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id - a.id
