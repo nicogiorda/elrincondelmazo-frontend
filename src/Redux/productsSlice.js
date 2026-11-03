@@ -1,7 +1,7 @@
 import { createAsyncThunk, createEntityAdapter, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
-import { API_BASE_URL } from '../services/httpClient.js'
-import { validateProductsPage, validateProductDetail, normalizeProductHttpError } from '../services/productsApi.js'
+import { API_BASE_URL } from '../config/api.js'
+import { validateProductsPage, validateProductDetail, normalizeProductHttpError } from '../utils/productValidation.js'
 import { productIdFrom } from '../utils/productId.js'
 
 // Redux es la única fuente de las entidades públicas.
