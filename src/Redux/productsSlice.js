@@ -1,4 +1,8 @@
 import { createAsyncThunk, createEntityAdapter, createSlice } from '@reduxjs/toolkit'
+import axios from 'axios'
+import { API_BASE_URL } from '../services/httpClient.js'
+import { validateProductsPage, validateProductDetail, normalizeProductHttpError } from '../services/productsApi.js'
+import { productIdFrom } from '../utils/productId.js'
 
 // Redux es la única fuente de las entidades públicas.
 // La caché conserva solo tareas de coordinación (TTL, solicitudes y versiones).
@@ -18,7 +22,12 @@ const detailKey = ({ productId, cacheVersion, attempt }) => `${productId}:${atte
 export const fetchProductPage = createAsyncThunk(
   'products/fetchPage',
   async ({ query }, { extra }) => {
-    const page = await extra.productCache.loadPage(query)
+    const page = await extra.productCache.loadPage(query, async (search, { signal }) => {
+      const { data } = await axios.get(API_BASE_URL + '/products?' + search, { signal })
+        .catch(error => { throw normalizeProductHttpError(error) })
+      signal.throwIfAborted()
+      return validateProductsPage(data)
+    })
     return {
       ids: page.content.map((product) => product.id),
       number: page.number,
@@ -38,7 +47,16 @@ export const fetchProductDetail = createAsyncThunk(
   'products/fetchDetail',
   async ({ productId }, { extra, signal, rejectWithValue }) => {
     try {
-      const product = await extra.productCache.loadProduct(productId, { signal })
+      const product = await extra.productCache.loadProduct(productId, {
+        signal,
+        fetchProduct: async (id, { signal }) => {
+          if (productIdFrom(id) === null) throw new Error('La URL del producto no es válida.')
+          const { data } = await axios.get(API_BASE_URL + '/products/' + id, { signal })
+            .catch(error => { throw normalizeProductHttpError(error) })
+          signal.throwIfAborted()
+          return validateProductDetail(data, id)
+        },
+      })
       return { status: product.status }
     } catch (error) {
       if (signal.aborted || error.name === 'AbortError') throw error
@@ -60,7 +78,12 @@ const relatedKey = ({ collectionId, cacheVersion }) => `${collectionId}:${cacheV
 export const fetchHomeProducts = createAsyncThunk(
   'products/fetchHome',
   async (_args, { extra }) => {
-    const page = await extra.productCache.loadPage('page=0&size=4')
+    const page = await extra.productCache.loadPage('page=0&size=4', async (search, { signal }) => {
+      const { data } = await axios.get(API_BASE_URL + '/products?' + search, { signal })
+        .catch(error => { throw normalizeProductHttpError(error) })
+      signal.throwIfAborted()
+      return validateProductsPage(data)
+    })
     return page.content.map(product => product.id)
   },
   {
@@ -74,7 +97,14 @@ export const fetchHomeProducts = createAsyncThunk(
 export const fetchRelatedProducts = createAsyncThunk(
   'products/fetchRelated',
   async ({ collectionId }, { extra }) => {
-    const page = await extra.productCache.loadPage('page=0&size=5&collectionId=' + collectionId)
+    const page = await extra.productCache.loadPage(
+      'page=0&size=5&collectionId=' + collectionId, async (search, { signal }) => {
+        const { data } = await axios.get(API_BASE_URL + '/products?' + search, { signal })
+          .catch(error => { throw normalizeProductHttpError(error) })
+        signal.throwIfAborted()
+        return validateProductsPage(data)
+      },
+    )
     return page.content.map(product => product.id)
   },
   {
