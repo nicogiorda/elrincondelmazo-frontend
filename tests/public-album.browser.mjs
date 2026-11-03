@@ -72,9 +72,18 @@ try {
   await page.locator('[aria-label="Ver carta Carta Cars, posición 6"]').waitFor()
   await page.getByText('Página 1 / 1').waitFor()
 
-  // A second user's album is distinct and never inherits the first user's cards.
-  await page.goto(base + '/album/usuario/14')
+  // SPA navigation between album owners must reset the selected section/page.
+  await page.getByRole('button', { name: 'NBA', exact: true }).click()
+  await page.getByRole('button', { name: 'Siguiente' }).click()
+  await page.getByText('Página 2 / 2').waitFor()
+  await page.evaluate(() => {
+    history.pushState({}, '', '/album/usuario/14')
+    dispatchEvent(new PopStateEvent('popstate'))
+  })
   await page.getByText('Colección del usuario #14').waitFor()
+  await page.getByText('Página 1 / 2').waitFor()
+  assert.equal(await page.getByText('Página 2 / 2').count(), 0)
+  // A second user's album is distinct and never inherits the first user's cards.
   await page.goto(base + '/album/usuario/13')
   await page.locator('[aria-label="Ver carta Carta compartida, posición 1"]').waitFor()
 

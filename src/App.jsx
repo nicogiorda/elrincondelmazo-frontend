@@ -199,7 +199,7 @@ function App() {
         <MyAlbum user={user} cartCount={cartCount} onLogout={logout} />
       </ProtectedRoute>} />
       <Route path="/album/usuario/:userId" element={<ProtectedRoute user={user}>
-        <PublicAlbum viewer={user} cartCount={cartCount} onLogout={logout} />
+        <PublicAlbum key={location.pathname} viewer={user} cartCount={cartCount} onLogout={logout} />
       </ProtectedRoute>} />
       <Route path="/mi-perfil" element={<ProtectedRoute user={user}>
         <Profile key={JSON.stringify(user)} {...account} onSave={saveProfile} saving={profileSaving}
