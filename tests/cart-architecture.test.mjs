@@ -128,7 +128,7 @@ test('Promociones públicas y administrativas usan Redux Toolkit + Axios según 
     }
   }
   assert.match(service, /import axios from 'axios'/)
-  assert.match(service, /axios\.request\(/)
+  assert.doesNotMatch(service, /axios\.request\(/)
   assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\s*\(/)
   assert.match(store, /promotions:\s*promotionsReducer/)
   assert.match(store, /promotionToken: \(\) =>/)
@@ -166,7 +166,7 @@ test('Reseñas usan Redux Toolkit + Axios y conservan formularios locales', () =
     }
   }
   assert.match(service, /import axios from 'axios'/)
-  assert.match(service, /axios\.request\(/)
+  assert.doesNotMatch(service, /axios\.request\(/)
   assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\s*\(/)
   assert.match(store, /reviews:\s*reviewsReducer/)
   assert.match(store, /reviewsToken: \(\) =>/)
@@ -287,7 +287,7 @@ test('Publicaciones administra GET, POST, PUT, PATCH, DELETE y fotos mediante Re
     }
   }
   assert.match(service, /import axios from 'axios'/)
-  assert.match(service, /axios\.request\(/)
+  assert.doesNotMatch(service, /axios\.request\(/)
   assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\(/)
   assert.match(store, /publications:\s*publicationsReducer/)
   assert.match(store, /publicationToken: \(\) =>/)
