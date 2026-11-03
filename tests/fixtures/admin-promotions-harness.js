@@ -1,5 +1,7 @@
 import React, { StrictMode, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Provider } from 'react-redux'
+import { store } from '../../src/Redux/store.js'
 import useAdminPromotions from '../../src/hooks/useAdminPromotions.js'
 
 const noop = () => {}
@@ -14,4 +16,4 @@ function Harness() {
     React.createElement('pre', { id: 'state' }, JSON.stringify(admin.promotions)),
     React.createElement('span', { id: 'busy' }, String(admin.busyId)))
 }
-createRoot(document.getElementById('root')).render(React.createElement(StrictMode, {}, React.createElement(Harness)))
+createRoot(document.getElementById('root')).render(React.createElement(Provider, { store }, React.createElement(StrictMode, {}, React.createElement(Harness))))
