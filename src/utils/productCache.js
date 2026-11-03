@@ -1,4 +1,4 @@
-import { getProducts, getProduct, productError } from '../services/productsApi.js'
+import { productError } from './productValidation.js'
 
 export const PRODUCT_CACHE_TTL = 60_000
 const PAGE_CAPACITY = 20
@@ -8,7 +8,9 @@ const aborted = () => new DOMException('La solicitud fue cancelada.', 'AbortErro
 // Orquesta solicitudes, vigencia e invalidaciones. En producción, entityStore
 // vincula las entidades a Redux; en tests puede funcionar con una Map aislada.
 // Las páginas guardan IDs y no copias de los objetos.
-export function createProductCache({ now = Date.now, api = { getProducts, getProduct }, entityStore } = {}) {
+// El cache NO hace HTTP. En producción cada lectura recibe axios.get desde
+// un thunk; los tests pueden inyectar funciones fake mediante api.
+export function createProductCache({ now = Date.now, api = {}, entityStore } = {}) {
   const products = entityStore ?? new Map()
   const freshness = new Map(), pages = new Map(), details = new Map()
   const listeners = new Set(), invalidations = new Set()
@@ -31,6 +33,7 @@ export function createProductCache({ now = Date.now, api = { getProducts, getPro
   })
 
   function loadPage(query, fetchPage = api.getProducts) {
+    if (typeof fetchPage !== 'function') return Promise.reject(new Error('La lectura del catálogo requiere un thunk de Redux.'))
     const cached = pages.get(query)
     if (cached && (cached.pending || (now() - cached.time < PRODUCT_CACHE_TTL && cached.ids.every(isFresh)))) {
       return readPage(cached)
@@ -62,6 +65,9 @@ export function createProductCache({ now = Date.now, api = { getProducts, getPro
     if (!revalidate && isFresh(id)) return Promise.resolve(products.get(id))
     let entry = details.get(id)
     if (!entry) {
+      if (typeof fetchProduct !== 'function') {
+        return Promise.reject(new Error('El detalle requiere un thunk de Redux.'))
+      }
       const controller = new AbortController()
       entry = { controller, version: generation, stamp: ++sequence, consumers: new Set() }
       entry.promise = fetchProduct(id, { signal: controller.signal })
