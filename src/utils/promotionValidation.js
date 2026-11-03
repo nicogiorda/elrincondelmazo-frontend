@@ -41,5 +41,3 @@ export function normalizePromotionError(error, signal) {
   return error
 }
 
-// Axios realiza la unica solicitud; Redux Toolkit administra el ciclo asincrono.
-// Ningun interceptor ni token global puede filtrar datos entre cuentas.
