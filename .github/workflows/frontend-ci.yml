@@ -3,7 +3,7 @@ name: Frontend checks
 on:
   pull_request: # También valida PRs encadenados antes del merge a main
   push:
-    branches: [main]
+    branches: [main, 'feature/album-*']
 
 jobs:
   frontend:
