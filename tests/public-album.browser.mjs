@@ -61,6 +61,8 @@ try {
   await page.getByRole('heading', { name: 'Álbum público', exact: true }).waitFor()
   await page.locator('[aria-label="Ver carta Carta compartida, posición 1"]').waitFor()
   assert.equal(await page.locator('section[data-album-theme="NBA"]').count(), 1)
+  assert.equal(await page.locator('.album-collection-tab__cover').count(), 4)
+  assert.equal(await page.locator('.album-sheet__art').count(), 1)
   assert.equal(await page.locator('[data-album-slot]').count(), 9)
   assert.equal(await page.getByRole('button', { name: 'Ver carta Carta compartida, posición 1' }).count(), 0)
   assert.equal(await page.getByRole('button', { name: 'Espacio 2 vacío' }).count(), 0)

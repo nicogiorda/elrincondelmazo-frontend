@@ -17,6 +17,7 @@ export default function AlbumPage({ section, pageNumber, onPageChange, readOnly 
     <section aria-label={'Página ' + pageNumber + ' de ' + sectionLabel(section.key)}
       data-album-theme={section.key} data-watermark={theme?.watermark ?? ''}
       className="album-sheet" style={themeStyle}>
+      <img src={theme?.pageArt ?? theme?.cover} alt="" aria-hidden="true" className="album-sheet__art" />
       <div className="album-sheet__content">
         <header className="album-sheet__header">
           <div className="min-w-0">
@@ -35,9 +36,13 @@ export default function AlbumPage({ section, pageNumber, onPageChange, readOnly 
             const content = card ? (
               <>
                 <span className="album-slot__media">
-                  {card.imageUrl
-                    ? <img src={card.imageUrl} alt={card.name} className="album-slot__image" />
-                    : <span className="album-slot__fallback">CARTA</span>}
+                  {card.imageUrl ? (
+                    <>
+                      <img src={card.imageUrl} alt="" aria-hidden="true"
+                        className="album-slot__image-backdrop" />
+                      <img src={card.imageUrl} alt={card.name} className="album-slot__image" />
+                    </>
+                  ) : <span className="album-slot__fallback">CARTA</span>}
                 </span>
                 <span className="album-slot__caption">
                   <span className="album-slot__name" title={card.name}>{card.name}</span>
