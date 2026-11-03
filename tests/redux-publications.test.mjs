@@ -1,7 +1,6 @@
-import './fixtures/axios-verb-test-bridge.mjs'
+import { mockAxios } from './fixtures/mockAxios.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import axios from 'axios'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, { fetchOwnPublications, saveOwnPublication, setOwnPublicationStatus,
   removeOwnPublication, uploadOwnPublicationPhoto, publicationsSessionCleared,
@@ -35,7 +34,7 @@ test('la sesión empieza sin datos privados y sin JWT dentro del store', () => {
 
 test('GET carga páginas de 20, ordena resultados y maneja pending/fulfilled', async t => {
   const pages = []
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     assert.equal(config.method, 'GET')
     assert.equal(config.headers.Authorization, 'Bearer session-fixture-token')
     const parsed = new URL(config.url)
@@ -60,7 +59,7 @@ test('GET carga páginas de 20, ordena resultados y maneja pending/fulfilled', a
 
 test('GET con 403 conserva mensaje, status y permite otra solicitud', async t => {
   let fail = true
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     if (fail) throw { response: { status: 403, data: { message: 'No autorizado' } } }
     return reply({ content: [product(1)], totalPages: 1, number: 0 })
   })
@@ -78,7 +77,7 @@ test('GET con 403 conserva mensaje, status y permite otra solicitud', async t =>
 test('POST, PUT, PATCH y DELETE se ejecutan mediante thunks Axios', async t => {
   const saved = product(8)
   const calls = []
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     calls.push({ method: config.method, url: config.url })
     if (config.method === 'POST') return reply(saved, 201)
     if (config.method === 'PUT') return reply({ ...saved, name: 'Editada' })
@@ -103,7 +102,7 @@ test('POST, PUT, PATCH y DELETE se ejecutan mediante thunks Axios', async t => {
 
 test('subida de fotos usa thunk, no escribe un File en el store ni guarda el token', async t => {
   const file = new File(['fixture'], 'foto.png', { type: 'image/png' })
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     assert.equal(config.method, 'POST')
     assert.equal(config.url, 'http://localhost:8080/products/images')
     assert.ok(config.data instanceof FormData)
@@ -119,7 +118,7 @@ test('subida de fotos usa thunk, no escribe un File en el store ni guarda el tok
 })
 
 test('errores 401 y 404 se conservan para cerrar sesión o presentar mensaje', async t => {
-  const mock = t.mock.method(axios, 'request', async () => { throw {
+  const mock = mockAxios(t, async () => { throw {
     response: { status: 401, data: { message: 'No vale' } },
   } })
   const store = makeStore()
@@ -137,7 +136,7 @@ test('errores 401 y 404 se conservan para cerrar sesión o presentar mensaje', a
 test('un GET anterior que finaliza después de guardar no reemplaza la edición', async t => {
   const gate = deferred()
   let gets = 0
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     if (config.method === 'GET') {
       gets++
       if (gets === 2) return gate.promise
@@ -160,7 +159,7 @@ test('un GET anterior que finaliza después de guardar no reemplaza la edición'
 
 test('logout y cambio de cuenta descartan acciones anteriores del mismo usuario o de otro', async t => {
   const gate = deferred()
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     if (config.method === 'GET') return gate.promise
     return reply(product(2, 2))
   })
