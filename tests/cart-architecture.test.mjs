@@ -72,12 +72,36 @@ test('Publicaciones delega HTTP y App solo compone su interfaz', () => {
   assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /ownPublications|products\/mine|products\/images/)
 })
 
-test('Promociones administrativas separa HTTP, estado y conversiones puras', () => {
-  assert.doesNotMatch(modules.get(resolve(root, 'hooks/useAdminPromotions.js')), /\bfetch\s*\(/)
-  for (const path of ['services/promotionsApi.js', 'utils/promotionMapper.js']) {
-    assert.doesNotMatch(modules.get(resolve(root, path)), /from\s*['"]react['"]|\buseState\(/)
+test('Promociones públicas y administrativas usan Redux Toolkit + Axios según la demo', () => {
+  const admin = modules.get(resolve(root, 'hooks/useAdminPromotions.js'))
+  const publicHook = modules.get(resolve(root, 'hooks/usePublicPromotions.js'))
+  const slice = modules.get(resolve(root, 'Redux/promotionsSlice.js'))
+  const service = modules.get(resolve(root, 'services/promotionsApi.js'))
+  const events = modules.get(resolve(root, 'services/publicPromotions.js'))
+  const store = modules.get(resolve(root, 'Redux/store.js'))
+  assert.match(admin, /useSelector\(/)
+  assert.match(admin, /dispatch\(fetchAdminPromotions\(/)
+  assert.match(admin, /dispatch\(operation\(/)
+  assert.doesNotMatch(admin, /\buseState\s*\(|\bgetPromotions\s*\(|\bsavePromotion\s*\(|\bfetch\s*\(/)
+  assert.match(publicHook, /useSelector\(/)
+  assert.match(publicHook, /dispatch\(fetchPublicPromotions\(/)
+  assert.doesNotMatch(publicHook, /\bloadPublicPromotions\s*\(|\bfetch\s*\(/)
+  assert.doesNotMatch(events, /\bfetch\s*\(|axios\.request\(/)
+  for (const name of ['fetchAdminPromotions', 'saveAdminPromotion',
+    'toggleAdminPromotion', 'fetchPublicPromotions']) {
+    assert.ok(slice.includes('export const ' + name + ' = createAsyncThunk('), name)
+    for (const stage of ['pending', 'fulfilled', 'rejected']) {
+      assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
+    }
   }
-  assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /promotionRequest|promotionAttempt|promotionFromBackend|promotionToBackend|API_URL.*promotions/)
+  assert.match(service, /import axios from 'axios'/)
+  assert.match(service, /axios\.request\(/)
+  assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\s*\(/)
+  assert.match(store, /promotions:\s*promotionsReducer/)
+  assert.match(store, /promotionToken: \(\) =>/)
+  assert.doesNotMatch(slice, /\blocalStorage\s*\(|\buseState\s*\(/)
+  assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')),
+    /promotionRequest|promotionAttempt|promotionFromBackend|promotionToBackend|API_URL.*promotions/)
 })
 
 test('Cuenta delega HTTP y conserva el usuario únicamente en useSession', () => {
@@ -87,13 +111,29 @@ test('Cuenta delega HTTP y conserva el usuario únicamente en useSession', () =>
   assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /\/users\/me|accountRequest|setProfileSaving|setDeactivating|setDeactivateError/)
 })
 
-test('Reseñas separa HTTP, estado y composición', () => {
-  assert.match(modules.get(resolve(root, 'services/reviewsApi.js')), /\/reviews/)
-  assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /\/reviews/)
-  assert.doesNotMatch(modules.get(resolve(root, 'hooks/useReviews.js')), /\bfetch\s*\(/)
-  assert.doesNotMatch(modules.get(resolve(root, 'services/reviewsApi.js')), /from\s*['"]react['"]|\buseState\s*\(/)
+test('Reseñas usan Redux Toolkit + Axios y conservan formularios locales', () => {
+  const hook = modules.get(resolve(root, 'hooks/useReviews.js'))
+  const slice = modules.get(resolve(root, 'Redux/reviewsSlice.js'))
+  const service = modules.get(resolve(root, 'services/reviewsApi.js'))
+  const store = modules.get(resolve(root, 'Redux/store.js'))
   const app = modules.get(resolve(root, 'App.jsx'))
-  assert.doesNotMatch(app, /\bfetch\s*\(|setReviewsByProduct|requestedReviews|reviewRequest/)
+  assert.match(hook, /useSelector\(/)
+  assert.match(hook, /dispatch\(fetchProductReviews\(/)
+  assert.match(hook, /dispatch\(publishProductReview\(/)
+  assert.doesNotMatch(hook, /\buseState\s*\(|\bgetReviews\s*\(|\bcreateReview\s*\(|\bfetch\s*\(/)
+  for (const name of ['fetchProductReviews', 'publishProductReview']) {
+    assert.ok(slice.includes('export const ' + name + ' = createAsyncThunk('), name)
+    for (const stage of ['pending', 'fulfilled', 'rejected']) {
+      assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
+    }
+  }
+  assert.match(service, /import axios from 'axios'/)
+  assert.match(service, /axios\.request\(/)
+  assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\s*\(/)
+  assert.match(store, /reviews:\s*reviewsReducer/)
+  assert.match(store, /reviewsToken: \(\) =>/)
+  assert.doesNotMatch(slice, /\blocalStorage\s*\(|\buseState\s*\(/)
+  assert.doesNotMatch(app, /\/reviews|\bfetch\s*\(|setReviewsByProduct|requestedReviews|reviewRequest/)
   assert.doesNotMatch(app, /\bfunction\s+canReview\s*\(/)
   assert.match(app, /useReviews\s*\(/)
 })
