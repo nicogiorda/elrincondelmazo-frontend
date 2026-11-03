@@ -6,7 +6,7 @@ import { configureStore } from '@reduxjs/toolkit'
 import userReducer, {
   fetchAuthenticatedUser, loginUser, registerUser, stageAuthCredentials,
   discardAuthCredentials, sessionAuthenticated, sessionEnded, sessionErrorChanged,
-  authenticatedUserUpdated,
+  authenticatedUserUpdated, updateAccountProfile, deactivateAccountUser,
 } from '../src/Redux/userSlice.js'
 
 const user = { id: 3, firstName: 'QA', lastName: 'Usuario',
@@ -148,4 +148,74 @@ test('la autenticación falla si el registro temporal ya se descartó', async ()
   const action = await store.dispatch(loginUser(id))
   assert.ok(loginUser.rejected.match(action))
   assert.match(action.error.message, /ya no está disponible/)
+})
+
+test('PUT /users/me usa thunk Axios explícito y actualiza sólo la cuenta activa', async t => {
+  const updated = { ...user, firstName: 'Actualizado' }
+  const request = t.mock.method(axios, 'request', async config => {
+    assert.equal(config.url, 'http://localhost:8080/users/me')
+    assert.equal(config.method, 'PUT')
+    assert.deepEqual(config.data, { firstName: updated.firstName, lastName: user.lastName, email: user.email })
+    assert.equal(config.headers.Authorization, 'Bearer ' + candidate)
+    return { data: updated, status: 200 }
+  })
+  const store = create()
+  store.dispatch(sessionAuthenticated({ user, token: candidate }))
+  const result = await store.dispatch(updateAccountProfile({ userId: 3, form: updated }))
+  assert.ok(updateAccountProfile.fulfilled.match(result))
+  assert.equal(state(store).accountStatus, 'succeeded')
+  assert.equal(state(store).user.firstName, 'Actualizado')
+  assert.equal(JSON.stringify(result).includes(candidate), false)
+  assert.equal(request.mock.callCount(), 1)
+})
+
+test('PUT /users/me/deactivate no cierra sesión antes de confirmación', async t => {
+  const inactive = { ...user, active: false }
+  const request = t.mock.method(axios, 'request', async config => {
+    assert.equal(config.url, 'http://localhost:8080/users/me/deactivate')
+    assert.equal(config.method, 'PUT')
+    assert.equal(config.data, undefined)
+    assert.equal(config.headers.Authorization, 'Bearer ' + candidate)
+    return { status: 200, data: inactive }
+  })
+  const store = create()
+  store.dispatch(sessionAuthenticated({ user, token: candidate }))
+  const result = await store.dispatch(deactivateAccountUser({ userId: 3 }))
+  assert.ok(deactivateAccountUser.fulfilled.match(result))
+  assert.equal(state(store).user.active, true, 'El hook cierra sesión después de confirmar el PUT')
+  assert.equal(state(store).accountStatus, 'succeeded')
+  assert.equal(request.mock.callCount(), 1)
+})
+
+test('PUT 401 conserva status y error; logout descarta respuesta tardía de perfil', async t => {
+  const mock = t.mock.method(axios, 'request', async () => {
+    throw { response: { status: 401, data: {} } }
+  })
+  const store = create()
+  store.dispatch(sessionAuthenticated({ user, token: candidate }))
+  await assert.rejects(store.dispatch(updateAccountProfile({ userId: 3, form: user })).unwrap(),
+    { status: 401, message: 'Tu sesión venció. Volvé a ingresar.' })
+  assert.equal(state(store).user.id, 3)
+  const gate = wait()
+  mock.mock.mockImplementation(async () => gate.promise)
+  const late = store.dispatch(updateAccountProfile({ userId: 3, form: user }))
+  store.dispatch(sessionEnded())
+  gate.resolve({ status: 200, data: { ...user, firstName: 'Anterior' } })
+  await late
+  assert.equal(state(store).user, null)
+  assert.equal(state(store).token, null)
+})
+
+test('falla de red del PUT se serializa como TypeError para la recuperación de cuenta', async t => {
+  t.mock.method(axios, 'request', async () => {
+    throw { code: 'ERR_NETWORK', message: 'Network Error' }
+  })
+  const store = create()
+  store.dispatch(sessionAuthenticated({ user, token: candidate }))
+  const rejected = await store.dispatch(updateAccountProfile({ userId: 3, form: user }))
+  assert.ok(updateAccountProfile.rejected.match(rejected))
+  assert.equal(rejected.error.name, 'TypeError')
+  assert.equal(rejected.error.code, 'ERR_NETWORK')
+  assert.equal(state(store).accountStatus, 'failed')
+  assert.equal(state(store).user.id, 3)
 })
