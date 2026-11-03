@@ -36,15 +36,15 @@
   box-shadow: 0 2px 0 var(--album-accent);
 }
 
-.album-collection-tab__symbol {
-  display: grid;
-  flex: 0 0 1.9rem;
-  height: 1.9rem;
-  place-items: center;
-  border-radius: .5rem;
-  background: var(--album-accent);
-  color: #fff;
-  font-size: 1.05rem;
+.album-collection-tab__cover {
+  display: block;
+  flex: 0 0 3.1rem;
+  width: 3.1rem;
+  height: 2.25rem;
+  border-radius: .45rem;
+  border: 1px solid color-mix(in srgb, var(--album-accent) 45%, white);
+  object-fit: cover;
+  object-position: center;
 }
 
 .album-collection-tab__label {
@@ -134,6 +134,81 @@
     linear-gradient(130deg, #ffe7f3, #e9e9ff);
 }
 
+/* Arte real de la colección, colocado EN la hoja (no en la web exterior).
+   Se mantiene en el margen y detrás de las cartas para no tapar fotos ni controles. */
+.album-sheet__art {
+  position: absolute;
+  z-index: 0;
+  top: 23%;
+  right: .65rem;
+  display: block;
+  width: clamp(6.25rem, 16%, 11.5rem);
+  height: 11rem;
+  border: 2px solid color-mix(in srgb, var(--album-accent) 45%, white);
+  border-radius: .9rem;
+  object-fit: cover;
+  object-position: center;
+  opacity: .36;
+  transform: rotate(7deg);
+  pointer-events: none;
+  box-shadow: .35rem .35rem 0 color-mix(in srgb, var(--album-accent) 18%, transparent);
+}
+
+.album-sheet[data-album-theme="NBA"] .album-sheet__art {
+  top: 18%;
+  transform: rotate(9deg);
+  opacity: .3;
+}
+
+.album-sheet[data-album-theme="CARS"] .album-sheet__art {
+  top: auto;
+  bottom: 16%;
+  transform: rotate(-7deg);
+  opacity: .35;
+}
+
+.album-sheet[data-album-theme="MARVEL"] .album-sheet__art {
+  top: 21%;
+  transform: rotate(7deg);
+  opacity: .4;
+}
+
+.album-sheet[data-album-theme="MY_LITTLE_PONY"] .album-sheet__art {
+  top: 24%;
+  transform: rotate(-6deg);
+  opacity: .35;
+}
+
+/* Identidad de cada hoja: marcas de cancha, banderas, explosiones y arcoíris. */
+.album-sheet[data-album-theme="NBA"]::after {
+  background:
+    radial-gradient(circle at 8% 65%, transparent 0 2.2rem, rgba(36,100,154,.19) 2.23rem 2.33rem, transparent 2.36rem),
+    linear-gradient(90deg, transparent 0 5%, rgba(36,100,154,.17) 5.05% 5.2%, transparent 5.25%),
+    linear-gradient(0deg, transparent 0 50%, rgba(36,100,154,.1) 50.1% 50.3%, transparent 50.4%);
+}
+
+.album-sheet[data-album-theme="CARS"]::after {
+  background: repeating-conic-gradient(from 45deg at 25% 25%, rgba(35,25,21,.17) 0% 25%, transparent 0% 50%);
+  background-size: 1.8rem 1.8rem;
+  background-repeat: repeat-x;
+  background-position: bottom left;
+  background-origin: border-box;
+}
+
+.album-sheet[data-album-theme="MARVEL"]::after {
+  background:
+    repeating-conic-gradient(from 12deg at 5% 48%, rgba(165,44,36,.10) 0 4deg, transparent 4deg 27deg),
+    radial-gradient(circle at 93% 89%, rgba(165,44,36,.18) 1px, transparent 2px);
+  background-size: auto, 1.4rem 1.4rem;
+}
+
+.album-sheet[data-album-theme="MY_LITTLE_PONY"]::after {
+  background:
+    radial-gradient(ellipse at 0% 100%, transparent 0 9rem, rgba(255,180,197,.38) 9.15rem 9.6rem, transparent 9.75rem),
+    radial-gradient(ellipse at 0% 100%, transparent 0 10rem, rgba(181,152,220,.32) 10.1rem 10.55rem, transparent 10.7rem),
+    radial-gradient(circle at 85% 17%, rgba(255,255,255,.9) 0 .25rem, transparent .28rem);
+}
+
 .album-sheet__content {
   position: relative;
   z-index: 1;
@@ -187,7 +262,7 @@
 
 .album-slot {
   display: flex;
-  height: clamp(6rem, 13.5svh, 9.25rem);
+  height: clamp(9rem, 20svh, 11rem);
   min-width: 0;
   flex-direction: column;
   align-items: stretch;
@@ -222,22 +297,34 @@ button.album-slot:focus-visible {
 }
 
 .album-slot__media {
-  display: grid;
+  position: relative;
+  display: block;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  place-items: center;
   overflow: hidden;
   border-radius: .45rem;
   background: color-mix(in srgb, var(--album-paper) 45%, white);
 }
 
+.album-slot__image-backdrop,
 .album-slot__image {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+}
+
+.album-slot__image-backdrop {
+  object-fit: cover;
+  filter: blur(.75rem);
+  opacity: .22;
+  transform: scale(1.08);
+}
+
+/* La foto principal siempre se muestra COMPLETA, sea vertical u horizontal. */
+.album-slot__image {
   object-fit: contain;
   object-position: center;
 }
@@ -405,8 +492,9 @@ button.album-slot:focus-visible {
   .album-dashboard { align-items: flex-start; flex-direction: column; }
   .album-dashboard__tools { justify-content: flex-start; }
   .album-collection-tab__label { font-size: .76rem; }
-  .album-collection-tab__symbol { flex-basis: 1.55rem; height: 1.55rem; font-size: .9rem; }
-  .album-slot { height: clamp(6rem, 29vw, 8rem); padding: .22rem; border-radius: .5rem; }
+  .album-collection-tab__cover { flex-basis: 2.35rem; width: 2.35rem; height: 1.9rem; }
+  .album-sheet__art { display: none; }
+  .album-slot { height: clamp(7.2rem, 34vw, 9.5rem); padding: .22rem; border-radius: .5rem; }
   .album-slot__origin { display: none; }
   .album-slot__name { font-size: .62rem; }
   .album-slot__action { font-size: .57rem; }
@@ -415,7 +503,15 @@ button.album-slot:focus-visible {
 }
 
 @media (min-width: 640px) and (max-height: 780px) {
-  .album-slot { height: clamp(5.75rem, 13svh, 7.1rem); }
+  .album-slot { height: clamp(8.5rem, 19svh, 9.5rem); }
+}
+
+@media (min-width: 640px) and (max-width: 1050px) {
+  .album-sheet__art { width: 8rem; height: 8rem; opacity: .2; right: -.5rem; }
+}
+
+@media (min-width: 640px) and (max-width: 850px) {
+  .album-sheet__art { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -87,9 +87,13 @@ try {
   const slots = page.locator('[data-album-slot]')
   assert.equal(await slots.count(), 9)
   const firstSlot = await slots.first().boundingBox()
-  assert.ok(firstSlot && firstSlot.height >= 90 && firstSlot.height <= 165,
-    'los casilleros mantienen una altura compacta')
+  assert.ok(firstSlot && firstSlot.height >= 130 && firstSlot.height <= 200,
+    'los casilleros reservan espacio suficiente para ver las fotografías')
   assert.equal(await page.locator('section[data-album-theme="NBA"]').count(), 1)
+  assert.equal(await page.locator('.album-collection-tab__cover').count(), 4,
+    'las cuatro colecciones conservan sus portadas originales')
+  assert.equal(await page.locator('section[data-album-theme="NBA"] .album-sheet__art').count(), 1,
+    'la página usa arte propio de la colección')
   await page.getByRole('button', { name: 'Cars', exact: true }).click()
   assert.equal(await page.locator('section[data-album-theme="CARS"]').count(), 1)
   assert.equal(await slots.count(), 9)
