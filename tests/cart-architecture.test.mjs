@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, resolve, relative } from 'node:path'
 import test from 'node:test'
 
@@ -44,15 +44,13 @@ test('Pedidos y checkout muestran los métodos Axios en los slices, sin HTTP en 
   const paths = owners.map(([path]) => relative(root, path).replaceAll('\\', '/'))
   assert.ok(paths.includes('Redux/ordersSlice.js'))
   assert.ok(paths.includes('Redux/checkoutSlice.js'))
-  assert.ok(paths.includes('services/ordersApi.js'))
+  assert.ok(paths.every(path => path.startsWith('Redux/')), 'Pedidos: el transporte solo puede estar en Redux')
   for (const name of ['useCheckout', 'useCheckoutQuote', 'useOrders']) {
     assert.doesNotMatch(modules.get(resolve(root, 'hooks/' + name + '.js')), /\bfetch\s*\(/)
   }
-  const service = modules.get(resolve(root, 'services/ordersApi.js'))
-  assert.doesNotMatch(service, /from\s*['"]react['"]|\buseState\(/)
-  assert.match(service, /import axios from 'axios'/)
-  assert.doesNotMatch(service, /axios\.request\(/)
-  assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\s*\(/)
+  const validation = modules.get(resolve(root, 'utils/orderValidation.js'))
+  assert.match(validation, /isConfirmedOrder/)
+  assert.doesNotMatch(validation, /import axios|\bfetch\s*\(/)
   assert.doesNotMatch(modules.get(resolve(root, 'views/Checkout.jsx')), /randomUUID|\buseEffect\s*\(|\buseRef\s*\(/)
 })
 
@@ -76,32 +74,36 @@ test('Cada thunk hace explícito el método Axios igual que postSlice de la curs
     assert.doesNotMatch(source, /axios\.request\(/, file + ': sin request genérico')
     for (const verb of verbs) assert.match(source, new RegExp('axios\\.' + verb + '\\('), file + ': ' + verb)
   }
-  for (const file of ['authApi', 'cartApi', 'ordersApi', 'publicationsApi',
-    'promotionsApi', 'reviewsApi', 'accountApi']) {
-    const source = modules.get(resolve(root, 'services/' + file + '.js'))
-    assert.doesNotMatch(source, /axios\.request\(|\bfetch\s*\(/, file)
-  }
-  assert.doesNotMatch(modules.get(resolve(root, 'services/httpClient.js')), /\bfetch\s*\(/)
+  const transportOwners = [...modules]
+    .filter(([, content]) => /import axios from ['"]axios['"]/.test(content))
+    .map(([path]) => relative(root, path).replaceAll('\\', '/')).sort()
+  assert.deepEqual(transportOwners, Object.keys(methods).map(file => 'Redux/' + file).sort())
+  assert.equal(existsSync(resolve(root, 'services')), false,
+    'Eliminar los servicios HTTP duplicados, no mantener una segunda API')
+  assert.match(modules.get(resolve(root, 'config/api.js')), /API_BASE_URL/)
 })
 
 test('Los hooks de catálogo y metadatos delegan HTTP y el servicio no depende de React', () => {
   for (const name of ['useCatalog', 'useProductCache', 'useProductDetail', 'useCatalogFilters', 'useCollections', 'useCartMetadata']) {
     assert.doesNotMatch(modules.get(resolve(root, 'hooks/' + name + '.js')), /\bfetch\s*\(/)
   }
-  assert.doesNotMatch(modules.get(resolve(root, 'services/productsApi.js')), /from\s*['"]react['"]|\buseState\(/)
+  const cache = modules.get(resolve(root, 'utils/productCache.js'))
+  assert.doesNotMatch(cache, /import axios|productsApi|axios\.get\(/)
+  assert.match(modules.get(resolve(root, 'Redux/productsSlice.js')), /fetchCachedProduct = createAsyncThunk/)
+  assert.match(modules.get(resolve(root, 'Redux/productsSlice.js')), /fetchSelectionProducts = createAsyncThunk/)
 })
 
 test('Los endpoints del carrito están en los thunks y useCart no hace HTTP directo', () => {
   const owners = [...modules].filter(([, source]) => /['"`]\/carts(?:\/|['"`])/.test(source))
   const paths = owners.map(([path]) => relative(root, path).replaceAll('\\', '/'))
   assert.ok(paths.includes('Redux/cartSlice.js'))
-  assert.ok(paths.includes('services/cartApi.js'))
+  assert.ok(paths.every(path => path === 'Redux/cartSlice.js'), 'Carrito: endpoints solo en cartSlice')
   assert.doesNotMatch(modules.get(resolve(root, 'hooks/useCart.js')), /\bfetch\s*\(/)
 })
 
 test('Publicaciones delega HTTP y App solo compone su interfaz', () => {
   assert.doesNotMatch(modules.get(resolve(root, 'hooks/usePublications.js')), /\bfetch\s*\(/)
-  assert.doesNotMatch(modules.get(resolve(root, 'services/publicationsApi.js')), /from\s*['"]react['"]|\buseState\(/)
+  assert.match(modules.get(resolve(root, 'utils/publicationValidation.js')), /validatePublication/)
   assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /ownPublications|products\/mine|products\/images/)
 })
 
@@ -109,8 +111,8 @@ test('Promociones públicas y administrativas usan Redux Toolkit + Axios según 
   const admin = modules.get(resolve(root, 'hooks/useAdminPromotions.js'))
   const publicHook = modules.get(resolve(root, 'hooks/usePublicPromotions.js'))
   const slice = modules.get(resolve(root, 'Redux/promotionsSlice.js'))
-  const service = modules.get(resolve(root, 'services/promotionsApi.js'))
-  const events = modules.get(resolve(root, 'services/publicPromotions.js'))
+  const validation = modules.get(resolve(root, 'utils/promotionValidation.js'))
+  const events = modules.get(resolve(root, 'utils/publicPromotionEvents.js'))
   const store = modules.get(resolve(root, 'Redux/store.js'))
   assert.match(admin, /useSelector\(/)
   assert.match(admin, /dispatch\(fetchAdminPromotions\(/)
@@ -127,9 +129,8 @@ test('Promociones públicas y administrativas usan Redux Toolkit + Axios según 
       assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
     }
   }
-  assert.match(service, /import axios from 'axios'/)
-  assert.doesNotMatch(service, /axios\.request\(/)
-  assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\s*\(/)
+  assert.match(validation, /validatePromotion/)
+  assert.doesNotMatch(validation, /import axios|\bfetch\s*\(/)
   assert.match(store, /promotions:\s*promotionsReducer/)
   assert.match(store, /promotionToken: \(\) =>/)
   assert.doesNotMatch(slice, /\blocalStorage\s*\(|\buseState\s*\(/)
@@ -145,14 +146,14 @@ test('Cuenta despacha axios.put en userSlice con Redux Toolkit', () => {
   assert.match(slice, /axios\.put\(/)
   assert.match(slice, /updateAccountProfile = createAsyncThunk/)
   assert.match(slice, /deactivateAccountUser = createAsyncThunk/)
-  assert.doesNotMatch(modules.get(resolve(root, 'services/accountApi.js')), /from\s*['"]react['"]|\buseState\(/)
+  assert.match(modules.get(resolve(root, 'utils/accountValidation.js')), /validateAccountResponse/)
   assert.doesNotMatch(modules.get(resolve(root, 'App.jsx')), /\/users\/me|accountRequest|setProfileSaving|setDeactivating|setDeactivateError/)
 })
 
 test('Reseñas usan Redux Toolkit + Axios y conservan formularios locales', () => {
   const hook = modules.get(resolve(root, 'hooks/useReviews.js'))
   const slice = modules.get(resolve(root, 'Redux/reviewsSlice.js'))
-  const service = modules.get(resolve(root, 'services/reviewsApi.js'))
+  const validation = modules.get(resolve(root, 'utils/reviewValidation.js'))
   const store = modules.get(resolve(root, 'Redux/store.js'))
   const app = modules.get(resolve(root, 'App.jsx'))
   assert.match(hook, /useSelector\(/)
@@ -165,9 +166,8 @@ test('Reseñas usan Redux Toolkit + Axios y conservan formularios locales', () =
       assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
     }
   }
-  assert.match(service, /import axios from 'axios'/)
-  assert.doesNotMatch(service, /axios\.request\(/)
-  assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\s*\(/)
+  assert.match(validation, /normalizeReviewError/)
+  assert.doesNotMatch(validation, /import axios|\bfetch\s*\(/)
   assert.match(store, /reviews:\s*reviewsReducer/)
   assert.match(store, /reviewsToken: \(\) =>/)
   assert.doesNotMatch(slice, /\blocalStorage\s*\(|\buseState\s*\(/)
@@ -214,9 +214,7 @@ test('Redux administra el estado del carrito; useCart coordina mutaciones y sesi
   assert.doesNotMatch(hook, /\b(getCart|addCartItem|updateCartItemQuantity|removeCartItem)\s*\(/)
   assert.match(hook, /dispatch\(fetchCart\(/)
   assert.match(hook, /dispatch\(changeCartItemQuantity\(/)
-  assert.match(modules.get(resolve(root, 'services/cartApi.js')), /import axios from 'axios'/)
-  assert.doesNotMatch(modules.get(resolve(root, 'services/cartApi.js')), /axios\.request\(/)
-  assert.doesNotMatch(modules.get(resolve(root, 'services/cartApi.js')), /\bfetch\s*\(|requestJson\s*\(/)
+  assert.match(modules.get(resolve(root, 'utils/cartErrors.js')), /normalizeCartError/)
   assert.match(store, /cartToken: \(\) =>/)
   assert.match(store, /cart:\s*cartReducer/)
 })
@@ -274,7 +272,7 @@ test('Redux + Axios coordinan cotizacion y confirmacion con respuestas serializa
 test('Publicaciones administra GET, POST, PUT, PATCH, DELETE y fotos mediante Redux y Axios', () => {
   const hook = modules.get(resolve(root, 'hooks/usePublications.js'))
   const slice = modules.get(resolve(root, 'Redux/publicationsSlice.js'))
-  const service = modules.get(resolve(root, 'services/publicationsApi.js'))
+  const validation = modules.get(resolve(root, 'utils/publicationValidation.js'))
   const store = modules.get(resolve(root, 'Redux/store.js'))
   assert.match(hook, /useSelector\(/)
   assert.match(hook, /dispatch\(/)
@@ -286,9 +284,8 @@ test('Publicaciones administra GET, POST, PUT, PATCH, DELETE y fotos mediante Re
       assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
     }
   }
-  assert.match(service, /import axios from 'axios'/)
-  assert.doesNotMatch(service, /axios\.request\(/)
-  assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(|readResponse\(/)
+  assert.match(validation, /validatePublicationsPage/)
+  assert.doesNotMatch(validation, /import axios|\bfetch\s*\(/)
   assert.match(store, /publications:\s*publicationsReducer/)
   assert.match(store, /publicationToken: \(\) =>/)
   assert.doesNotMatch(slice, /\buseState\s*\(|\blocalStorage\s*\(/)
@@ -297,7 +294,7 @@ test('Publicaciones administra GET, POST, PUT, PATCH, DELETE y fotos mediante Re
 test('Usuarios replica el flujo Redux Toolkit + Axios del demo de Gisele', () => {
   const hook = modules.get(resolve(root, 'hooks/useSession.js'))
   const slice = modules.get(resolve(root, 'Redux/userSlice.js'))
-  const api = modules.get(resolve(root, 'services/authApi.js'))
+  const validation = modules.get(resolve(root, 'utils/authValidation.js'))
   const store = modules.get(resolve(root, 'Redux/store.js'))
   assert.match(store, /users:\s*userReducer/)
   assert.match(hook, /useSelector\(/)
@@ -310,9 +307,8 @@ test('Usuarios replica el flujo Redux Toolkit + Axios del demo de Gisele', () =>
       assert.ok(slice.includes('.addCase(' + name + '.' + stage), name + '.' + stage)
     }
   }
-  assert.match(api, /import axios from 'axios'/)
-  assert.doesNotMatch(api, /axios\.request\(/)
-  assert.doesNotMatch(api, /\bfetch\s*\(|requestJson\s*\(/)
+  assert.match(validation, /validateUser/)
+  assert.doesNotMatch(validation, /import axios|\bfetch\s*\(/)
   assert.match(slice, /stageAuthCredentials/)
   assert.match(store, /stateSanitizer:/)
   assert.doesNotMatch(slice, /password:\s*[^,]+/)
