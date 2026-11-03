@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
-import { API_BASE_URL } from '../services/httpClient.js'
-import { normalizeCartError } from '../services/cartApi.js'
+import { API_BASE_URL } from '../config/api.js'
+import { normalizeCartError } from '../utils/cartErrors.js'
 
 // Solo estado serializable del carrito. El token, los bloqueos síncronos,
 // AbortController y las promesas permanecen en useCart/useSession.
