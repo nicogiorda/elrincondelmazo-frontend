@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchPublicPromotions, publicPromotionsInvalidated } from '../Redux/promotionsSlice.js'
-import { subscribePublicPromotionsInvalidation } from '../services/publicPromotions.js'
+import { subscribePublicPromotionsInvalidation } from '../utils/publicPromotionEvents.js'
 
 // Los datos públicos y las etapas de la promesa viven en Redux. Solo el
 // identificador de reintento pertenece a la vista Home.
