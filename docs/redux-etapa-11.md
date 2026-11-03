@@ -1,5 +1,8 @@
 # Etapa 11 — Promociones y reseñas con Redux Toolkit + Axios
 
+> **Actualización de la etapa 12:** para seguir el estilo de `postSlice.js` de la profesora, los métodos `axios.get/post/put/patch/delete` se ejecutan **directamente dentro de los `createAsyncThunk`**. Las referencias de este documento a solicitudes desde `services/*Api.js` describen la implementación histórica anterior. Ver [etapa 12](redux-etapa-12.md) para el circuito vigente.
+
+
 ## Referencias obligatorias de la cursada
 
 Comparado con la **clase de Gisele del 27/10/2026**, en particular la explicación de `createAsyncThunk`, `createSlice`, `extraReducers`, `Provider`, `useSelector` y `useDispatch`, y con la demo `Demo Redux` (`postSlice.js`, `store.js`, `PostList.jsx`).
