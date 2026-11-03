@@ -1,6 +1,3 @@
-import axios from 'axios'
-import { API_BASE_URL } from './httpClient.js'
-
 export function accountUnconfirmed(message) {
   const error = new Error(message)
   error.code = 'ACCOUNT_UNCONFIRMED'
@@ -36,24 +33,4 @@ export function validateAccountResponse(user, userId, deactivating = false) {
       : 'El servidor devolvió datos de usuario inválidos.')
   }
   return user
-}
-
-// Funciones públicas mantenidas para quienes usan accountApi directamente.
-// En la aplicación las llamadas se despachan desde userSlice con Axios explícito.
-export async function updateProfile({ firstName, lastName, email }, { userId, token, signal } = {}) {
-  const response = await axios.put(API_BASE_URL + '/users/me',
-    { firstName, lastName, email }, { signal, headers: { Authorization: 'Bearer ' + token } },
-  ).catch(error => { throw normalizeAccountError(error, signal) })
-  signal?.throwIfAborted()
-  if (response.status !== 200) throw accountUnconfirmed('El servidor no confirmó la operación de cuenta.')
-  return validateAccountResponse(response.data, userId)
-}
-
-export async function deactivateAccount({ userId, token, signal } = {}) {
-  const response = await axios.put(API_BASE_URL + '/users/me/deactivate',
-    undefined, { signal, headers: { Authorization: 'Bearer ' + token } },
-  ).catch(error => { throw normalizeAccountError(error, signal) })
-  signal?.throwIfAborted()
-  if (response.status !== 200) throw accountUnconfirmed('El servidor no confirmó la operación de cuenta.')
-  return validateAccountResponse(response.data, userId, true)
 }

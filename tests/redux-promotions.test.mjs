@@ -1,7 +1,6 @@
-import './fixtures/axios-verb-test-bridge.mjs'
+import { mockAxios } from './fixtures/mockAxios.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import axios from 'axios'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, {
   fetchAdminPromotions, saveAdminPromotion, toggleAdminPromotion,
@@ -32,7 +31,7 @@ const deferred = () => {
 
 test('GET: pending/fulfilled, mapping y token fuera de Redux', async t => {
   const gate = deferred()
-  const mock = t.mock.method(axios, 'request', async config => {
+  const mock = mockAxios(t, async config => {
     assert.equal(config.url, 'http://localhost:8080/promotions')
     assert.equal(config.method, 'GET')
     assert.equal(config.headers.Authorization, 'Bearer admin-jwt-fixture')
@@ -55,7 +54,7 @@ test('GET: pending/fulfilled, mapping y token fuera de Redux', async t => {
 
 test('GET vacío es válido; HTTP 503 conserva listado anterior y reintento funciona', async t => {
   let call = 0
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     if (++call === 1) return reply([fixture()])
     if (call === 2) throw { response: { status: 503, data: { message: 'Error servidor' } } }
     return reply([])
@@ -76,7 +75,7 @@ test('GET vacío es válido; HTTP 503 conserva listado anterior y reintento func
 test('GET previo no sobreescribe PUT confirmado, sin refetch innecesario', async t => {
   const gate = deferred()
   const calls = []
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     calls.push(config)
     if (config.method === 'GET') return gate.promise
     return reply(fixture(87, { name: 'Nombre actualizado' }))
@@ -97,7 +96,7 @@ test('GET previo no sobreescribe PUT confirmado, sin refetch innecesario', async
 
 test('POST crea una promoción y PATCH altera estado sin emitir GET posterior', async t => {
   const calls = []
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     calls.push(config)
     if (config.method === 'POST') return reply(fixture(99), 201)
     return reply(fixture(99, { active: false }))
@@ -118,7 +117,7 @@ test('POST crea una promoción y PATCH altera estado sin emitir GET posterior', 
 })
 
 test('error en PATCH conserva último listado válido y libera bloqueo', async t => {
-  const mock = t.mock.method(axios, 'request', async () => reply([fixture()]))
+  const mock = mockAxios(t, async () => reply([fixture()]))
   const store = create()
   await store.dispatch(fetchAdminPromotions(scope()))
   mock.mock.mockImplementation(async () => {
@@ -135,7 +134,7 @@ test('error en PATCH conserva último listado válido y libera bloqueo', async t
 })
 
 test('HTTP 401 en GET y PATCH preserva status en unwrap para cerrar sesión', async t => {
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     throw { response: { status: 401, data: {} } }
   })
   const store = create()
@@ -148,7 +147,7 @@ test('HTTP 401 en GET y PATCH preserva status en unwrap para cerrar sesión', as
 test('logout y nuevo usuario ignoran GET antiguo que termina después', async t => {
   const oldGate = deferred()
   let call = 0
-  t.mock.method(axios, 'request', async () => ++call === 1 ? oldGate.promise : reply([fixture(2)]))
+  mockAxios(t, async () => ++call === 1 ? oldGate.promise : reply([fixture(2)]))
   const store = create()
   const stale = store.dispatch(fetchAdminPromotions(scope()))
   store.dispatch(promotionsSessionCleared())
@@ -162,7 +161,7 @@ test('logout y nuevo usuario ignoran GET antiguo que termina después', async t 
 
 test('logout tras POST iniciado no restaura datos antiguos al recibir éxito tardío', async t => {
   const gate = deferred()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = create()
   const pending = store.dispatch(saveAdminPromotion({
     ...scope(), promotion: promotionFromBackend(fixture()),
@@ -176,7 +175,7 @@ test('logout tras POST iniciado no restaura datos antiguos al recibir éxito tar
 
 test('cancelación externa no publica un error falso ni revive la sesión', async t => {
   const gate = deferred()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = create(), controller = new AbortController()
   const pending = store.dispatch(fetchAdminPromotions(scope(), { signal: controller.signal }))
   controller.abort()

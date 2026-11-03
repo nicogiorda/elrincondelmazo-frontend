@@ -1,7 +1,6 @@
-import './fixtures/axios-verb-test-bridge.mjs'
+import { mockAxios } from './fixtures/mockAxios.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import axios from 'axios'
 import { configureStore } from '@reduxjs/toolkit'
 import userReducer, {
   fetchAuthenticatedUser, loginUser, registerUser, stageAuthCredentials,
@@ -39,7 +38,7 @@ test('userSlice gestiona usuario y recuperación, sin contraseñas en el store',
 
 test('GET de recuperación se despacha con createAsyncThunk, Axios y extraReducers', async t => {
   const gate = wait()
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     assert.equal(config.url, 'http://localhost:8080/users/me')
     assert.equal(config.method, 'GET')
     assert.equal(config.headers.Authorization, 'Bearer ' + candidate)
@@ -57,7 +56,7 @@ test('GET de recuperación se despacha con createAsyncThunk, Axios y extraReduce
 
 test('login y registro son thunks: pendientes, completados, credenciales opacas', async t => {
   const calls = []
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     calls.push(config)
     if (config.url.endsWith('/users/me')) return { data: user, status: 200 }
     return { data: { access_token: candidate }, status: 200 }
@@ -85,7 +84,7 @@ test('login y registro son thunks: pendientes, completados, credenciales opacas'
 })
 
 test('fallo de login se publica en rejected con status 401 y permite reintento', async t => {
-  const mock = t.mock.method(axios, 'request')
+  const mock = mockAxios(t)
   mock.mock.mockImplementation(async () => { throw { response: { status: 401, data: {} } } })
   const store = create()
   let key = stageAuthCredentials(credentials)
@@ -104,7 +103,7 @@ test('fallo de login se publica en rejected con status 401 y permite reintento',
 
 test('logout elimina el requestId: respuesta antigua no restaura usuario ni JWT', async t => {
   const gate = wait()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = create()
   const request = store.dispatch(fetchAuthenticatedUser())
   store.dispatch(sessionEnded())
@@ -117,7 +116,7 @@ test('logout elimina el requestId: respuesta antigua no restaura usuario ni JWT'
 
 test('abort de thunk no deja una sesión parcial', async t => {
   const gate = wait()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = create()
   const key = stageAuthCredentials(credentials)
   const request = store.dispatch(loginUser(key))
@@ -152,7 +151,7 @@ test('la autenticación falla si el registro temporal ya se descartó', async ()
 
 test('PUT /users/me usa thunk Axios explícito y actualiza sólo la cuenta activa', async t => {
   const updated = { ...user, firstName: 'Actualizado' }
-  const request = t.mock.method(axios, 'request', async config => {
+  const request = mockAxios(t, async config => {
     assert.equal(config.url, 'http://localhost:8080/users/me')
     assert.equal(config.method, 'PUT')
     assert.deepEqual(config.data, { firstName: updated.firstName, lastName: user.lastName, email: user.email })
@@ -171,7 +170,7 @@ test('PUT /users/me usa thunk Axios explícito y actualiza sólo la cuenta activ
 
 test('PUT /users/me/deactivate no cierra sesión antes de confirmación', async t => {
   const inactive = { ...user, active: false }
-  const request = t.mock.method(axios, 'request', async config => {
+  const request = mockAxios(t, async config => {
     assert.equal(config.url, 'http://localhost:8080/users/me/deactivate')
     assert.equal(config.method, 'PUT')
     assert.equal(config.data, undefined)
@@ -188,7 +187,7 @@ test('PUT /users/me/deactivate no cierra sesión antes de confirmación', async 
 })
 
 test('PUT 401 conserva status y error; logout descarta respuesta tardía de perfil', async t => {
-  const mock = t.mock.method(axios, 'request', async () => {
+  const mock = mockAxios(t, async () => {
     throw { response: { status: 401, data: {} } }
   })
   const store = create()
@@ -207,7 +206,7 @@ test('PUT 401 conserva status y error; logout descarta respuesta tardía de perf
 })
 
 test('falla de red del PUT se serializa como TypeError para la recuperación de cuenta', async t => {
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     throw { code: 'ERR_NETWORK', message: 'Network Error' }
   })
   const store = create()

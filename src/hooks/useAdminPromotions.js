@@ -3,7 +3,7 @@ import { useDispatch, useSelector, useStore } from 'react-redux'
 import {
   fetchAdminPromotions, saveAdminPromotion, toggleAdminPromotion, promotionsSessionCleared,
 } from '../Redux/promotionsSlice.js'
-import { invalidatePublicPromotions } from '../services/publicPromotions.js'
+import { invalidatePublicPromotions } from '../utils/publicPromotionEvents.js'
 
 // App conserva una unica instancia: Redux guarda datos y estados de las
 // promesas, el hook coordina cancelación, exclusión y cambio de sesión.

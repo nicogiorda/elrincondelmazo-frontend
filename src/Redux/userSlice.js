@@ -1,8 +1,8 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
-import { API_BASE_URL } from '../services/httpClient.js'
-import { authHttpError, normalizeAuthError, validateUser } from '../services/authApi.js'
-import { accountUnconfirmed, normalizeAccountError, validateAccountResponse } from '../services/accountApi.js'
+import { API_BASE_URL } from '../config/api.js'
+import { authHttpError, normalizeAuthError, validateUser } from '../utils/authValidation.js'
+import { accountUnconfirmed, normalizeAccountError, validateAccountResponse } from '../utils/accountValidation.js'
 
 // Redux DevTools no debe registrar contraseñas en meta.arg.
 // El formulario registra credenciales temporalmente; las acciones llevan solo un ID.

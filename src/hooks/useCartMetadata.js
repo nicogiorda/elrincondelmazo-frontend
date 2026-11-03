@@ -42,7 +42,7 @@ export default function useCartMetadata({ cart, products, userId, token, session
         if (!isCurrent()) return
         setMetadata((current) => ({ ...current, [id]: { loading: true } }))
         try {
-          // loadProduct comparte la consulta pública y delega HTTP en productsApi.
+          // loadProduct despacha fetchCachedProduct; el GET está en productsSlice.
           await loadProduct(id, { signal: request.controller.signal, isCurrent, onlyMissing: true, context: 'cart' })
           if (!isCurrent()) return
           setMetadata((current) => ({ ...current, [id]: { loading: false } }))

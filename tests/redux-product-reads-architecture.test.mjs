@@ -25,9 +25,17 @@ test('Redux administra el ciclo completo de Home, catálogo, detalle y relaciona
   }
 })
 
-test('el transporte público utiliza Axios; no hay fetch en productsApi', () => {
-  const service = read('services/productsApi.js')
-  assert.match(service, /import axios from 'axios'/)
-  assert.match(service, /axios\.get\(/)
-  assert.doesNotMatch(service, /\bfetch\s*\(|requestJson\s*\(/)
+test('Todos los GET públicos, incluso metadatos de carrito/selector, salen de thunks Redux', () => {
+  const slice = read('Redux/productsSlice.js')
+  const cache = read('utils/productCache.js')
+  const hook = read('hooks/useCatalog.js')
+  for (const name of ['fetchProductPage', 'fetchProductDetail',
+    'fetchHomeProducts', 'fetchRelatedProducts', 'fetchSelectionProducts', 'fetchCachedProduct']) {
+    assert.ok(slice.includes('export const ' + name + ' = createAsyncThunk('), name)
+  }
+  assert.match(slice, /import axios from 'axios'/)
+  assert.match(slice, /axios\.get\(/)
+  assert.match(hook, /dispatch\(fetchSelectionProducts\(/)
+  assert.match(hook, /dispatch\(fetchCachedProduct\(/)
+  assert.doesNotMatch(cache, /import axios|productsApi|axios\.get\(|\bfetch\s*\(/)
 })

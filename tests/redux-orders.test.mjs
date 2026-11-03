@@ -1,7 +1,6 @@
-import './fixtures/axios-verb-test-bridge.mjs'
+import { mockAxios } from './fixtures/mockAxios.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import axios from 'axios'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, {
   ORDERS_CACHE_TTL, fetchOrdersHistory, fetchOrderDetail, ordersSessionCleared, ordersConfirmed,
@@ -41,7 +40,7 @@ test('store comienza sin pedidos, AbortControllers ni JWT', () => {
 
 test('GET publica pending y fulfilled y acepta historial vacío', async t => {
   const gate = delayed()
-  const request = t.mock.method(axios, 'request', async config => {
+  const request = mockAxios(t, async config => {
     assert.equal(config.method, 'GET')
     assert.equal(config.url, 'http://localhost:8080/orders')
     assert.equal(config.headers.Authorization, 'Bearer jwt-fixture-only')
@@ -62,7 +61,7 @@ test('GET publica pending y fulfilled y acepta historial vacío', async t => {
 
 test('un historial con detalles completos evita GET adicional', async t => {
   const order = detail(summary(50))
-  const request = t.mock.method(axios, 'request', async () => reply([order]))
+  const request = mockAxios(t, async () => reply([order]))
   const store = createStore()
   await store.dispatch(fetchOrdersHistory(scope()))
   assert.deepEqual(details(store)[50].data, order)
@@ -72,7 +71,7 @@ test('un historial con detalles completos evita GET adicional', async t => {
 test('GET preserva detalle si su resumen coincide y descarta al cambiar estado', async t => {
   const a = summary(101), b = summary(102)
   let rows = [a, b]
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     if (config.url.endsWith('/orders/101')) return reply(detail(a))
     if (config.url.endsWith('/orders/102')) return reply(detail(b))
     return reply(rows)
@@ -91,7 +90,7 @@ test('detalles vencidos no sobreviven al refresh del historial', async t => {
   let now = 100_000
   t.mock.method(Date, 'now', () => now)
   const a = summary(101)
-  t.mock.method(axios, 'request', async config => reply(config.url.endsWith('/orders/101') ? detail(a) : [a]))
+  mockAxios(t, async config => reply(config.url.endsWith('/orders/101') ? detail(a) : [a]))
   const store = createStore()
   await store.dispatch(fetchOrdersHistory(scope()))
   await store.dispatch(fetchOrderDetail({ ...scope(), orderId: 101 }))
@@ -103,7 +102,7 @@ test('detalles vencidos no sobreviven al refresh del historial', async t => {
 test('fallo de GET conserva lista anterior y retry recupera el estado', async t => {
   const order = summary()
   let step = 0
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     if (++step === 2) throw { response: { status: 503, data: { message: 'Error QA' } } }
     return reply([order])
   })
@@ -123,7 +122,7 @@ test('fallo de GET conserva lista anterior y retry recupera el estado', async t 
 test('detalle pendiente, error y retry conservan el historial', async t => {
   let fail = true
   const gate = delayed()
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     if (config.url.endsWith('/orders/101')) {
       if (fail) { fail = false; throw { response: { status: 404, data: { message: 'No existe' } } } }
       return gate.promise
@@ -145,7 +144,7 @@ test('detalle pendiente, error y retry conservan el historial', async t => {
 })
 
 test('detalle inválido se rechaza antes de escribirse en Redux', async t => {
-  t.mock.method(axios, 'request', async config =>
+  mockAxios(t, async config =>
     reply(config.url.endsWith('/orders/101') ? detail(summary(999)) : [summary()]))
   const store = createStore()
   await store.dispatch(fetchOrdersHistory(scope()))
@@ -156,7 +155,7 @@ test('detalle inválido se rechaza antes de escribirse en Redux', async t => {
 
 test('logout y nueva cuenta descartan historial tardío aun si el transporte ignora abort', async t => {
   const gate = delayed()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = createStore()
   const old = store.dispatch(fetchOrdersHistory(scope()))
   store.dispatch(ordersSessionCleared())
@@ -170,7 +169,7 @@ test('logout y nueva cuenta descartan historial tardío aun si el transporte ign
 
 test('respuesta anterior del mismo usuario no reemplaza generación nueva', async t => {
   const gate = delayed()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = createStore()
   const old = store.dispatch(fetchOrdersHistory(scope(1, 1)))
   store.dispatch(ordersSessionCleared())
@@ -183,7 +182,7 @@ test('respuesta anterior del mismo usuario no reemplaza generación nueva', asyn
 
 test('checkout confirmado invalida GET pendiente y guarda el detalle sin GET redundante', async t => {
   const gate = delayed()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = createStore()
   const old = store.dispatch(fetchOrdersHistory(scope()))
   const order = detail(summary(305, 'PAGO'))
@@ -197,7 +196,7 @@ test('checkout confirmado invalida GET pendiente y guarda el detalle sin GET red
 })
 
 test('HTTP 401 via rejected conserva status para invalidar sesión', async t => {
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     throw { response: { status: 401, data: {} } }
   })
   const store = createStore()
@@ -209,7 +208,7 @@ test('HTTP 401 via rejected conserva status para invalidar sesión', async t => 
 
 test('cancelación externa no publica un error falso ni datos privados', async t => {
   const gate = delayed()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = createStore(), controller = new AbortController()
   const task = store.dispatch(fetchOrdersHistory(scope(), { signal: controller.signal }))
   controller.abort()

@@ -175,3 +175,9 @@ test('una publicación inactiva impide que un detalle anterior restaure su versi
   gate.resolve(product(7)); await rejected
   assert.deepEqual(cache.getSnapshot().products, [])
 })
+
+test('producción no puede saltarse los thunks para hacer HTTP directo desde la caché', async () => {
+  const cache = createProductCache()
+  await assert.rejects(cache.loadPage('page=0'), /requiere un thunk de Redux/)
+  await assert.rejects(cache.loadProduct(7), /requiere un thunk de Redux/)
+})

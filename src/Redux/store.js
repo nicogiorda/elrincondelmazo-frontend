@@ -62,7 +62,7 @@ export const store = configureStore({
     }),
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware({
-    // Las operaciones HTTP se realizan desde el coordinador existente.
+    // Los thunks realizan los HTTP. La caché coordina TTL y cancelación.
     // AbortControllers, Map y promesas nunca se escriben en el estado Redux.
     thunk: { extraArgument: {
       productCache: catalogProductCache,

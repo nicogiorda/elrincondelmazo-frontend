@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
-import { API_BASE_URL } from '../services/httpClient.js'
-import { reviewPath, normalizeReviewError } from '../services/reviewsApi.js'
+import { API_BASE_URL } from '../config/api.js'
+import { reviewPath, normalizeReviewError } from '../utils/reviewValidation.js'
 
 // El método HTTP se lee donde se define el thunk, igual que en postSlice.js.
 // Las reseñas GET son públicas; solo POST utiliza JWT.

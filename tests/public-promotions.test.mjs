@@ -1,10 +1,9 @@
-import './fixtures/axios-verb-test-bridge.mjs'
+import { mockAxios } from './fixtures/mockAxios.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import axios from 'axios'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, { fetchPublicPromotions, publicPromotionsInvalidated } from '../src/Redux/promotionsSlice.js'
-import { invalidatePublicPromotions, subscribePublicPromotionsInvalidation } from '../src/services/publicPromotions.js'
+import { invalidatePublicPromotions, subscribePublicPromotionsInvalidation } from '../src/utils/publicPromotionEvents.js'
 
 const promo = { id: 8, type: 'COLECCION', discountPercentage: '15.50', active: true,
   description: null, startDate: null, endDate: null }
@@ -19,7 +18,7 @@ const deferred = () => {
 
 test('Redux comparte GET público pendiente y mapea respuestas Axios sin JWT', async t => {
   const gate = deferred()
-  const mock = t.mock.method(axios, 'request', async config => {
+  const mock = mockAxios(t, async config => {
     assert.equal(config.url, 'http://localhost:8080/promotions/public')
     assert.equal(config.method, 'GET')
     assert.equal(config.headers, undefined)
@@ -41,7 +40,7 @@ test('Redux comparte GET público pendiente y mapea respuestas Axios sin JWT', a
 })
 
 test('una nueva visita permite otro GET; no se guarda un caché persistente', async t => {
-  const mock = t.mock.method(axios, 'request', async () => reply([]))
+  const mock = mockAxios(t, async () => reply([]))
   const store = create()
   await store.dispatch(fetchPublicPromotions())
   store.dispatch(publicPromotionsInvalidated())
@@ -52,7 +51,7 @@ test('una nueva visita permite otro GET; no se guarda un caché persistente', as
 
 test('error HTTP e invalid JSON quedan en rejected y permiten reintentar', async t => {
   let calls = 0
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     if (++calls === 1) throw { response: { status: 500, data: { message: 'Fallo' } } }
     if (calls === 2) return reply({ promotions: [] })
     return reply([promo])
@@ -72,7 +71,7 @@ test('error HTTP e invalid JSON quedan en rejected y permiten reintentar', async
 test('una respuesta vieja nunca borra ni reemplaza el GET posterior a invalidación', async t => {
   const first = deferred(), second = deferred()
   let calls = 0
-  t.mock.method(axios, 'request', async () => ++calls === 1 ? first.promise : second.promise)
+  mockAxios(t, async () => ++calls === 1 ? first.promise : second.promise)
   const store = create()
   const previous = store.dispatch(fetchPublicPromotions())
   store.dispatch(publicPromotionsInvalidated())
