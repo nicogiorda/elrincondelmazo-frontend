@@ -4,6 +4,9 @@ import { API_BASE_URL } from './httpClient.js'
 // El servicio solo hace HTTP y valida los contratos del backend. Ni el token ni
 // los intentos de compra se conservan en este modulo.
 export function normalizeOrderError(error, signal) {
+  // Un HTTP 201 sin detalle confirmado sigue siendo ambiguo: normalizarlo
+  // como error HTTP común haría que el checkout cambiara su requestKey.
+  if (error?.ambiguous) return error
   if (signal?.aborted) return signal.reason ?? new DOMException('Solicitud cancelada', 'AbortError')
   if (error?.name === 'AbortError') return error
   if (error?.code === 'ERR_CANCELED') return new DOMException('Solicitud cancelada', 'AbortError')
