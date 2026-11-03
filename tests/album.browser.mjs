@@ -99,7 +99,7 @@ try {
 
   await page.getByRole('button', { name: 'Ver carta Carta comprada, posición 2' }).click()
   await page.getByLabel('Sección').selectOption('CARS')
-  await page.getByLabel('Posición').selectOption('3')
+  await page.getByLabel('Posición', { exact: true }).selectOption('3')
   await page.getByRole('button', { name: 'Mover carta' }).click()
   await page.getByRole('button', { name: 'Ver carta Carta comprada, posición 4' }).waitFor()
 
