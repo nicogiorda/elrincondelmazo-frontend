@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
-import { API_BASE_URL } from '../services/httpClient.js'
-import { normalizePromotionError, validatePromotion, promotionPath } from '../services/promotionsApi.js'
+import { API_BASE_URL } from '../config/api.js'
+import { normalizePromotionError, validatePromotion, promotionPath } from '../utils/promotionValidation.js'
 import { promotionFromBackend, promotionToBackend, publicPromotionFromBackend } from '../utils/promotionMapper.js'
 
 // Como en postSlice.js de la clase: cada thunk muestra explícitamente
