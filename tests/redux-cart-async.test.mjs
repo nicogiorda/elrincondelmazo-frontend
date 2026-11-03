@@ -1,7 +1,6 @@
-import './fixtures/axios-verb-test-bridge.mjs'
+import { mockAxios } from './fixtures/mockAxios.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import axios from 'axios'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, {
   fetchCart, addItemToCart, changeCartItemQuantity, deleteCartItem,
@@ -30,7 +29,7 @@ const deferred = () => {
 
 test('GET: pending, fulfilled, JWT privado y carrito desde extraReducers', async t => {
   const gate = deferred()
-  const request = t.mock.method(axios, 'request', async config => {
+  const request = mockAxios(t, async config => {
     assert.equal(config.method, 'GET')
     assert.equal(config.url, 'http://localhost:8080/carts')
     assert.equal(config.headers.Authorization, 'Bearer temporary-fixture-jwt')
@@ -54,7 +53,7 @@ test('GET: pending, fulfilled, JWT privado y carrito desde extraReducers', async
 
 test('POST y DELETE confirman respuesta unica, sin GET posterior', async t => {
   const requests = []
-  t.mock.method(axios, 'request', async config => {
+  mockAxios(t, async config => {
     requests.push(config)
     return reply(config.method === 'POST' ? sample(3) : sample(0))
   })
@@ -75,7 +74,7 @@ test('POST y DELETE confirman respuesta unica, sin GET posterior', async t => {
 
 test('PUT no sobreescribe cantidad optimista con respuesta intermedia', async t => {
   const gate = deferred()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = create()
   store.dispatch(cartOperationStarted({ ...scope(), kind: 'load' }))
   store.dispatch(cartUpdated({ ...scope(), cart: sample(1) }))
@@ -94,7 +93,7 @@ test('PUT no sobreescribe cantidad optimista con respuesta intermedia', async t 
 
 test('HTTP 401 via rejected conserva status, logout limpia datos y respuesta tardia no revive sesion', async t => {
   const gate = deferred()
-  const mock = t.mock.method(axios, 'request', async () => {
+  const mock = mockAxios(t, async () => {
     throw { response: { status: 401, data: {} } }
   })
   const store = create()
@@ -115,7 +114,7 @@ test('HTTP 401 via rejected conserva status, logout limpia datos y respuesta tar
 })
 
 test('HTTP 409 mantiene status en rejected y en unwrap para mostrar el error real', async t => {
-  t.mock.method(axios, 'request', async () => {
+  mockAxios(t, async () => {
     throw { response: { status: 409, data: { message: 'Stock insuficiente' } } }
   })
   const store = create()
@@ -127,7 +126,7 @@ test('HTTP 409 mantiene status en rejected y en unwrap para mostrar el error rea
 
 test('AbortSignal cancela el thunk y no deja error visible al cerrar sesion', async t => {
   const gate = deferred()
-  t.mock.method(axios, 'request', async () => gate.promise)
+  mockAxios(t, async () => gate.promise)
   const store = create()
   const controller = new AbortController()
   store.dispatch(cartOperationStarted({ ...scope(), kind: 'load' }))
