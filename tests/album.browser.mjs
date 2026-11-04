@@ -103,6 +103,11 @@ try {
   assert.equal(await slots.count(), 9)
   await page.getByRole('button', { name: 'NBA', exact: true }).click()
   await page.getByRole('button', { name: 'Espacio 1 vacío' }).click()
+  // Esperar a que termine el GET inicial de las compras antes de contar.
+  await page.getByLabel('Carta disponible').selectOption('110')
+  const getCount = path => calls.filter(call => call.path === path && call.method === 'GET').length
+  const originalAlbumGets = getCount('/albums/me')
+  const originalPurchaseGets = getCount('/albums/me/purchases')
   await page.getByRole('button', { name: 'Carta física' }).click()
   await page.getByLabel('Nombre de la carta').fill('QA física')
   await page.getByLabel('Foto de la carta').setInputFiles({
@@ -150,6 +155,19 @@ try {
   await page.getByText('Álbum público', { exact: true }).waitFor()
   await page.getByRole('button', { name: 'Hacer privado' }).click()
   await page.getByText('Álbum privado', { exact: true }).waitFor()
+  // Crear, mover y cambiar privacidad actualizan Redux en fulfilled.
+  // Ni siquiera hace falta un nuevo GET para recomponer las cartas.
+  assert.equal(getCount('/albums/me'), originalAlbumGets)
+  assert.equal(getCount('/albums/me/purchases'), originalPurchaseGets)
+
+  // DELETE sólo necesita un GET de cupo: CardResponse no identifica
+  // la compra de origen para restaurar su cantidad disponible.
+  page.on('dialog', dialog => dialog.accept())
+  await page.getByRole('button', { name: 'Ver carta Carta comprada, posición 4' }).click()
+  await page.getByRole('button', { name: 'Quitar del álbum' }).click()
+  await page.getByRole('button', { name: 'Espacio 4 vacío' }).waitFor()
+  assert.equal(getCount('/albums/me'), originalAlbumGets)
+  assert.equal(getCount('/albums/me/purchases'), originalPurchaseGets + 1)
 
   assert.equal(calls.filter(call => call.path === '/albums/me/cards/manual' && call.method === 'POST').length, 1)
   assert.equal(calls.filter(call => call.path === '/albums/me/cards/purchase' && call.method === 'POST').length, 1)
