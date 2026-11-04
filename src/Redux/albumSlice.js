@@ -1,4 +1,4 @@
-import { createAsyncThunk, createSlice, isAnyOf } from '@reduxjs/toolkit'
+import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import axios from 'axios'
 import { API_BASE_URL } from '../config/api.js'
 import { sessionAuthenticated, sessionEnded } from './userSlice.js'
@@ -122,19 +122,22 @@ export const moveAlbumCard = createAsyncThunk('album/moveCard',
 
 export const removeAlbumCard = createAsyncThunk('album/removeCard',
   async ({ cardId }, { extra, signal }) => {
-    await axios.delete(API_BASE_URL + '/albums/me/cards/' + cardId, {
+    const response = await axios.delete(API_BASE_URL + '/albums/me/cards/' + cardId, {
       signal, headers: tokenHeader(extra),
     }).catch(error => { throw albumError(error) })
     signal.throwIfAborted()
+    if (response.status !== 204) throw new Error('El servidor no confirmó la eliminación.')
     return cardId
   }, { serializeError })
 
 export const changeAlbumVisibility = createAsyncThunk('album/changeVisibility',
-  async ({ visibility }, { extra, signal }) => {
+  async ({ visibility, ownerId }, { extra, signal }) => {
     const response = await axios.patch(API_BASE_URL + '/albums/me/visibility',
       { visibility }, { signal, headers: tokenHeader(extra) }).catch(error => { throw albumError(error) })
     signal.throwIfAborted()
-    return response.data
+    const album = validateAlbum(response.data, ownerId)
+    if (album.visibility !== visibility) throw new Error('El servidor no confirmó la visibilidad.')
+    return album
   }, { serializeError })
 
 // La vista ajena tiene un scope independiente: nunca se mezcla con /albums/me.
@@ -158,7 +161,61 @@ export const loadPublicAlbum = createAsyncThunk('album/loadPublic',
     return data
   }, { serializeError })
 
-const mutations = [addAlbumPurchase, addAlbumManual, moveAlbumCard, removeAlbumCard, changeAlbumVisibility]
+// Como updatePost.fulfilled en la Demo Redux II: la respuesta de Axios
+// actualiza directamente el array global, sin reconstruirlo con otro GET.
+function mutationStarted(state, action) {
+  scoped(state, action.meta.arg.ownerId)
+  // Un GET anterior no puede pisar la respuesta confirmada de un POST/PATCH/DELETE.
+  state.requestId = null
+  state.purchasesRequestId = null
+  state.loading = false
+  state.loadingPurchases = false
+  state.saving = true
+  state.mutationError = ''
+  state.mutationRequestId = action.meta.requestId
+}
+
+function mutationFinished(state, action) {
+  if (state.ownerId !== action.meta.arg.ownerId
+    || state.mutationRequestId !== action.meta.requestId) return false
+  state.saving = false
+  state.mutationRequestId = null
+  return true
+}
+
+function mutationFailed(state, action) {
+  if (!mutationFinished(state, action) || action.meta.aborted || action.meta.condition) return
+  state.mutationError = action.error.message
+}
+
+function putCardInAlbum(state, sectionKey, card) {
+  if (!state.album || !card) return
+  // Sacar la posición anterior, si ya existía (PATCH/PUT).
+  for (const section of state.album.sections) {
+    const previous = section.cards.findIndex(entry => entry.id === card.id)
+    if (previous !== -1) section.cards.splice(previous, 1)
+  }
+  const target = state.album.sections.find(section => section.key === sectionKey)
+  if (!target) return
+  // El PATCH puede reemplazar una carta que ocupaba el casillero.
+  const occupied = target.cards.findIndex(entry =>
+    entry.pageNumber === card.pageNumber && entry.slotIndex === card.slotIndex)
+  if (occupied !== -1) target.cards.splice(occupied, 1)
+  target.cards.push(card)
+  // El backend desbloquea la página siguiente al llenar los 9 casilleros.
+  if (target.cards.filter(entry => entry.pageNumber === target.pageCount).length === 9) {
+    target.pageCount += 1
+  }
+}
+
+function removeCardFromAlbum(state, cardId) {
+  if (!state.album) return
+  for (const section of state.album.sections) {
+    const index = section.cards.findIndex(card => card.id === cardId)
+    if (index !== -1) section.cards.splice(index, 1)
+  }
+}
+
 const albumSlice = createSlice({
   name: 'album',
   initialState: initialState(),
@@ -238,25 +295,42 @@ const albumSlice = createSlice({
         state.purchasesRequestId = null
         if (!action.meta.aborted) state.purchasesError = action.error.message
       })
-      .addMatcher(isAnyOf(...mutations.map(thunk => thunk.pending)), (state, action) => {
-        scoped(state, action.meta.arg.ownerId)
-        state.saving = true
-        state.mutationError = ''
-        state.mutationRequestId = action.meta.requestId
+      .addCase(addAlbumPurchase.pending, mutationStarted)
+      .addCase(addAlbumPurchase.fulfilled, (state, action) => {
+        if (!mutationFinished(state, action)) return
+        putCardInAlbum(state, action.meta.arg.section, action.payload)
+        const item = state.purchases.find(entry => entry.orderItemId === action.meta.arg.orderItemId)
+        if (item) {
+          item.usedQuantity += 1
+          item.availableQuantity = Math.max(0, item.purchasedQuantity - item.usedQuantity)
+        }
       })
-      .addMatcher(isAnyOf(...mutations.map(thunk => thunk.fulfilled)), (state, action) => {
-        if (state.ownerId !== action.meta.arg.ownerId
-          || state.mutationRequestId !== action.meta.requestId) return
-        state.saving = false
-        state.mutationRequestId = null
+      .addCase(addAlbumPurchase.rejected, mutationFailed)
+      .addCase(addAlbumManual.pending, mutationStarted)
+      .addCase(addAlbumManual.fulfilled, (state, action) => {
+        if (!mutationFinished(state, action)) return
+        putCardInAlbum(state, action.meta.arg.section, action.payload)
       })
-      .addMatcher(isAnyOf(...mutations.map(thunk => thunk.rejected)), (state, action) => {
-        if (state.ownerId !== action.meta.arg.ownerId
-          || state.mutationRequestId !== action.meta.requestId) return
-        state.saving = false
-        state.mutationRequestId = null
-        if (!action.meta.aborted) state.mutationError = action.error.message
+      .addCase(addAlbumManual.rejected, mutationFailed)
+      .addCase(moveAlbumCard.pending, mutationStarted)
+      .addCase(moveAlbumCard.fulfilled, (state, action) => {
+        if (!mutationFinished(state, action)) return
+        putCardInAlbum(state, action.meta.arg.section, action.payload)
       })
+      .addCase(moveAlbumCard.rejected, mutationFailed)
+      .addCase(removeAlbumCard.pending, mutationStarted)
+      .addCase(removeAlbumCard.fulfilled, (state, action) => {
+        if (!mutationFinished(state, action)) return
+        removeCardFromAlbum(state, action.payload)
+      })
+      .addCase(removeAlbumCard.rejected, mutationFailed)
+      .addCase(changeAlbumVisibility.pending, mutationStarted)
+      .addCase(changeAlbumVisibility.fulfilled, (state, action) => {
+        if (!mutationFinished(state, action)) return
+        // El endpoint ya devuelve el álbum completo y confirmado.
+        state.album = action.payload
+      })
+      .addCase(changeAlbumVisibility.rejected, mutationFailed)
   },
 })
 
