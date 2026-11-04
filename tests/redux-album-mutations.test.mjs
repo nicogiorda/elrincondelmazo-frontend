@@ -111,7 +111,7 @@ test('DELETE sin HTTP 204 no puede quitar la carta localmente', async t => {
   const store = makeStore()
   await prime(store)
   await assert.rejects(store.dispatch(removeAlbumCard({ ...scope, cardId: 33 })).unwrap(),
-    /no confirmó la eliminación/)
+    { message: /no confirmó la eliminación/ })
   assert.equal(current(store).album.sections[0].cards.length, 1)
   assert.equal(current(store).saving, false)
 })
@@ -135,12 +135,12 @@ test('PATCH de visibilidad rechaza respuesta de propietario ajeno o estado incor
   const store = makeStore()
   await prime(store)
   await assert.rejects(store.dispatch(changeAlbumVisibility({ ...scope, visibility: 'PUBLIC' })).unwrap(),
-    /álbum inválido/)
+    { message: /álbum inválido/ })
   requests.mock.mockImplementation(request => request.method === 'PATCH'
     ? reply({ ...album(), visibility: 'PRIVATE' })
     : reply(album()))
   await assert.rejects(store.dispatch(changeAlbumVisibility({ ...scope, visibility: 'PUBLIC' })).unwrap(),
-    /no confirmó la visibilidad/)
+    { message: /no confirmó la visibilidad/ })
   assert.equal(current(store).album.visibility, 'PRIVATE')
 })
 
