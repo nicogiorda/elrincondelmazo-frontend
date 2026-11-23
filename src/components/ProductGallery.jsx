@@ -17,7 +17,7 @@ function ProductGallery({ images, selectedImage, onImageChange }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div
-        className={`flex aspect-square w-full items-center justify-center overflow-hidden rounded-[1.625rem] border-3 border-bordo ${
+        className={`flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-[1.625rem] border-3 border-bordo lg:aspect-square ${
           galleryBackgrounds[image?.background] ?? 'bg-crema'
         }`}
       >
@@ -26,7 +26,7 @@ function ProductGallery({ images, selectedImage, onImageChange }) {
             src={image.url}
             alt={image.label}
             onError={() => markFailed(image.url)}
-            className="max-h-[25.4375rem] max-w-[18.3125rem] object-contain"
+            className="size-full object-contain"
           />
         ) : (
           <p className="px-4 text-center font-semibold">

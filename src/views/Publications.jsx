@@ -6,7 +6,7 @@ import { formatPrice } from '../utils/formatPrice.js'
 
 const statusLabels = { ACTIVO: 'Activo', INACTIVO: 'Pausado', AGOTADO: 'Agotado' }
 const statusStyles = { ACTIVO: 'bg-amarillo', INACTIVO: 'bg-crema', AGOTADO: 'bg-bordo text-crema' }
-const columns = 'grid grid-cols-[3.25rem_minmax(0,1fr)_5.25rem_3rem_5.75rem_4rem] items-center gap-3 px-4 py-3'
+const columns = 'grid grid-cols-[4.75rem_minmax(0,1fr)_5.25rem_3rem_5.75rem_4rem] items-center gap-3 px-4 py-3 sm:grid-cols-[5.5rem_minmax(0,1fr)_5.25rem_3rem_5.75rem_4rem]'
 
 function Publications({ user, onLogout, products, cartCount, onEdit, onDelete, onToggleStatus, loading, error, busyId, onRetry }) {
   const stats = [{ label: 'Publicaciones', value: products.length, color: 'bg-papel' }, { label: 'Activas', value: products.filter((p) => p.status === 'ACTIVO').length, color: 'bg-amarillo' }, { label: 'Pausadas', value: products.filter((p) => p.status === 'INACTIVO').length, color: 'bg-crema' }, { label: 'Agotadas', value: products.filter((p) => p.status === 'AGOTADO').length, color: 'bg-rosa' }]
