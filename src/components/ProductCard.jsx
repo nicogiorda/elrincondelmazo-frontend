@@ -1,3 +1,5 @@
+import { useId } from 'react'
+import CartAddedNotice from './CartAddedNotice.jsx'
 import { canBuyProduct } from '../utils/productPurchase.js'
 
 const variantStyles = {
@@ -34,7 +36,8 @@ const homeImageSizes = {
   LOOTBOX: 'max-h-[15.1875rem] max-w-[14.4375rem]',
 }
 
-function ProductCard({ cartBusy = false, product, userId, cartQuantity = 0, variant = 'home', imageBackground = 'crema', onOpenProduct, onAddToCart }) {
+function ProductCard({ cartBusy = false, cartFeedback, product, userId, cartQuantity = 0, variant = 'home', imageBackground = 'crema', onOpenProduct, onAddToCart }) {
+  const addSource = useId()
   const styles = variantStyles[variant]
   const isSoldOut = product.stock === 0 || product.status === 'AGOTADO'
   const isOwnProduct = product.sellerId === userId
@@ -68,19 +71,22 @@ function ProductCard({ cartBusy = false, product, userId, cartQuantity = 0, vari
             {product.name}
           </button>
         </h2>
-        <div className="mt-auto flex items-center justify-between gap-2 pt-3">
-          <p className={`font-extrabold whitespace-nowrap ${styles.price}`}>
-            $ {product.price.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
-          </p>
-          <button
-            type="button"
-            disabled={!canAddToCart}
-            title={cartBusy ? 'Esperá a que termine la actualización del carrito.' : !onAddToCart ? 'Las compras todavía no están disponibles.' : isAvailable && !canAddToCart ? 'Ya agregaste todas las unidades disponibles al carrito.' : undefined}
-            onClick={() => { if (canAddToCart) onAddToCart?.(product) }}
-            className={`rounded-full px-3.5 py-2 text-[0.8125rem] font-extrabold whitespace-nowrap text-crema disabled:cursor-not-allowed disabled:opacity-50 ${styles.button}`}
-          >
-            {isOwnProduct ? 'Tu publicación' : isSoldOut ? 'Sin stock' : !isAvailable ? 'No disponible' : cartQuantity < product.stock ? 'Agregar' : 'Máximo'}
-          </button>
+        <div className="mt-auto pt-3">
+          <CartAddedNotice feedback={cartFeedback} source={addSource} />
+          <div className="flex items-center justify-between gap-2">
+            <p className={`font-extrabold whitespace-nowrap ${styles.price}`}>
+              $ {product.price.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+            </p>
+            <button
+              type="button"
+              disabled={!canAddToCart}
+              title={cartBusy ? 'Esperá a que termine la actualización del carrito.' : !onAddToCart ? 'Las compras todavía no están disponibles.' : isAvailable && !canAddToCart ? 'Ya agregaste todas las unidades disponibles al carrito.' : undefined}
+              onClick={() => { if (canAddToCart) onAddToCart(product, 1, addSource) }}
+              className={`rounded-full px-3.5 py-2 text-[0.8125rem] font-extrabold whitespace-nowrap text-crema disabled:cursor-not-allowed disabled:opacity-50 ${styles.button}`}
+            >
+              {isOwnProduct ? 'Tu publicación' : isSoldOut ? 'Sin stock' : !isAvailable ? 'No disponible' : cartQuantity < product.stock ? 'Agregar' : 'Máximo'}
+            </button>
+          </div>
         </div>
       </div>
 
