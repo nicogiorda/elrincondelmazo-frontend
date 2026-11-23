@@ -10,7 +10,7 @@ import PromotionCard from '../components/PromotionCard.jsx'
 import hero from '../assets/home-hero.png'
 import { homeCollectionVisuals, homeProductBackgrounds } from '../data/homeMocks.js'
 
-function Home({ isLoggedIn, cartBusy, cartError, cartMessage, collections, productsLoading, productsError, collectionsLoading, collectionsError, cartItems = [], products, userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
+function Home({ isLoggedIn, cartBusy, cartError, cartMessage, cartFeedback, collections, productsLoading, productsError, collectionsLoading, collectionsError, cartItems = [], products, userId, cartCount = 0, onSelectCollection, onOpenProduct, onAddToCart }) {
   const publicPromotions = usePublicPromotions()
   const homeCollections = collections.map((collection) => ({
     ...collection,
@@ -51,7 +51,7 @@ function Home({ isLoggedIn, cartBusy, cartError, cartMessage, collections, produ
             </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
               {products.map((product) => (
-                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="home" imageBackground={homeProductBackgrounds[collections.find((collection) => collection.id === product.collectionId)?.name]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
+                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="home" imageBackground={homeProductBackgrounds[collections.find((collection) => collection.id === product.collectionId)?.name]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} cartFeedback={cartFeedback} />
               ))}
             </div>
           </section>

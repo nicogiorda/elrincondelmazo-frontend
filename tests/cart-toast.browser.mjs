@@ -39,6 +39,9 @@ async function scenario(name, run, viewport = { width: 1280, height: 800 }) {
     if (path === '/api/v1/auth/authenticate') data = { access_token: 'toast-b' }
     if (path === '/collections') data = [{ id: 1, name: 'NBA' }]
     if (path === '/products') data = { content: [product], totalElements: 1, totalPages: 1, number: 0 }
+    if (path === '/products' && state.showSecondProduct) {
+      data = { content: [product, { ...product, id: 8, name: 'Otra carta QA' }], totalElements: 2, totalPages: 1, number: 0 }
+    }
     if (path === '/products/7') data = product
     if (path === '/carts') data = cart(isB ? 4 : state.quantity)
     if (path === '/carts/items' && req.method() === 'POST') {
@@ -66,11 +69,16 @@ async function scenario(name, run, viewport = { width: 1280, height: 800 }) {
 }
 
 try {
-  for (const [path, button] of [['/', 'Agregar'], ['/catalogo', 'Agregar'], ['/producto/7', 'Agregar al carrito']]) {
-    await scenario('Confirmación después de HTTP y visible al hacer scroll en ' + path, async ({ page, state, toast }) => {
+  for (const [path, button, mobile] of [
+    ['/', 'Agregar'], ['/catalogo', 'Agregar', true],
+    ['/producto/7', 'Agregar al carrito'], ['/producto/7', 'Agregar al carrito', true],
+  ]) {
+    await scenario('Confirmación después de HTTP sobre el botón en ' + path + (mobile ? ' (móvil)' : ''), async ({ page, state, toast }) => {
       state.gate = deferred()
+      state.showSecondProduct = path === '/catalogo'
       await page.goto(base + path)
-      const add = page.getByRole('button', { name: button, exact: true }).first()
+      const card = page.getByRole('article').filter({ has: page.getByRole('heading', { name: product.name, exact: true }) })
+      const add = (path === '/producto/7' ? page : card).getByRole('button', { name: button, exact: true })
       const post = page.waitForRequest(req => req.method() === 'POST' && req.url().endsWith('/carts/items'))
       await add.click()
       await post
@@ -78,11 +86,18 @@ try {
       state.gate.resolve()
       await toast.waitFor()
       assert.equal(await toast.count(), 1)
-      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
-      const bounds = await toast.boundingBox()
-      assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= page.viewportSize().height)
+      const notice = await toast.locator('..').boundingBox()
+      const target = await add.boundingBox()
+      const gap = target.y - (notice.y + notice.height)
+      assert.ok(gap >= 0 && gap <= 12, 'El mensaje queda justo encima del botón: ' + gap + ' px')
+      assert.ok(Math.abs(notice.x + notice.width - (target.x + target.width)) <= 1)
+      if (state.showSecondProduct) {
+        const otherCard = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Otra carta QA' }) })
+        await otherCard.waitFor()
+        assert.equal(await otherCard.getByText('Producto agregado al carrito').count(), 0)
+      }
       assert.deepEqual(state.posts, [{ productId: 7, quantity: 1 }])
-    }, path === '/catalogo' ? { width: 390, height: 844 } : undefined)
+    }, mobile ? { width: 390, height: 844 } : undefined)
   }
 
   await scenario('Sin toast para fallo HTTP, fallo de red y clic simultáneo rechazado', async ({ page, state, toast }) => {

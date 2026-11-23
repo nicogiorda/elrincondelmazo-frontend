@@ -1,9 +1,10 @@
 import { canBuyProduct } from '../utils/productPurchase.js'
 import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import ProductCard from '../components/ProductCard.jsx'
+import CartAddedNotice from '../components/CartAddedNotice.jsx'
 import ProductGallery from '../components/ProductGallery.jsx'
 import QuantitySelector from '../components/QuantitySelector.jsx'
 import ReviewCard from '../components/ReviewCard.jsx'
@@ -16,7 +17,8 @@ import {
 
 const typeLabels = { CARTA: 'Carta', SOBRE: 'Sobre', LOOTBOX: 'Lootbox' }
 
-function ProductDetail({ cartBusy, cartError, cartMessage, cartItems = [], cartQuantity = 0, product, products, userId, user, canReview, onPublishReview, reviewsLoading, reviewsError, onRetryReviews, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+function ProductDetail({ cartBusy, cartError, cartMessage, cartFeedback, cartItems = [], cartQuantity = 0, product, products, userId, user, canReview, onPublishReview, reviewsLoading, reviewsError, onRetryReviews, reviews: providedReviews, cartCount = 0, onAddToCart, onBuyNow, onOpenProduct, onViewCollection }) {
+  const addSource = useId()
   const reviews = providedReviews ?? []
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
@@ -44,7 +46,7 @@ function ProductDetail({ cartBusy, cartError, cartMessage, cartItems = [], cartQ
 
   function addSelectedQuantity() {
     if (!canBuy || cartBusy || !onAddToCart) return
-    onAddToCart(product, selectedQuantity).then((saved) => { if (saved) setQuantity(1) })
+    onAddToCart(product, selectedQuantity, addSource).then((saved) => { if (saved) setQuantity(1) })
   }
 
   return (
@@ -75,9 +77,12 @@ function ProductDetail({ cartBusy, cartError, cartMessage, cartItems = [], cartQ
               <p className="font-display text-[2.125rem] leading-[2.125rem] font-black text-rojo">Promos</p>
               <p className="text-[0.9375rem] leading-[1.21875rem] font-bold">{detailPromotionLabel}</p>
             </div>
-            <div className="flex flex-wrap items-stretch gap-3">
-              <QuantitySelector quantity={selectedQuantity} maxQuantity={canBuy && !cartBusy ? availableUnits : 0} onChange={changeQuantity} />
-              <button type="button" disabled={!canBuy || cartBusy || !onAddToCart} onClick={addSelectedQuantity} className="min-w-0 flex-1 rounded-full border-3 border-bordo bg-bordo px-6 py-4 text-[1.125rem] font-extrabold text-crema disabled:cursor-not-allowed disabled:opacity-50">Agregar al carrito</button>
+            <div>
+              <CartAddedNotice feedback={cartFeedback} source={addSource} />
+              <div className="flex flex-wrap items-stretch gap-3">
+                <QuantitySelector quantity={selectedQuantity} maxQuantity={canBuy && !cartBusy ? availableUnits : 0} onChange={changeQuantity} />
+                <button type="button" disabled={!canBuy || cartBusy || !onAddToCart} onClick={addSelectedQuantity} className="min-w-0 flex-1 rounded-full border-3 border-bordo bg-bordo px-6 py-4 text-[1.125rem] font-extrabold text-crema disabled:cursor-not-allowed disabled:opacity-50">Agregar al carrito</button>
+              </div>
             </div>
             <button type="button" disabled={!canBuy || cartBusy || !onBuyNow} onClick={() => { if (canBuy) onBuyNow?.(product, selectedQuantity) }} className="w-full rounded-full border-3 border-bordo bg-rosa px-6 py-3.5 text-[1.0625rem] font-extrabold shadow-[0.25rem_0.25rem_0_var(--color-bordo)] disabled:cursor-not-allowed disabled:opacity-50">Comprar ahora</button>
             {cartError && <p role="alert" className="font-bold text-rojo">{cartError} <Link to="/carrito" className="underline">Revisar carrito</Link></p>}
@@ -139,7 +144,7 @@ function ProductDetail({ cartBusy, cartError, cartMessage, cartItems = [], cartQ
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {relatedProducts.map((relatedProduct) => (
-              <ProductCard key={relatedProduct.id} product={relatedProduct} userId={userId} cartQuantity={cartItems.find((item) => item.productId === relatedProduct.id)?.quantity ?? 0} variant="related" imageBackground={detailProductBackgrounds[relatedProduct.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
+              <ProductCard key={relatedProduct.id} product={relatedProduct} userId={userId} cartQuantity={cartItems.find((item) => item.productId === relatedProduct.id)?.quantity ?? 0} variant="related" imageBackground={detailProductBackgrounds[relatedProduct.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} cartFeedback={cartFeedback} />
             ))}
           </div>
         </section>

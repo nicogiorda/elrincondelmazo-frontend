@@ -12,7 +12,7 @@ import { catalogTypes, catalogProductBackgrounds } from '../data/catalogMocks.js
 
 const pageSize = 9
 
-function Catalog({ products, cacheVersion, isLoggedIn, cartBusy, cartError, cartMessage, collectionsError, cartItems = [], collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
+function Catalog({ products, cacheVersion, isLoggedIn, cartBusy, cartError, cartMessage, cartFeedback, collectionsError, cartItems = [], collections, userId, cartCount = 0, filters, onFiltersChange, onClearFilters, onOpenProduct, onAddToCart }) {
 
 
   const { search, type, collection, minPrice, maxPrice, page } = filters
@@ -81,7 +81,7 @@ function Catalog({ products, cacheVersion, isLoggedIn, cartBusy, cartError, cart
             {visibleProducts.length > 0 ? <>
             <div aria-label="Productos del catálogo" className="grid min-w-0 grid-cols-1 gap-6.5 sm:grid-cols-2 xl:grid-cols-3">
               {visibleProducts.map((product) => (
-                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} />
+                <ProductCard key={product.id} product={product} userId={userId} cartQuantity={cartItems.find((item) => item.productId === product.id)?.quantity ?? 0} variant="catalog" imageBackground={catalogProductBackgrounds[product.collectionId]} onOpenProduct={onOpenProduct} onAddToCart={onAddToCart} cartBusy={cartBusy} cartFeedback={cartFeedback} />
               ))}
             </div>
             <Pagination page={currentPage} totalPages={totalPages} onPageChange={changePage} />

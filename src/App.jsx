@@ -18,7 +18,6 @@ import Checkout from './views/Checkout.jsx'
 import OrderConfirmation from './views/OrderConfirmation.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import PurchaseNotice from './components/PurchaseNotice.jsx'
-import CartToast from './components/CartToast.jsx'
 import useAdminPromotions from './hooks/useAdminPromotions.js'
 import useAccount from './hooks/useAccount.js'
 import useReviews from './hooks/useReviews.js'
@@ -46,9 +45,14 @@ function App() {
 
   const { user, token, loading, sessionError, setSessionError, setUser,
     login, register, logout, sessionVersion, sessionAbort, subscribeSessionChange } = useSession()
-  const [cartToast, setCartToast] = useState(0)
-  const dismissCartToast = useCallback(() => setCartToast(0), [])
-  useEffect(() => subscribeSessionChange(dismissCartToast), [subscribeSessionChange, dismissCartToast])
+  const [cartFeedback, setCartFeedback] = useState(null)
+  const dismissCartFeedback = useCallback(() => setCartFeedback(null), [])
+  useEffect(() => subscribeSessionChange(dismissCartFeedback), [subscribeSessionChange, dismissCartFeedback])
+  useEffect(() => {
+    if (!cartFeedback) return
+    const timer = setTimeout(dismissCartFeedback, 3000)
+    return () => clearTimeout(timer)
+  }, [cartFeedback, dismissCartFeedback])
 
   const { profileSaving, deactivating, deactivateError, saveProfile, deactivateAccount } = useAccount({
     user, token, setUser, logout, setSessionError, sessionVersion, sessionAbort, subscribeSessionChange,
@@ -118,10 +122,12 @@ function App() {
       return saved
     })
   }
-  async function addWithFeedback(product, quantity) {
+  async function addWithFeedback(product, quantity, source) {
     const signal = sessionAbort.current.signal
     const added = await addToCart(product, quantity)
-    if (added && !signal.aborted) setCartToast(previous => previous + 1)
+    if (added && !signal.aborted) {
+      setCartFeedback(previous => ({ source, count: (previous?.count ?? 0) + 1 }))
+    }
     return added
   }
   function retryCart() {
@@ -132,6 +138,7 @@ function App() {
     cartCount, userId: user?.id, isLoggedIn: Boolean(user),
     cartBusy: cartBusy || Boolean(user && !cart), cartError, cartMessage,
   }
+  const addFeedback = cartFeedback && { ...cartFeedback, onDismiss: dismissCartFeedback }
   const account = { ...shared, user: currentUser, onLogout: logout }
   function confirmPublicationRemoval(product) {
     if (window.confirm('¿Querés eliminar esta publicación? Esta acción no se puede deshacer.')) return removePublication(product)
@@ -141,11 +148,10 @@ function App() {
 
   return (
     <>
-    <CartToast notification={cartToast} onDismiss={dismissCartToast} />
     {sessionError && <p role="alert" className="p-4 font-bold text-rojo">{sessionError}</p>}
     <Routes>
       <Route path="/" element={
-        <Home {...shared} cartItems={items} onAddToCart={addWithFeedback} products={recentProducts} collections={collections} onOpenProduct={openProduct}
+        <Home {...shared} cartItems={items} cartFeedback={addFeedback} onAddToCart={addWithFeedback} products={recentProducts} collections={collections} onOpenProduct={openProduct}
           productsLoading={productsLoading} productsError={productsError}
           collectionsLoading={collectionsLoading} collectionsError={collectionsError}
           onSelectCollection={(collection) => navigate('/catalogo', { state: { collectionId: collection.id } })} />
@@ -154,6 +160,7 @@ function App() {
                                  <Catalog
                                     {...shared}
                                     cartItems={items}
+                                    cartFeedback={addFeedback}
                                     onAddToCart={addWithFeedback}
                                     collections={catalogCollections}
                                     collectionsError={collectionsError}
@@ -172,7 +179,7 @@ function App() {
         <ProductDetail key={(user?.id ?? 'guest') + ':' + selectedProduct.id} {...shared}
           user={user} canReview={canReview} onPublishReview={publishReview}
           cartItems={items} cartQuantity={items.find((item) => item.productId === selectedProduct.id)?.quantity ?? 0}
-          onAddToCart={addWithFeedback} onBuyNow={buyNow} product={selectedProduct} products={relatedProducts}
+          cartFeedback={addFeedback} onAddToCart={addWithFeedback} onBuyNow={buyNow} product={selectedProduct} products={relatedProducts}
           reviews={reviewsByProduct[selectedProduct.id] ?? []}
           reviewsLoading={reviewsByProduct[selectedProduct.id] === undefined && !reviewErrors[selectedProduct.id]}
           reviewsError={reviewErrors[selectedProduct.id]} onRetryReviews={retryReviews}
