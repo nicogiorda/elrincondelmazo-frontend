@@ -45,12 +45,12 @@ function ProductCard({ cartBusy = false, product, userId, cartQuantity = 0, vari
 
   return (
     <article className={`relative flex w-full flex-col rounded-[1.375rem] border-3 border-bordo bg-papel leading-[normal] text-bordo shadow-product ${isSoldOut ? 'opacity-60' : ''}`}>
-      <div className="px-3 pt-3">
+      <div className={variant === 'catalog' ? 'px-2 pt-2' : 'px-3 pt-3'}>
         <button
           type="button"
           aria-label={`Ver ${product.name}`}
           onClick={() => onOpenProduct?.(product)}
-          className={`flex aspect-square w-full items-center justify-center overflow-hidden rounded-[0.875rem] border-3 border-bordo ${imageBackgroundClass}`}
+          className={`flex w-full items-center justify-center overflow-hidden rounded-[0.875rem] border-3 border-bordo ${variant === 'catalog' ? 'aspect-[4/5]' : 'aspect-square'} ${imageBackgroundClass}`}
         >
           {imageUrl && <img src={imageUrl} alt={product.name} className={`h-full w-full object-contain ${variant === 'home' ? homeImageSizes[product.type] ?? '' : ''}`} />}
         </button>
